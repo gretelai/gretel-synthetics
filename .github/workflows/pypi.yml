@@ -1,0 +1,30 @@
+name: gretel-synthetics pypi push
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v1
+    - name: Setup Python
+      uses: actions/setup-python@v1
+      with:
+        python-version: 3.7
+    - name: Build wheel
+      run: |
+        pip install wheel
+        python setup.py sdist bdist_wheel
+    - name: Publish to Test PyPi
+      uses: pypa/gh-action-pypi-publish@master
+      with:
+        user: __token__
+        password: ${{secrets.PY_PI_TEST}}
+        repository_url: https://test.pypi.org/legacy/
+    - name: Publish PyPi
+      uses: pypa/gh-action-pypi-publish@master
+      with:
+        user: __token__
+        password: ${{secrets.PY_PI_PROD}}
