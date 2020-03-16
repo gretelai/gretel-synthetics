@@ -10,6 +10,7 @@
 import logging
 import numpy as np
 import pickle
+import sentencepiece as spm
 import tensorflow as tf
 from collections import namedtuple
 
@@ -25,9 +26,16 @@ logging.basicConfig(
     level=logging.INFO)
 
 
-def prepare_model(char2idx, batch_size, store):  # pragma: no cover
+def load_tokenizer(store: BaseConfig) -> spm.SentencePieceProcessor:
+    logging.info("Loading SentencePiece tokenizer")
+    sp = spm.SentencePieceProcessor()
+    sp.Load("m.model")
+    return sp
+
+
+def prepare_model(sp, batch_size, store):
     model = build_sequential_model(
-                vocab_size=len(char2idx),
+                vocab_size=len(sp),
                 batch_size=1,
                 store=store)
 
@@ -49,20 +57,20 @@ def gen_text_factory(text, valid, explain):
     )
 
 
-def generate_text(store: BaseConfig, start_string="\n", line_validator=None):
+def generate_text(store: BaseConfig, start_string="20, ", line_validator=None):
     logging.info(
         f"Latest checkpoint: {tf.train.latest_checkpoint(store.checkpoint_dir)}")  # noqa
 
-    # Restore the latest model
-    char2idx = pickle.load(open(store.char2idx, "rb"))
-    idx2char = pickle.load(open(store.idx2char, "rb"))
+    # Restore the latest SentencePiece model
+    sp = load_tokenizer(store)
 
-    model = prepare_model(char2idx, 1, store)
+    # Load the RNN
+    model = prepare_model(sp, 1, store)
 
     lines_generated = 0
 
     while True:
-        rec = predict_chars(model, char2idx, idx2char, start_string, store).data
+        rec = predict_chars(model, sp, start_string, store).data
         try:
             if not line_validator:
                 yield gen_text_factory(rec, None, None)
@@ -80,15 +88,15 @@ def generate_text(store: BaseConfig, start_string="\n", line_validator=None):
 
 
 def predict_chars(model: tf.keras.Sequential,
-                  char2idx: dict, idx2char: np.array, start_string: str,
+                  sp: spm.SentencePieceProcessor,
+                  start_string: str,
                   store: BaseConfig) -> str:
     """
     Evaluation step (generating text using the learned model).
 
     Args:
         model: tf.keras.Sequential model
-        char2idx: character to index mapping
-        idx2char: index to character mapping
+        sp: SentencePiece tokenizer
         start_string: string to bootstrap model
         store: our config object
     Returns:
@@ -96,7 +104,7 @@ def predict_chars(model: tf.keras.Sequential,
     """
 
     # Converting our start string to numbers (vectorizing)
-    input_eval = [char2idx[s] for s in start_string]
+    input_eval = sp.EncodeAsIds(start_string)
     input_eval = tf.expand_dims(input_eval, 0)
 
     # Empty string to store each line
@@ -120,9 +128,11 @@ def predict_chars(model: tf.keras.Sequential,
         # along with the previous hidden state
         input_eval = tf.expand_dims([predicted_id], 0)
 
-        if idx2char[predicted_id] == "\n":
-            return pred_string(text_generated)
-        elif store.gen_chars > 0 and len(text_generated) >= store.gen_chars:
+        next_token = sp.IdToPiece(int(predicted_id))
+        logging.info(next_token)
+        if next_token.endswith("\n"):
+            return pred_string(text_generated) + next_token[:-1]
+        elif 0 < store.gen_chars <= len(text_generated):
             return pred_string(text_generated)
         else:
-            text_generated += idx2char[predicted_id]
+            text_generated += next_token

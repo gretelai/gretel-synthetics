@@ -13,6 +13,8 @@ import os
 import pickle
 
 import tensorflow as tf
+import sentencepiece as spm
+import tf_sentencepiece as tfs
 from smart_open import open
 
 from gretel_synthetics.model import build_sequential_model, compute_epsilon
@@ -24,28 +26,20 @@ logging.basicConfig(
     level=logging.INFO)
 
 
-def create_vocab(store: BaseConfig, text):
-    if store.max_chars > 0:
-        text = text[:store.max_chars]
-    vocab = sorted(set(text))
-    return vocab
-
-
 def read_training_data(path):  # pragma: no cover
     return open(path, 'rb').read().decode(encoding='utf-8')
 
 
 def train_rnn(store: BaseConfig):
     text = read_training_data(store.training_data)
-    vocab = create_vocab(store, text)
     logging.info(f'Length of training data: {len(text)} characters')
-    logging.info(f'Training set contains: {len(vocab)} unique characters')
 
-    dataset = create_dataset(store, text, vocab)
+    spm = train_tokenizer(store, text)
+    dataset = create_dataset(store, text, spm)
 
     logging.info("Initializing model")
     model = build_sequential_model(
-        vocab_size=len(vocab),
+        vocab_size=len(spm),
         batch_size=store.batch_size,
         store=store
         )
@@ -70,45 +64,44 @@ def train_rnn(store: BaseConfig):
         logging.info('Trained with non-private Adam optimizer')
 
 
-def create_dataset(store: BaseConfig, text: str, vocab: list) -> tf.data.Dataset:
+def train_tokenizer(store: BaseConfig, text: str) -> spm.SentencePieceProcessor:
+    vocab_size = 500
+    character_coverage = 1.0
+
+    logging.info("Training SentencePiece tokenizer")
+    spm.SentencePieceTrainer.Train(
+        f'--input={store.training_data} '
+        f'--model_prefix=m '
+        f'--vocab_size={vocab_size} '
+        f'--character_coverage={character_coverage}')
+
+    sp = spm.SentencePieceProcessor()
+    sp.Load("m.model")
+
+    # print sample output
+    with open(store.training_data) as f:
+        sample = f.readline()
+    logging.info(f"Vocabulary size: {len(sp)} tokens")
+    logging.info(
+        '{} ---- sample tokens mapped to int ---- > {}'.format(
+            repr(sample), ", ".join(sp.SampleEncodeAsPieces(sample, -1, 0.1))))
+    return sp
+
+
+def create_dataset(store: BaseConfig, text: str, sp: spm.SentencePieceProcessor) -> tf.data.Dataset:
     """
     Before training, we need to map strings to a numerical representation.
     Create two lookup tables: one mapping characters to numbers,
     and another for numbers to characters.
     """
-    char2idx = {u: i for i, u in enumerate(vocab)}
-    idx2char = np.array(vocab)
-    # text_as_int = np.array([char2idx[c] for c in text])
-    tmp = []
-    for c in text:
-        try:
-            tmp.append(char2idx[c])
-        except KeyError:
-            pass
-    text_as_int = np.array(tmp)
-
-    logging.info("Pickling vocabulary to disk")
-    pickle.dump(char2idx, open(store.char2idx, "wb"))
-    pickle.dump(idx2char, open(store.idx2char, "wb"))
-
-    logging.info("Character->int mapping (showing 20 chars)")
-    logging.info('{')
-    for char, _ in zip(char2idx, range(20)):
-        logging.info('  {:4s}: {:3d},'.format(repr(char), char2idx[char]))
-    logging.info('  ...\n}')
-
-    # Show how the first 13 characters from the text are mapped to integers
-    logging.info(
-        '{} ---- characters mapped to int ---- > {}'.format(
-            repr(text[:13]), text_as_int[:13]))
-
     # Create training dataset
-    char_dataset = tf.data.Dataset.from_tensor_slices(text_as_int)
+    char_dataset = tf.data.Dataset.from_tensor_slices(sp.EncodeAsIds(text))
     sequences = char_dataset.batch(store.seq_length + 1, drop_remainder=True)
     dataset = sequences.map(split_input_target)
     dataset = dataset.shuffle(
         store.buffer_size).batch(
             store.batch_size, drop_remainder=True)
+
     return dataset
 
 
