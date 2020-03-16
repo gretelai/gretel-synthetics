@@ -73,6 +73,7 @@ def train_tokenizer(store: BaseConfig, text: str) -> spm.SentencePieceProcessor:
         f'--input={store.training_data} '
         f'--model_prefix=m '
         f'--vocab_size={vocab_size} '
+        f'--user-defined-symbols="<n>" '
         f'--character_coverage={character_coverage}')
 
     sp = spm.SentencePieceProcessor()
