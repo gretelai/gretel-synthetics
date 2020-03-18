@@ -8,8 +8,6 @@
         * http://karpathy.github.io/2015/05/21/rnn-effectiveness/
 """
 import logging
-import numpy as np
-import pickle
 import sentencepiece as spm
 import tensorflow as tf
 from collections import namedtuple
@@ -57,7 +55,7 @@ def gen_text_factory(text, valid, explain):
     )
 
 
-def generate_text(store: BaseConfig, start_string="20, ", line_validator=None):
+def generate_text(store: BaseConfig, start_string="<n>", line_validator=None):
     logging.info(
         f"Latest checkpoint: {tf.train.latest_checkpoint(store.checkpoint_dir)}")  # noqa
 
@@ -108,7 +106,7 @@ def predict_chars(model: tf.keras.Sequential,
     input_eval = tf.expand_dims(input_eval, 0)
 
     # Empty string to store each line
-    text_generated = ""
+    sentence_ids = []
 
     # Here batch size == 1
     model.reset_states()
@@ -127,12 +125,9 @@ def predict_chars(model: tf.keras.Sequential,
         # We pass the predicted word as the next input to the model
         # along with the previous hidden state
         input_eval = tf.expand_dims([predicted_id], 0)
+        sentence_ids.append(int(predicted_id))
 
-        next_token = sp.IdToPiece(int(predicted_id))
-        logging.info(next_token)
-        if next_token.endswith("\n"):
-            return pred_string(text_generated) + next_token[:-1]
-        elif 0 < store.gen_chars <= len(text_generated):
-            return pred_string(text_generated)
-        else:
-            text_generated += next_token
+        if '<n>' in sp.DecodeIds(sentence_ids):
+            return pred_string(sp.DecodeIds(sentence_ids).replace('<n>', ''))
+        elif 0 < store.gen_chars <= len(sp.DecodeIds(sentence_ids)):
+            return pred_string(sp.DecodeIds(sentence_ids))

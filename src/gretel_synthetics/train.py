@@ -27,11 +27,13 @@ logging.basicConfig(
 
 
 def read_training_data(path):  # pragma: no cover
-    return open(path, 'rb').read().decode(encoding='utf-8')
+    text = open(path, 'rb').read().decode(encoding='utf-8')
+    return text
 
 
 def train_rnn(store: BaseConfig):
-    text = read_training_data(store.training_data)
+
+    text = annotate_training_data(store)
     logging.info(f'Length of training data: {len(text)} characters')
 
     spm = train_tokenizer(store, text)
@@ -64,16 +66,28 @@ def train_rnn(store: BaseConfig):
         logging.info('Trained with non-private Adam optimizer')
 
 
+def annotate_training_data(store: BaseConfig):
+    # required for sentencepiece to tokenize newline characters
+    labeled_text = open(store.training_data, 'r').read().replace('\n', '<n>\n')
+    output_fn = store.training_data + ".train"
+    logging.info(f"Writing annotated training set: {output_fn}")
+    with open(output_fn, 'w') as f:
+        f.write(labeled_text)
+
+    return labeled_text
+
+
 def train_tokenizer(store: BaseConfig, text: str) -> spm.SentencePieceProcessor:
     vocab_size = 500
     character_coverage = 1.0
 
+    logging.info("Preparing training data for tokenization")
     logging.info("Training SentencePiece tokenizer")
     spm.SentencePieceTrainer.Train(
-        f'--input={store.training_data} '
+        f'--input={store.training_data}.train '
         f'--model_prefix=m '
+        f'--user_defined_symbols="<n>" '
         f'--vocab_size={vocab_size} '
-        f'--user-defined-symbols="<n>" '
         f'--character_coverage={character_coverage}')
 
     sp = spm.SentencePieceProcessor()
