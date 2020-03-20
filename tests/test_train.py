@@ -1,23 +1,15 @@
+import os
 import pytest
 from unittest.mock import patch, Mock
 
-from gretel_synthetics.train import train_rnn, create_vocab
-
-@pytest.fixture
-def smol_data():
-    return "Once upon a midnight dreary, while I pondered, weak and weary," \
-            "Over many a quaint and curious volume of forgotten lore—" \
-            "While I nodded, nearly napping, suddenly there came a tapping," \
-            "As of some one gently rapping, rapping at my chamber door." \
-            "‘’Tis some visitor,’ I muttered, ‘tapping at my chamber door—" \
-            "Only this and nothing more.’"
+from gretel_synthetics.train import train_rnn, train_tokenizer
 
 
-def test_create_vocab(global_local_config, smol_data):
-    check = create_vocab(global_local_config, smol_data)
+def test_create_vocab(global_local_config):
+    check = create_vocab(global_local_config)
     assert len(check) == 34
     global_local_config.max_chars = 8
-    check = create_vocab(global_local_config, smol_data)
+    check = create_vocab(global_local_config)
     assert len(check) == 8
 
 
