@@ -93,7 +93,7 @@ def train_tokenizer(store: BaseConfig) -> spm.SentencePieceProcessor:
         sample = f.readline().strip()
     logging.info(f"Tokenizer model vocabulary size: {len(sp)} tokens")
     logging.info(
-        'Mapping first line of training data\n\n{} ---- sample tokens mapped to int ---- > {}\n'.format(
+        'Mapping first line of training data\n\n{}\n ---- sample tokens mapped to int ---- > \n{}\n'.format(
             repr(sample), ", ".join(sp.SampleEncodeAsPieces(sample, -1, 0.1))))
     return sp
 
