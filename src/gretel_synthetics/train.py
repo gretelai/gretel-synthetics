@@ -8,13 +8,10 @@
         * http://karpathy.github.io/2015/05/21/rnn-effectiveness/
 """
 import logging
-import numpy as np
 import os
-import pickle
 
 import tensorflow as tf
 import sentencepiece as spm
-import tf_sentencepiece as tfs
 from smart_open import open
 
 from gretel_synthetics.model import build_sequential_model, compute_epsilon
