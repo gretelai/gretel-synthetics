@@ -1,10 +1,12 @@
 from unittest.mock import patch
 import pytest
+import os
 
 from gretel_synthetics.config import LocalConfig
 
 
 @pytest.fixture
 def global_local_config():
-    with patch('os.mkdir'):
-        return LocalConfig(checkpoint_dir='ckpoint_dir', training_data='smol.txt')
+    target = 'ckpoint'
+    os.mkdir(target)
+    return LocalConfig(checkpoint_dir=target, input_data='blah')
