@@ -13,9 +13,13 @@ class BaseConfig(ABC):
     def __init__(self, *, max_chars=0, epochs=30, batch_size=64, buffer_size=10000, seq_length=100, embedding_dim=256,
                  rnn_units=256, dropout_rate=.2, rnn_initializer='glorot_uniform', dp=False, dp_learning_rate=0.015,
                  dp_noise_multiplier=1.1, dp_l2_norm_clip=1.0, dp_microbatches=256, gen_temp=1.0, gen_chars=0,
-                 gen_lines=500):
-        self.char2idx = None
-        self.idx2char = None
+                 gen_lines=500, vocab_size=500, character_coverage=1.0):
+        self.tokenizer = None
+        self.processed_data = None
+
+        # Tokenizer model settings
+        self.vocab_size = vocab_size
+        self.character_coverage = character_coverage
 
         # Diff privacy configs
         self.dp = dp
@@ -47,16 +51,17 @@ class BaseConfig(ABC):
 
 class LocalConfig(BaseConfig):
 
-    def __init__(self, *, checkpoint_dir, training_data, **kwargs):
+    def __init__(self, *, checkpoint_dir, input_data, **kwargs):
         self.checkpoint_dir = checkpoint_dir
-        self.training_data = training_data
+        self.input_data = input_data
         super().__init__(**kwargs)
 
         if not os.path.isdir(self.checkpoint_dir):
             os.mkdir(self.checkpoint_dir)
 
-        self._set_idxs()
+        self._set_tokenizer()
 
-    def _set_idxs(self):
-        self.char2idx = os.path.join(self.checkpoint_dir, 'char2idx.p')
-        self.idx2char = os.path.join(self.checkpoint_dir, 'idx2char.p')
+    def _set_tokenizer(self):
+        self.tokenizer_prefix = "m"
+        self.tokenizer_model = os.path.join(self.checkpoint_dir, 'm.model')
+        self.training_data = os.path.join(self.checkpoint_dir, 'training_data.txt')

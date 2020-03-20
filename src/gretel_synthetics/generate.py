@@ -27,7 +27,7 @@ logging.basicConfig(
 def load_tokenizer(store: BaseConfig) -> spm.SentencePieceProcessor:
     logging.info("Loading SentencePiece tokenizer")
     sp = spm.SentencePieceProcessor()
-    sp.Load("m.model")
+    sp.Load(store.tokenizer_model)
     return sp
 
 

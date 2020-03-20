@@ -36,10 +36,10 @@ def train_rnn(store: BaseConfig):
     text = annotate_training_data(store)
     logging.info(f'Length of training data: {len(text)} characters')
 
-    spm = train_tokenizer(store, text)
+    spm = train_tokenizer(store)
     dataset = create_dataset(store, text, spm)
 
-    logging.info("Initializing model")
+    logging.info("Initializing generative model")
     model = build_sequential_model(
         vocab_size=len(spm),
         batch_size=store.batch_size,
@@ -68,37 +68,35 @@ def train_rnn(store: BaseConfig):
 
 def annotate_training_data(store: BaseConfig):
     # required for sentencepiece to tokenize newline characters
-    labeled_text = open(store.training_data, 'r').read().replace('\n', '<n>\n')
-    output_fn = store.training_data + ".train"
-    logging.info(f"Writing annotated training set: {output_fn}")
-    with open(output_fn, 'w') as f:
+    labeled_text = open(store.input_data, 'r').read().replace('\n', '<n>\n')
+    logging.info(f"Annotating training data to {os.path.basename(store.training_data)}")
+    with open(store.training_data, 'w') as f:
         f.write(labeled_text)
 
     return labeled_text
 
 
-def train_tokenizer(store: BaseConfig, text: str) -> spm.SentencePieceProcessor:
-    vocab_size = 500
-    character_coverage = 1.0
+def train_tokenizer(store: BaseConfig) -> spm.SentencePieceProcessor:
 
-    logging.info("Preparing training data for tokenization")
+    os.chdir(store.checkpoint_dir)
     logging.info("Training SentencePiece tokenizer")
     spm.SentencePieceTrainer.Train(
-        f'--input={store.training_data}.train '
-        f'--model_prefix=m '
+        f'--input={store.training_data} '
+        f'--model_prefix={store.tokenizer_prefix} '
         f'--user_defined_symbols="<n>" '
-        f'--vocab_size={vocab_size} '
-        f'--character_coverage={character_coverage}')
+        f'--vocab_size={store.vocab_size} '
+        f'--character_coverage={store.character_coverage}')
+    logging.info("Complete")
 
     sp = spm.SentencePieceProcessor()
-    sp.Load("m.model")
+    sp.Load(store.tokenizer_model)
 
     # print sample output
     with open(store.training_data) as f:
-        sample = f.readline()
-    logging.info(f"Vocabulary size: {len(sp)} tokens")
+        sample = f.readline().strip()
+    logging.info(f"Tokenizer model vocabulary size: {len(sp)} tokens")
     logging.info(
-        '{} ---- sample tokens mapped to int ---- > {}'.format(
+        'Mapping first line of training data\n\n{} ---- sample tokens mapped to int ---- > {}\n'.format(
             repr(sample), ", ".join(sp.SampleEncodeAsPieces(sample, -1, 0.1))))
     return sp
 
