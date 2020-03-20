@@ -9,6 +9,8 @@
 """
 import logging
 import os
+import pickle
+import shutil
 
 import tensorflow as tf
 import sentencepiece as spm
@@ -31,8 +33,6 @@ def read_training_data(path):  # pragma: no cover
 def train_rnn(store: BaseConfig):
 
     text = annotate_training_data(store)
-    logging.info(f'Length of training data: {len(text)} characters')
-
     spm = train_tokenizer(store)
     dataset = create_dataset(store, text, spm)
 
@@ -65,27 +65,37 @@ def train_rnn(store: BaseConfig):
 
 def annotate_training_data(store: BaseConfig):
     # required for sentencepiece to tokenize newline characters
+    logging.info(f"Annotating training data from {store.input_data}")
     labeled_text = open(store.input_data, 'r').read().replace('\n', '<n>\n')
-    logging.info(f"Annotating training data to {os.path.basename(store.training_data)}")
+    logging.info(f"Annotating training data to {store.training_data}")
+    logging.info(f"Annotated text length: {len(labeled_text)} characters")
     with open(store.training_data, 'w') as f:
         f.write(labeled_text)
-
     return labeled_text
+
+
+def move_tokenizer_model(store:BaseConfig):
+    for model in ['model', 'vocab']:
+        src = os.path.join(os.getcwd(), f'{store.tokenizer_prefix}.{model}')
+        dst = os.path.join(store.checkpoint_dir, f'{store.tokenizer_prefix}.{model}')
+        shutil.move(src, dst)
 
 
 def train_tokenizer(store: BaseConfig) -> spm.SentencePieceProcessor:
 
-    os.chdir(store.checkpoint_dir)
     logging.info("Training SentencePiece tokenizer")
     spm.SentencePieceTrainer.Train(
         f'--input={store.training_data} '
         f'--model_prefix={store.tokenizer_prefix} '
         f'--user_defined_symbols="<n>" '
         f'--vocab_size={store.vocab_size} '
+        f'--hard_vocab_limit=false '
         f'--character_coverage={store.character_coverage}')
+    move_tokenizer_model(store)
     logging.info("Complete")
 
     sp = spm.SentencePieceProcessor()
+    logging.info(f"Loading tokenizer from: {store.tokenizer_model}")
     sp.Load(store.tokenizer_model)
 
     # print sample output
