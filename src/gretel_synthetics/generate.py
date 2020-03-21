@@ -127,7 +127,9 @@ def predict_chars(model: tf.keras.Sequential,
         input_eval = tf.expand_dims([predicted_id], 0)
         sentence_ids.append(int(predicted_id))
 
-        if '<n>' in sp.DecodeIds(sentence_ids):
-            return pred_string(sp.DecodeIds(sentence_ids).replace('<n>', ''))
-        elif 0 < store.gen_chars <= len(sp.DecodeIds(sentence_ids)):
-            return pred_string(sp.DecodeIds(sentence_ids))
+        decoded = sp.DecodeIds(sentence_ids)
+
+        if '<n>' in decoded:
+            return pred_string(decoded.replace('<n>', ''))
+        elif 0 < store.gen_chars <= len(decoded):
+            return pred_string(decoded)

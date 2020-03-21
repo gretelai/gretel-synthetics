@@ -21,6 +21,7 @@ setup(
     install_requires=[
         'tensorflow==2.1.0',
         'tensorflow_privacy==0.2.2',
-        'smart_open'
+        'smart_open',
+        'sentencepiece'
     ]
 )

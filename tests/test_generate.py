@@ -34,28 +34,35 @@ def test_predict_chars(mock_dims, mock_cat, global_local_config, char2idx, idx2c
     mock_tensor[-1, 0].numpy.return_value = 1
     mock_cat.return_value = mock_tensor
 
-    line = predict_chars(mock_model, char2idx, idx2char, '\n', global_local_config)
-    assert isinstance(line, pred_string)
-    assert len(line.data) == 10
-    assert line.data == 'a'*10
+    sp = Mock()
+    sp.DecodeIds.return_value = 'this is the end<n>'
 
-    idx2char = np.array(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', '\n'])
+    line = predict_chars(mock_model, sp, '\n', global_local_config)
+    assert line == pred_string(data='this is the end')
+
     mock_tensor = MagicMock()
     mock_tensor[-1, 0].numpy.side_effect = [0, 1, 2, 3, 4, 5, 6, 7, 8]
     mock_cat.return_value = mock_tensor
-    global_local_config.gen_chars = 0 # back to infinite chars
-    line = predict_chars(mock_model, char2idx, idx2char, '\n', global_local_config)
-    assert line.data == 'abcdefgh'
+    global_local_config.gen_chars = 3
+    sp = Mock()
+    sp.DecodeIds.side_effect = ['a', 'ab', 'abc', 'abcd']
+    line = predict_chars(mock_model, sp, '\n', global_local_config)
+    assert line.data == 'abc'
+    
 
-
+@patch('gretel_synthetics.generate.spm.SentencePieceProcessor')
 @patch('gretel_synthetics.generate.predict_chars')
 @patch('gretel_synthetics.generate.prepare_model')
 @patch('pickle.load')
 @patch('gretel_synthetics.generate.open')
-def test_generate_text(_open, pickle, prepare, predict, global_local_config):
+def test_generate_text(_open, pickle, prepare, predict, spm, global_local_config):
     global_local_config.gen_lines = 10
     predict.side_effect = [pred_string(json.dumps({'foo': i})) for i in range(0, 10)]
     out = []
+
+    sp = Mock()
+    spm.return_value = sp
+
     for rec in generate_text(global_local_config, line_validator=json.loads):
         out.append(rec)
 

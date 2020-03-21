@@ -9,7 +9,6 @@
 """
 import logging
 import os
-import pickle
 import shutil
 
 import tensorflow as tf
@@ -31,11 +30,9 @@ def read_training_data(path):  # pragma: no cover
 
 
 def train_rnn(store: BaseConfig):
-
     text = annotate_training_data(store)
     spm = train_tokenizer(store)
     dataset = create_dataset(store, text, spm)
-
     logging.info("Initializing generative model")
     model = build_sequential_model(
         vocab_size=len(spm),
@@ -74,7 +71,7 @@ def annotate_training_data(store: BaseConfig):
     return labeled_text
 
 
-def move_tokenizer_model(store:BaseConfig):
+def move_tokenizer_model(store: BaseConfig):
     for model in ['model', 'vocab']:
         src = os.path.join(os.getcwd(), f'{store.tokenizer_prefix}.{model}')
         dst = os.path.join(store.checkpoint_dir, f'{store.tokenizer_prefix}.{model}')
@@ -82,7 +79,6 @@ def move_tokenizer_model(store:BaseConfig):
 
 
 def train_tokenizer(store: BaseConfig) -> spm.SentencePieceProcessor:
-
     logging.info("Training SentencePiece tokenizer")
     spm.SentencePieceTrainer.Train(
         f'--input={store.training_data} '
