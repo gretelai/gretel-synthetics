@@ -45,7 +45,7 @@ class BaseConfig(ABC):
         self.gen_lines = gen_lines
 
         @abstractmethod
-        def _gen_idxs(self):  # pragma: no cover
+        def _set_tokenizer(self):  # pragma: no cover
             pass
 
 
