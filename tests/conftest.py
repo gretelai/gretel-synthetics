@@ -1,10 +1,20 @@
-from unittest.mock import patch
 import pytest
+from pathlib import Path
+import shutil
 
 from gretel_synthetics.config import LocalConfig
+from gretel_synthetics.train import annotate_training_data
+
+test_data_dir = Path(__file__).parent
 
 
-@pytest.fixture
+@pytest.fixture(scope='session')
 def global_local_config():
-    with patch('os.mkdir'):
-        return LocalConfig(checkpoint_dir='ckpoint_dir', training_data='le_data')
+    target = test_data_dir / 'ckpoint'
+    input_data = test_data_dir / 'data' / 'smol.txt'
+    if not target.exists():
+        target.mkdir()
+    config = LocalConfig(checkpoint_dir=target, input_data=input_data.as_posix())
+    annotate_training_data(config)
+    yield config
+    shutil.rmtree(target)

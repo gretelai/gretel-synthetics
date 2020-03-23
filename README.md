@@ -5,6 +5,7 @@ This code has been developed and tested on Python 3.7. Python 3.8 is currently u
 This package allows developers to quickly get emersed with synthetic data generation through the use of neural networks. The more complex pieces of working with libraries like Tensorflow and differential privacy are bundled into friendly Python classes and functions.
 
 For example usage, please launch the example Jupyter Notebook and step through the config, train, and generation examples.
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/gretelai/gretel-synthetics/blob/master/examples/synthetic_records.ipynb)
 
 **NOTE**: The settings in the Jupyter Notebook are optimized to run on a CPU, so you can get the hang of how things work. We 
 highly recommend running with no `max_char` limitation and at least 30 epochs on a GPU.

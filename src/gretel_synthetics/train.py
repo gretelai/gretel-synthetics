@@ -8,11 +8,11 @@
         * http://karpathy.github.io/2015/05/21/rnn-effectiveness/
 """
 import logging
-import numpy as np
-import os
-import pickle
+from pathlib import Path
+import shutil
 
 import tensorflow as tf
+import sentencepiece as spm
 from smart_open import open
 
 from gretel_synthetics.model import build_sequential_model, compute_epsilon
@@ -24,36 +24,21 @@ logging.basicConfig(
     level=logging.INFO)
 
 
-def create_vocab(store: BaseConfig, text):
-    if store.max_chars > 0:
-        text = text[:store.max_chars]
-    vocab = sorted(set(text))
-    return vocab
-
-
-def read_training_data(path):  # pragma: no cover
-    return open(path, 'rb').read().decode(encoding='utf-8')
-
-
 def train_rnn(store: BaseConfig):
-    text = read_training_data(store.training_data)
-    vocab = create_vocab(store, text)
-    logging.info(f'Length of training data: {len(text)} characters')
-    logging.info(f'Training set contains: {len(vocab)} unique characters')
-
-    dataset = create_dataset(store, text, vocab)
-
-    logging.info("Initializing model")
+    text = annotate_training_data(store)
+    sp = train_tokenizer(store)
+    dataset = create_dataset(store, text, sp)
+    logging.info("Initializing generative model")
     model = build_sequential_model(
-        vocab_size=len(vocab),
+        vocab_size=len(sp),
         batch_size=store.batch_size,
         store=store
         )
 
     # Save checkpoints during training
-    checkpoint_prefix = os.path.join(store.checkpoint_dir, "ckpt_{epoch}")
+    checkpoint_prefix = Path(store.checkpoint_dir) / "ckpt_{epoch}"
     checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
-        filepath=checkpoint_prefix,
+        filepath=checkpoint_prefix.as_posix(),
         save_weights_only=True
     )
 
@@ -70,40 +55,64 @@ def train_rnn(store: BaseConfig):
         logging.info('Trained with non-private Adam optimizer')
 
 
-def create_dataset(store: BaseConfig, text: str, vocab: list) -> tf.data.Dataset:
+def annotate_training_data(store: BaseConfig):
+    # required for sentencepiece to tokenize newline characters
+    logging.info(f"Annotating training data from {store.input_data}")
+    labeled_text = open(store.input_data, 'r', encoding='utf-8').read().replace('\n', '<n>\n')
+    training_text = []
+    with open(store.input_data, 'r', encoding='utf-8') as infile:
+        for line in infile:
+            training_text.append(f"{line.strip()}")
+
+    logging.info(f"Annotating training data to {store.training_data}")
+    logging.info(f"Annotated text length: {len(labeled_text)} characters")
+    with open(store.training_data, 'w') as f:
+        for sample in training_text:
+            f.write(f"{sample}<n>\n")
+    return labeled_text
+
+
+def move_tokenizer_model(store: BaseConfig):
+    for model in ['model', 'vocab']:
+        src = Path.cwd() / f'{store.tokenizer_prefix}.{model}'
+        dst = Path(store.checkpoint_dir) / f'{store.tokenizer_prefix}.{model}'
+        shutil.move(src.as_posix(), dst.as_posix())
+
+
+def train_tokenizer(store: BaseConfig) -> spm.SentencePieceProcessor:
+    logging.info("Training SentencePiece tokenizer")
+    spm.SentencePieceTrainer.Train(
+        f'--input={store.training_data} '
+        f'--model_prefix={store.tokenizer_prefix} '
+        f'--user_defined_symbols="<n>" '
+        f'--vocab_size={store.vocab_size} '
+        f'--hard_vocab_limit=false '
+        f'--character_coverage={store.character_coverage}')
+    move_tokenizer_model(store)
+    logging.info("Complete")
+
+    sp = spm.SentencePieceProcessor()
+    logging.info(f"Loading tokenizer from: {store.tokenizer_model}")
+    sp.Load(store.tokenizer_model)
+
+    # print sample output
+    with open(store.training_data) as f:
+        sample = f.readline().strip()
+    logging.info(f"Tokenizer model vocabulary size: {len(sp)} tokens")
+    logging.info(
+        'Mapping first line of training data\n\n{}\n ---- sample tokens mapped to int ---- > \n{}\n'.format(
+            repr(sample), ", ".join(sp.SampleEncodeAsPieces(sample, -1, 0.1))))
+    return sp
+
+
+def create_dataset(store: BaseConfig, text: str, sp: spm.SentencePieceProcessor) -> tf.data.Dataset:
     """
     Before training, we need to map strings to a numerical representation.
     Create two lookup tables: one mapping characters to numbers,
     and another for numbers to characters.
     """
-    char2idx = {u: i for i, u in enumerate(vocab)}
-    idx2char = np.array(vocab)
-    # text_as_int = np.array([char2idx[c] for c in text])
-    tmp = []
-    for c in text:
-        try:
-            tmp.append(char2idx[c])
-        except KeyError:
-            pass
-    text_as_int = np.array(tmp)
-
-    logging.info("Pickling vocabulary to disk")
-    pickle.dump(char2idx, open(store.char2idx, "wb"))
-    pickle.dump(idx2char, open(store.idx2char, "wb"))
-
-    logging.info("Character->int mapping (showing 20 chars)")
-    logging.info('{')
-    for char, _ in zip(char2idx, range(20)):
-        logging.info('  {:4s}: {:3d},'.format(repr(char), char2idx[char]))
-    logging.info('  ...\n}')
-
-    # Show how the first 13 characters from the text are mapped to integers
-    logging.info(
-        '{} ---- characters mapped to int ---- > {}'.format(
-            repr(text[:13]), text_as_int[:13]))
-
     # Create training dataset
-    char_dataset = tf.data.Dataset.from_tensor_slices(text_as_int)
+    char_dataset = tf.data.Dataset.from_tensor_slices(sp.EncodeAsIds(text))
     sequences = char_dataset.batch(store.seq_length + 1, drop_remainder=True)
     dataset = sequences.map(split_input_target)
     dataset = dataset.shuffle(
