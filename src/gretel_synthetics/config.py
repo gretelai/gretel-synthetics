@@ -63,5 +63,5 @@ class LocalConfig(BaseConfig):
 
     def _set_tokenizer(self):
         self.tokenizer_prefix = "m"
-        self.tokenizer_model = os.path.join(self.checkpoint_dir, 'm.model')
+        self.tokenizer_model = os.path.join(self.checkpoint_dir, f'{self.tokenizer_prefix}.model')
         self.training_data = os.path.join(self.checkpoint_dir, 'training_data.txt')
