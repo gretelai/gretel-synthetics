@@ -26,11 +26,11 @@ logging.basicConfig(
 
 def train_rnn(store: BaseConfig):
     text = annotate_training_data(store)
-    spm = train_tokenizer(store)
-    dataset = create_dataset(store, text, spm)
+    sp = train_tokenizer(store)
+    dataset = create_dataset(store, text, sp)
     logging.info("Initializing generative model")
     model = build_sequential_model(
-        vocab_size=len(spm),
+        vocab_size=len(sp),
         batch_size=store.batch_size,
         store=store
         )
