@@ -1,4 +1,4 @@
 tensorflow==2.1.0
 tensorflow_privacy==0.2.2
-sentencepiece
-smart_open
+sentencepiece==0.1.85
+smart_open==1.10.0
