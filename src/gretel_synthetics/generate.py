@@ -31,10 +31,10 @@ def load_tokenizer(store: BaseConfig) -> spm.SentencePieceProcessor:
     return sp
 
 
-def prepare_model(sp, batch_size, store):
+def prepare_model(sp: spm, batch_size: int, store: BaseConfig) -> tf.keras.Sequential:
     model = build_sequential_model(
                 vocab_size=len(sp),
-                batch_size=1,
+                batch_size=batch_size,
                 store=store)
 
     load_dir = store.checkpoint_dir
@@ -49,7 +49,7 @@ def prepare_model(sp, batch_size, store):
     return model
 
 
-def gen_text_factory(text, valid, explain):
+def gen_text_factory(text: str, valid, explain) -> dict:
     return dict(
         gen_text(valid, text, explain)._asdict()
     )

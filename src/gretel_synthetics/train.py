@@ -24,11 +24,6 @@ logging.basicConfig(
     level=logging.INFO)
 
 
-def read_training_data(path):  # pragma: no cover
-    text = open(path, 'rb').read().decode(encoding='utf-8')
-    return text
-
-
 def train_rnn(store: BaseConfig):
     text = annotate_training_data(store)
     spm = train_tokenizer(store)
@@ -63,11 +58,17 @@ def train_rnn(store: BaseConfig):
 def annotate_training_data(store: BaseConfig):
     # required for sentencepiece to tokenize newline characters
     logging.info(f"Annotating training data from {store.input_data}")
-    labeled_text = open(store.input_data, 'r').read().replace('\n', '<n>\n')
+    labeled_text = open(store.input_data, 'r', encoding='utf-8').read().replace('\n', '<n>\n')
+    training_text = []
+    with open(store.input_data, 'r', encoding='utf-8') as infile:
+        for line in infile:
+            training_text.append(f"{line.strip()}")
+
     logging.info(f"Annotating training data to {store.training_data}")
     logging.info(f"Annotated text length: {len(labeled_text)} characters")
     with open(store.training_data, 'w') as f:
-        f.write(labeled_text)
+        for sample in training_text:
+            f.write(f"{sample}<n>\n")
     return labeled_text
 
 
@@ -117,7 +118,6 @@ def create_dataset(store: BaseConfig, text: str, sp: spm.SentencePieceProcessor)
     dataset = dataset.shuffle(
         store.buffer_size).batch(
             store.batch_size, drop_remainder=True)
-
     return dataset
 
 
