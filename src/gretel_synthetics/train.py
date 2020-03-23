@@ -8,7 +8,7 @@
         * http://karpathy.github.io/2015/05/21/rnn-effectiveness/
 """
 import logging
-import os
+from pathlib import Path
 import shutil
 
 import tensorflow as tf
@@ -41,9 +41,9 @@ def train_rnn(store: BaseConfig):
         )
 
     # Save checkpoints during training
-    checkpoint_prefix = os.path.join(store.checkpoint_dir, "ckpt_{epoch}")
+    checkpoint_prefix = Path(store.checkpoint_dir) / "ckpt_{epoch}"
     checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
-        filepath=checkpoint_prefix,
+        filepath=checkpoint_prefix.as_posix(),
         save_weights_only=True
     )
 
@@ -73,9 +73,9 @@ def annotate_training_data(store: BaseConfig):
 
 def move_tokenizer_model(store: BaseConfig):
     for model in ['model', 'vocab']:
-        src = os.path.join(os.getcwd(), f'{store.tokenizer_prefix}.{model}')
-        dst = os.path.join(store.checkpoint_dir, f'{store.tokenizer_prefix}.{model}')
-        shutil.move(src, dst)
+        src = Path.cwd() / f'{store.tokenizer_prefix}.{model}'
+        dst = Path(store.checkpoint_dir) / f'{store.tokenizer_prefix}.{model}'
+        shutil.move(src.as_posix(), dst.as_posix())
 
 
 def train_tokenizer(store: BaseConfig) -> spm.SentencePieceProcessor:
