@@ -1,5 +1,5 @@
-import os
 import logging
+from pathlib import Path
 from abc import ABC, abstractmethod
 
 
@@ -56,12 +56,11 @@ class LocalConfig(BaseConfig):
         self.input_data = input_data
         super().__init__(**kwargs)
 
-        if not os.path.isdir(self.checkpoint_dir):
-            os.mkdir(self.checkpoint_dir)
-
+        if not Path(self.checkpoint_dir).exists():
+            Path(self.checkpoint_dir).resolve().mkdir()
         self._set_tokenizer()
 
     def _set_tokenizer(self):
         self.tokenizer_prefix = "m"
-        self.tokenizer_model = os.path.join(self.checkpoint_dir, f'{self.tokenizer_prefix}.model')
-        self.training_data = os.path.join(self.checkpoint_dir, 'training_data.txt')
+        self.tokenizer_model = Path(self.checkpoint_dir, 'm.model').as_posix()
+        self.training_data = Path(self.checkpoint_dir, 'training_data.txt').as_posix()
