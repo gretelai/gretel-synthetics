@@ -58,17 +58,19 @@ def train_rnn(store: BaseConfig):
 def annotate_training_data(store: BaseConfig):
     # required for sentencepiece to tokenize newline characters
     logging.info(f"Annotating training data from {store.input_data}")
-    labeled_text = open(store.input_data, 'r', encoding='utf-8').read().replace('\n', '<n>\n')
     training_text = []
     with open(store.input_data, 'r', encoding='utf-8') as infile:
         for line in infile:
             training_text.append(f"{line.strip()}")
 
     logging.info(f"Annotating training data to {store.training_data}")
-    logging.info(f"Annotated text length: {len(labeled_text)} characters")
+    labeled_text = ''
     with open(store.training_data, 'w') as f:
         for sample in training_text:
-            f.write(f"{sample}<n>\n")
+            chunk = f"{sample}<n>\n"
+            f.write(chunk)
+            labeled_text += chunk
+    logging.info(f"Annotated text length: {len(labeled_text)} characters")
     return labeled_text
 
 
@@ -100,8 +102,11 @@ def train_tokenizer(store: BaseConfig) -> spm.SentencePieceProcessor:
         sample = f.readline().strip()
     logging.info(f"Tokenizer model vocabulary size: {len(sp)} tokens")
     logging.info(
-        'Mapping first line of training data\n\n{}\n ---- sample tokens mapped to int ---- > \n{}\n'.format(
+        'Mapping first line of training data\n\n{}\n ---- sample tokens mapped to pieces ---- > \n{}\n'.format(
             repr(sample), ", ".join(sp.SampleEncodeAsPieces(sample, -1, 0.1))))
+    logging.info(
+        'Mapping first line of training data\n\n{}\n ---- sample tokens mapped to int ---- > \n{}\n'.format(
+            repr(sample), ", ".join([str(idx) for idx in sp.EncodeAsIds(sample)])))
     return sp
 
 
