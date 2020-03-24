@@ -52,7 +52,7 @@ def train_rnn(store: BaseConfig):
     if store.dp:
         logging.info(compute_epsilon(len(text), store))
     else:
-        logging.info('Trained with non-private Adam optimizer')
+        logging.info('Trained with non-private optimizer')
 
 
 def annotate_training_data(store: BaseConfig):
