@@ -3,6 +3,7 @@ Tensorflow - Keras Sequential RNN (GRU)
 """
 import logging
 
+from tensorflow.keras.optimizers import RMSprop
 import tensorflow as tf
 from tensorflow_privacy.privacy.optimizers.dp_optimizer import make_gaussian_optimizer_class as make_dp_optimizer
 from tensorflow_privacy.privacy.analysis import compute_dp_sgd_privacy
@@ -51,8 +52,8 @@ def build_sequential_model(vocab_size: int, batch_size: int, store: BaseConfig) 
                                                              reduction=tf.losses.Reduction.NONE)
 
     else:
-        logging.info("Utilizing non-private optimizer")
-        optimizer = 'adam'
+        logging.info("Utilizing non-private RMSProp optimizer")
+        optimizer = RMSprop(learning_rate=0.01)
         loss = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
 
     logging.info(model.summary())
