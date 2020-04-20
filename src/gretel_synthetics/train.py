@@ -59,7 +59,7 @@ def annotate_training_data(store: BaseConfig):
     # required for sentencepiece to tokenize newline characters
     logging.info(f"Annotating training data from {store.input_data}")
     training_text = []
-    with open(store.input_data, 'r', encoding='utf-8') as infile:
+    with open(store.input_data, 'r', encoding='utf-8', errors='replace') as infile:
         for line in infile:
             training_text.append(f"{line.strip()}")
 
