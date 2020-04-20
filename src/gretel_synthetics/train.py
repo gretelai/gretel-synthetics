@@ -27,6 +27,7 @@ logging.basicConfig(
 def train_rnn(store: BaseConfig):
     text = annotate_training_data(store)
     sp = train_tokenizer(store)
+    logging.info("Creating and shuffling Tensorflow Dataset")
     dataset = create_dataset(store, text, sp)
     logging.info("Initializing generative model")
     model = build_sequential_model(
@@ -61,7 +62,10 @@ def annotate_training_data(store: BaseConfig):
     training_text = []
     with open(store.input_data, 'r', encoding='utf-8', errors='replace') as infile:
         for line in infile:
-            training_text.append(f"{line.strip()}")
+            if len(training_text) < store.max_lines:
+                training_text.append(f"{line.strip()}")
+            else:
+                break
 
     logging.info(f"Annotating training data to {store.training_data}")
     labeled_text = ''
@@ -107,6 +111,7 @@ def train_tokenizer(store: BaseConfig) -> spm.SentencePieceProcessor:
     logging.info(
         'Mapping first line of training data\n\n{}\n ---- sample tokens mapped to int ---- > \n{}\n'.format(
             repr(sample), ", ".join([str(idx) for idx in sp.EncodeAsIds(sample)])))
+    logging.info(f"Saving SentencePiece model to {store.tokenizer_prefix}.model and {store.tokenizer_prefix}.vocab")
     return sp
 
 
