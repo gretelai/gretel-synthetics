@@ -62,8 +62,9 @@ def annotate_training_data(store: BaseConfig):
     training_text = []
     with open(store.input_data, 'r', encoding='utf-8', errors='replace') as infile:
         for line in infile:
-            if len(training_text) < store.max_lines:
-                training_text.append(f"{line.strip()}")
+            if (store.max_lines == 0) or (len(training_text) < store.max_lines):
+                line = line.strip().replace(",", "<c>")
+                training_text.append(f"{line}")
             else:
                 break
 
@@ -90,7 +91,7 @@ def train_tokenizer(store: BaseConfig) -> spm.SentencePieceProcessor:
     spm.SentencePieceTrainer.Train(
         f'--input={store.training_data} '
         f'--model_prefix={store.tokenizer_prefix} '
-        f'--user_defined_symbols=<n> '
+        f'--user_defined_symbols=<n>,<c> '
         f'--vocab_size={store.vocab_size} '
         f'--hard_vocab_limit=false '
         f'--character_coverage={store.character_coverage}')
