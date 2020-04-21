@@ -62,11 +62,10 @@ def annotate_training_data(store: BaseConfig):
     training_text = []
     with open(store.input_data, 'r', encoding='utf-8', errors='replace') as infile:
         for line in infile:
-            if (store.max_lines == 0) or (len(training_text) < store.max_lines):
-                line = line.strip().replace(",", "<c>")
-                training_text.append(f"{line}")
-            else:
+            if store.max_lines and len(training_text) >= store.max_lines:
                 break
+            line = line.strip().replace(",", "<c>")
+            training_text.append(f"{line}")
 
     logging.info(f"Annotating training data to {store.training_data}")
     labeled_text = ''
