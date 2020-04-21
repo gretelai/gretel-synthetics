@@ -3,12 +3,21 @@ Tensorflow - Keras Sequential RNN (GRU)
 """
 import logging
 
+from tensorflow.keras import backend as K
 from tensorflow.keras.optimizers import RMSprop
 import tensorflow as tf
 from tensorflow_privacy.privacy.optimizers.dp_optimizer import make_gaussian_optimizer_class as make_dp_optimizer
 from tensorflow_privacy.privacy.analysis import compute_dp_sgd_privacy
 
 from gretel_synthetics.config import BaseConfig
+
+
+def perplexity(true_label, pred_label):
+    """
+    callback to compute model perplexity as training metric
+    """
+    cross_entropy = K.sparse_categorical_crossentropy(true_label, pred_label, from_logits=True)
+    return K.exp(cross_entropy)
 
 
 def build_sequential_model(vocab_size: int, batch_size: int, store: BaseConfig) -> tf.keras.Sequential:
@@ -57,7 +66,8 @@ def build_sequential_model(vocab_size: int, batch_size: int, store: BaseConfig) 
         loss = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
 
     logging.info(model.summary())
-    model.compile(optimizer=optimizer, loss=loss, metrics=['accuracy'])
+    model.compile(optimizer=optimizer, loss=loss, metrics=['accuracy',
+                                                           perplexity])
     return model
 
 
