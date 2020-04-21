@@ -128,6 +128,7 @@ def predict_chars(model: tf.keras.Sequential,
         sentence_ids.append(int(predicted_id))
 
         decoded = sp.DecodeIds(sentence_ids)
+        decoded = decoded.replace('<c>', ',')
 
         if '<n>' in decoded:
             return pred_string(decoded.replace('<n>', ''))

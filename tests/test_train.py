@@ -5,7 +5,7 @@ from gretel_synthetics.train import train_rnn, train_tokenizer
 
 def test_create_vocab(global_local_config):
     sp = train_tokenizer(global_local_config)
-    assert len(sp) == 72
+    assert len(sp) == 71
     assert sp.PieceToId('</s>') == 2
     assert sp.IdToPiece(2) == '</s>'
 
@@ -18,7 +18,7 @@ def test_train_rnn(model, global_local_config):
     train_rnn(global_local_config)
     
     model.assert_called_with(
-        vocab_size=72,
+        vocab_size=71,
         batch_size=global_local_config.batch_size,
         store=global_local_config
     )
