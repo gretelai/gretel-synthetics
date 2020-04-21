@@ -65,7 +65,7 @@ def annotate_training_data(store: BaseConfig):
             if store.max_lines and len(training_text) >= store.max_lines:
                 break
             line = line.strip().replace(",", "<c>")
-            training_text.append(f"{line}")
+            training_text.append(line)
 
     logging.info(f"Annotating training data to {store.training_data}")
     labeled_text = ''
