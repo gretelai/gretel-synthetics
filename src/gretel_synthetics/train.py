@@ -11,6 +11,8 @@ import logging
 from pathlib import Path
 import shutil
 
+import numpy as np
+import pandas as pd
 import sentencepiece as spm
 from smart_open import open
 import tensorflow as tf
@@ -23,6 +25,28 @@ from gretel_synthetics.config import BaseConfig
 logging.basicConfig(
     format='%(asctime)s : %(threadName)s : %(levelname)s : %(message)s',
     level=logging.INFO)
+
+
+class LossHistory(tf.keras.callbacks.Callback):
+    def on_train_begin(self, logs={}):
+        self.losses = []
+        self.accuracy = []
+        self.perplexity = []
+
+    def on_epoch_end(self, epoch, logs={}):
+        self.losses.append(logs.get('loss'))
+        self.accuracy.append(logs.get('accuracy'))
+        self.perplexity.append(logs.get('perplexity'))
+
+
+def save_history_csv(history:LossHistory, store:BaseConfig):
+    loss = [np.average(x) for x in history.losses]
+    accuracy = [np.average(x) for x in history.accuracy]
+    perplexity = [np.average(x) for x in history.perplexity]
+
+    df = pd.DataFrame(zip(range(len(loss)), loss, accuracy, perplexity),
+                      columns=['epoch', 'loss', 'accuracy', 'perplexity'])
+    df.to_csv(f"{(Path(store.checkpoint_dir) / 'model.csv')}", index=False)
 
 
 def train_rnn(store: BaseConfig):
@@ -42,11 +66,11 @@ def train_rnn(store: BaseConfig):
         filepath=checkpoint_prefix.as_posix(),
         save_weights_only=True
     )
-
-    all_cbs = [checkpoint_callback]
+    history_callback = LossHistory()
 
     logging.info("Training model")
-    model.fit(dataset, epochs=store.epochs, callbacks=all_cbs)
+    model.fit(dataset, epochs=store.epochs, callbacks=[checkpoint_callback, history_callback])
+    save_history_csv(history_callback, store)
     logging.info(
         f"Wrote latest checkpoint to disk: {tf.train.latest_checkpoint(store.checkpoint_dir)}")
 
