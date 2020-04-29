@@ -65,7 +65,6 @@ def build_sequential_model(vocab_size: int, batch_size: int, store: BaseConfig) 
         optimizer = RMSprop(learning_rate=0.01)
         loss = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
 
-    logging.info(model.summary())
     model.compile(optimizer=optimizer, loss=loss, metrics=['accuracy',
                                                            perplexity])
     return model
