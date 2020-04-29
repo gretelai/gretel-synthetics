@@ -17,7 +17,7 @@ def perplexity(true_label, pred_label):
     callback to compute model perplexity as training metric
     """
     cross_entropy = K.sparse_categorical_crossentropy(true_label, pred_label, from_logits=True)
-    return K.exp(cross_entropy)
+    return K.pow(2.0, cross_entropy)
 
 
 def build_sequential_model(vocab_size: int, batch_size: int, store: BaseConfig) -> tf.keras.Sequential:
