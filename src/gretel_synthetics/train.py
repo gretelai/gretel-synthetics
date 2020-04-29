@@ -11,9 +11,10 @@ import logging
 from pathlib import Path
 import shutil
 
-import tensorflow as tf
 import sentencepiece as spm
 from smart_open import open
+import tensorflow as tf
+from tqdm import tqdm
 
 from gretel_synthetics.model import build_sequential_model, compute_epsilon
 from gretel_synthetics.config import BaseConfig
@@ -27,7 +28,6 @@ logging.basicConfig(
 def train_rnn(store: BaseConfig):
     text = annotate_training_data(store)
     sp = train_tokenizer(store)
-    logging.info("Creating and shuffling Tensorflow Dataset")
     dataset = create_dataset(store, text, sp)
     logging.info("Initializing generative model")
     model = build_sequential_model(
@@ -58,7 +58,7 @@ def train_rnn(store: BaseConfig):
 
 def annotate_training_data(store: BaseConfig):
     # required for sentencepiece to tokenize newline characters
-    logging.info(f"Annotating training data from {store.input_data}")
+    logging.info(f"Loading training data from {store.input_data}")
     training_text = []
     with open(store.input_data, 'r', encoding='utf-8', errors='replace') as infile:
         for line in infile:
@@ -67,14 +67,14 @@ def annotate_training_data(store: BaseConfig):
             line = line.strip().replace(",", "<c>")
             training_text.append(line)
 
-    logging.info(f"Annotating training data to {store.training_data}")
+    logging.info(f"Storing annotations to {Path(store.training_data).name}")
     labeled_text = ''
     with open(store.training_data, 'w') as f:
         for sample in training_text:
             chunk = f"{sample}<n>\n"
             f.write(chunk)
             labeled_text += chunk
-    logging.info(f"Annotated text length: {len(labeled_text)} characters")
+    logging.info(f"Dataset size: {len(training_text)} lines, {len(labeled_text)} characters")
     return labeled_text
 
 
@@ -95,10 +95,9 @@ def train_tokenizer(store: BaseConfig) -> spm.SentencePieceProcessor:
         f'--hard_vocab_limit=false '
         f'--character_coverage={store.character_coverage}')
     move_tokenizer_model(store)
-    logging.info("Complete")
 
     sp = spm.SentencePieceProcessor()
-    logging.info(f"Loading tokenizer from: {store.tokenizer_model}")
+    logging.info(f"Loading tokenizer from: {Path(store.tokenizer_model).name}")
     sp.Load(store.tokenizer_model)
 
     # print sample output
@@ -121,8 +120,13 @@ def create_dataset(store: BaseConfig, text: str, sp: spm.SentencePieceProcessor)
     Create two lookup tables: one mapping characters to numbers,
     and another for numbers to characters.
     """
-    # Create training dataset
-    char_dataset = tf.data.Dataset.from_tensor_slices(sp.EncodeAsIds(text))
+    logging.info("Tokenizing training data")
+    ids = []
+    for line in tqdm(text.split("\n")):
+        ids = ids + sp.EncodeAsIds(line)
+
+    logging.info("Creating and shuffling tensorflow dataset")
+    char_dataset = tf.data.Dataset.from_tensor_slices(ids)
     sequences = char_dataset.batch(store.seq_length + 1, drop_remainder=True)
     dataset = sequences.map(split_input_target)
     dataset = dataset.shuffle(
