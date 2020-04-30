@@ -27,6 +27,9 @@ logging.basicConfig(
 
 
 class LossHistory(tf.keras.callbacks.Callback):
+    """
+    Callback class to compute loss and accuracy during model training
+    """
     def __init__(self):
         self.losses = []
         self.accuracy = []
@@ -37,6 +40,9 @@ class LossHistory(tf.keras.callbacks.Callback):
 
 
 def save_history_csv(history: LossHistory, save_dir: str):
+    """
+    Save model training history to CSV format
+    """
     loss = [np.average(x) for x in history.losses]
     accuracy = [np.average(x) for x in history.accuracy]
     perplexity = [2**np.average(x) for x in history.losses]
@@ -49,6 +55,9 @@ def save_history_csv(history: LossHistory, save_dir: str):
 
 
 def train_rnn(store: BaseConfig):
+    """
+    Fit synthetic data model on training data
+    """
     text = annotate_training_data(store)
     sp = train_tokenizer(store)
     dataset = create_dataset(store, text, sp)
@@ -81,7 +90,11 @@ def train_rnn(store: BaseConfig):
 
 
 def annotate_training_data(store: BaseConfig):
-    # required for sentencepiece to tokenize newline characters
+    """
+    Prepare training data for tokenization with SentencePiece model.
+    Including: use reserved tokens <n> to indicate end of sentences in training data.
+    """
+    # required for SentencePiece to tokenize newline characters
     logging.info(f"Loading training data from {store.input_data}")
     training_text = []
     with open(store.input_data, 'r', encoding='utf-8', errors='replace') as infile:
@@ -103,6 +116,9 @@ def annotate_training_data(store: BaseConfig):
 
 
 def move_tokenizer_model(store: BaseConfig):
+    """
+    Move SentencePiece tokenizer to model storage directory
+    """
     for model in ['model', 'vocab']:
         src = Path.cwd() / f'{store.tokenizer_prefix}.{model}'
         dst = Path(store.checkpoint_dir) / f'{store.tokenizer_prefix}.{model}'
@@ -110,6 +126,9 @@ def move_tokenizer_model(store: BaseConfig):
 
 
 def train_tokenizer(store: BaseConfig) -> spm.SentencePieceProcessor:
+    """
+    Trains SentencePiece tokenizer on training data
+    """
     logging.info("Training SentencePiece tokenizer")
     spm.SentencePieceTrainer.Train(
         f'--input={store.training_data} '

@@ -61,6 +61,9 @@ def build_sequential_model(vocab_size: int, batch_size: int, store: BaseConfig) 
 
 
 def compute_epsilon(steps: int, store: BaseConfig):
+    """
+    Calculate epsilon and delta values for differential privacy
+    """
     # Note: inverse of number of training samples recommended for minimum
     # delta in differential privacy
     return compute_dp_sgd_privacy.compute_dp_sgd_privacy(n=steps,
