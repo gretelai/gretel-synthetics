@@ -19,7 +19,7 @@ use the [tf] commands below instead.
 
 ```
 pip install -U .                     # Do not install Tensorflow by default (assuming you have built a distro for your hardware)
-pip install -U -e ".[tf]             # Install a pinned version of Tensorflow"
+pip install -U -e ".[tf]"            # Install a pinned version of Tensorflow"
 ```
 
 _or_
