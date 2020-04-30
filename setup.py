@@ -19,12 +19,14 @@ setup(
     package_dir={'': 'src'},
     packages=find_packages('src'),
     install_requires=[
-        'tensorflow==2.1.0',
         'tensorflow_privacy==0.2.2',
         'sentencepiece==0.1.85',
         'smart_open==1.10.0',
-        'tqdm==4.45.0',
+        'tqdm<5.0',
         'pandas==1.0.3',
         'numpy==1.18.3'
-    ]
+    ],
+    extras_require={
+        'tf': ['tensorflow==2.1.0']
+    }
 )
