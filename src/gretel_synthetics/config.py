@@ -1,3 +1,4 @@
+import json
 import logging
 from pathlib import Path
 from abc import ABC, abstractmethod
@@ -69,9 +70,15 @@ class LocalConfig(BaseConfig):
     def as_dict(self):
         config_dict = {key: value for key, value in self.__dict__.items()
                        if not key.startswith('_') and not callable(key)}
-
         # delete temporary configuration items
         for key in ['tokenizer_prefix', 'tokenizer_model', 'training_data', 'tokenizer', 'processed_data']:
             del config_dict[key]
 
         return config_dict
+
+    def save_model_params(self):
+        save_path = Path(self.checkpoint_dir) / 'model_params.json'
+        logging.info(f"Saving model history to {save_path.name}")
+        with open(save_path, 'w') as f:
+            json.dump(self.as_dict(), f, indent=2)
+
