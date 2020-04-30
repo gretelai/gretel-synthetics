@@ -36,7 +36,7 @@ class LossHistory(tf.keras.callbacks.Callback):
         self.accuracy.append(logs.get('accuracy'))
 
 
-def save_history_csv(history:LossHistory, save_dir:str):
+def save_history_csv(history: LossHistory, save_dir: str):
     loss = [np.average(x) for x in history.losses]
     accuracy = [np.average(x) for x in history.accuracy]
     perplexity = [2**np.average(x) for x in history.losses]
