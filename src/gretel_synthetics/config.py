@@ -13,7 +13,7 @@ class BaseConfig(ABC):
     def __init__(self, *, max_lines=0, epochs=30, batch_size=64, buffer_size=10000, seq_length=100, embedding_dim=256,
                  rnn_units=256, dropout_rate=.2, rnn_initializer='glorot_uniform', dp=False, dp_learning_rate=0.015,
                  dp_noise_multiplier=1.1, dp_l2_norm_clip=1.0, dp_microbatches=256, gen_temp=1.0, gen_chars=0,
-                 gen_lines=500, vocab_size=500, character_coverage=1.0):
+                 gen_lines=500, vocab_size=500, character_coverage=1.0, save_all_checkpoints=False):
         self.tokenizer = None
         self.processed_data = None
 
@@ -38,6 +38,7 @@ class BaseConfig(ABC):
         self.epochs = epochs
         self.dropout_rate = dropout_rate
         self.rnn_initializer = rnn_initializer
+        self.save_all_checkpoints = save_all_checkpoints
 
         # Text generation settings
         self.gen_temp = gen_temp
@@ -64,3 +65,13 @@ class LocalConfig(BaseConfig):
         self.tokenizer_prefix = "m"
         self.tokenizer_model = Path(self.checkpoint_dir, 'm.model').as_posix()
         self.training_data = Path(self.checkpoint_dir, 'training_data.txt').as_posix()
+
+    def as_dict(self):
+        config_dict = {key: value for key, value in self.__dict__.items()
+                       if not key.startswith('_') and not callable(key)}
+
+        # delete temporary configuration items
+        for key in ['tokenizer_prefix', 'tokenizer_model', 'training_data', 'tokenizer', 'processed_data']:
+            del config_dict[key]
+
+        return config_dict
