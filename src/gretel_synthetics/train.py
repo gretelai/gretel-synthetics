@@ -166,7 +166,7 @@ def create_dataset(store: BaseConfig, text: str, sp: spm.SentencePieceProcessor)
     logging.info("Tokenizing training data")
     ids = []
     for line in tqdm(text.split("\n")):
-        ids += sp.EncodeAsIds(line)
+        ids.extend(sp.EncodeAsIds(line))
 
     logging.info("Creating and shuffling tensorflow dataset")
     char_dataset = tf.data.Dataset.from_tensor_slices(ids)
