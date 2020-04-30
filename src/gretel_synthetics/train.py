@@ -7,7 +7,6 @@
         * https://www.tensorflow.org/tutorials/text/text_generation
         * http://karpathy.github.io/2015/05/21/rnn-effectiveness/
 """
-import json
 import logging
 from pathlib import Path
 import shutil
@@ -22,14 +21,12 @@ from tqdm import tqdm
 from gretel_synthetics.model import build_sequential_model, compute_epsilon
 from gretel_synthetics.config import BaseConfig
 
-
 logging.basicConfig(
     format='%(asctime)s : %(threadName)s : %(levelname)s : %(message)s',
     level=logging.INFO)
 
 
 class LossHistory(tf.keras.callbacks.Callback):
-
     def __init__(self):
         self.losses = []
         self.accuracy = []
@@ -39,21 +36,14 @@ class LossHistory(tf.keras.callbacks.Callback):
         self.accuracy.append(logs.get('accuracy'))
 
 
-def save_model_params(store: BaseConfig):
-    save_path = Path(store.checkpoint_dir) / 'model_params.json'
-    logging.info(f"Saving model history to {save_path.name}")
-    with open(save_path, 'w') as f:
-        json.dump(store.as_dict(), f, indent=2)
-
-
-def save_history_csv(history:LossHistory, store:BaseConfig):
+def save_history_csv(history:LossHistory, save_dir:str):
     loss = [np.average(x) for x in history.losses]
     accuracy = [np.average(x) for x in history.accuracy]
     perplexity = [2**np.average(x) for x in history.losses]
     df = pd.DataFrame(zip(range(len(loss)), loss, accuracy, perplexity),
                       columns=['epoch', 'loss', 'accuracy', 'perplexity'])
 
-    save_path = Path(store.checkpoint_dir) / 'model_history.csv'
+    save_path = Path(save_dir) / 'model_history.csv'
     logging.info(f"Saving model history to {save_path.name}")
     df.to_csv(save_path.as_posix(), index=False)
 
@@ -82,8 +72,8 @@ def train_rnn(store: BaseConfig):
     history_callback = LossHistory()
 
     model.fit(dataset, epochs=store.epochs, callbacks=[checkpoint_callback, history_callback])
-    save_history_csv(history_callback, store)
-    save_model_params(store)
+    save_history_csv(history_callback, store.checkpoint_dir)
+    store.save_model_params()
     logging.info(f"Saving model to {tf.train.latest_checkpoint(store.checkpoint_dir)}")
 
     if store.dp:
@@ -157,7 +147,7 @@ def create_dataset(store: BaseConfig, text: str, sp: spm.SentencePieceProcessor)
     logging.info("Tokenizing training data")
     ids = []
     for line in tqdm(text.split("\n")):
-        ids = ids + sp.EncodeAsIds(line)
+        ids += sp.EncodeAsIds(line)
 
     logging.info("Creating and shuffling tensorflow dataset")
     char_dataset = tf.data.Dataset.from_tensor_slices(ids)
