@@ -29,7 +29,8 @@ logging.basicConfig(
 
 
 class LossHistory(tf.keras.callbacks.Callback):
-    def on_train_begin(self, logs={}):
+
+    def __init__(self):
         self.losses = []
         self.accuracy = []
 
