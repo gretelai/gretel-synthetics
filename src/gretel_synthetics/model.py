@@ -3,7 +3,6 @@ Tensorflow - Keras Sequential RNN (GRU)
 """
 import logging
 
-from tensorflow.keras import backend as K
 from tensorflow.keras.optimizers import RMSprop
 import tensorflow as tf
 from tensorflow_privacy.privacy.optimizers.dp_optimizer import make_gaussian_optimizer_class as make_dp_optimizer
