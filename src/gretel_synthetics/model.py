@@ -12,14 +12,6 @@ from tensorflow_privacy.privacy.analysis import compute_dp_sgd_privacy
 from gretel_synthetics.config import BaseConfig
 
 
-def perplexity(true_label, pred_label):
-    """
-    callback to compute model perplexity as training metric
-    """
-    cross_entropy = K.sparse_categorical_crossentropy(true_label, pred_label, from_logits=True)
-    return K.pow(2.0, cross_entropy)
-
-
 def build_sequential_model(vocab_size: int, batch_size: int, store: BaseConfig) -> tf.keras.Sequential:
     """
     Utilizing tf.keras.Sequential model (LSTM)
@@ -42,12 +34,12 @@ def build_sequential_model(vocab_size: int, batch_size: int, store: BaseConfig) 
     ])
 
     if store.dp:
-        logging.info("Utilizing differential privacy in optimizer")
+        logging.info("Differentially private training enabled")
 
-        RMSPropOptimizer = tf.compat.v1.train.RMSPropOptimizer
-        DPRmsPropGaussianOptimizer = make_dp_optimizer(RMSPropOptimizer)
+        rms_prop_optimizer = tf.compat.v1.train.RMSPropOptimizer
+        dp_rms_prop_optimizer = make_dp_optimizer(rms_prop_optimizer)
 
-        optimizer = DPRmsPropGaussianOptimizer(
+        optimizer = dp_rms_prop_optimizer(
             l2_norm_clip=store.dp_l2_norm_clip,
             noise_multiplier=store.dp_noise_multiplier,
             num_microbatches=store.dp_microbatches,
@@ -61,12 +53,11 @@ def build_sequential_model(vocab_size: int, batch_size: int, store: BaseConfig) 
                                                              reduction=tf.losses.Reduction.NONE)
 
     else:
-        logging.info("Utilizing non-private RMSProp optimizer")
+        logging.warning("Differentially private training _not_ enabled")
         optimizer = RMSprop(learning_rate=0.01)
         loss = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
 
-    model.compile(optimizer=optimizer, loss=loss, metrics=['accuracy',
-                                                           perplexity])
+    model.compile(optimizer=optimizer, loss=loss, metrics=['accuracy'])
     return model
 
 
