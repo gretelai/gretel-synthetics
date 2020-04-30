@@ -7,6 +7,7 @@
         * https://www.tensorflow.org/tutorials/text/text_generation
         * http://karpathy.github.io/2015/05/21/rnn-effectiveness/
 """
+import json
 import logging
 from pathlib import Path
 import shutil
@@ -31,29 +32,36 @@ class LossHistory(tf.keras.callbacks.Callback):
     def on_train_begin(self, logs={}):
         self.losses = []
         self.accuracy = []
-        self.perplexity = []
 
     def on_epoch_end(self, epoch, logs={}):
         self.losses.append(logs.get('loss'))
         self.accuracy.append(logs.get('accuracy'))
-        self.perplexity.append(logs.get('perplexity'))
+
+
+def save_model_params(store: BaseConfig):
+    save_path = Path(store.checkpoint_dir) / 'model_params.json'
+    logging.info(f"Saving model history to {save_path.name}")
+    with open(save_path, 'w') as f:
+        json.dump(store.as_dict(), f, indent=2)
 
 
 def save_history_csv(history:LossHistory, store:BaseConfig):
     loss = [np.average(x) for x in history.losses]
     accuracy = [np.average(x) for x in history.accuracy]
-    perplexity = [np.average(x) for x in history.perplexity]
-
+    perplexity = [2**np.average(x) for x in history.losses]
     df = pd.DataFrame(zip(range(len(loss)), loss, accuracy, perplexity),
                       columns=['epoch', 'loss', 'accuracy', 'perplexity'])
-    df.to_csv(f"{(Path(store.checkpoint_dir) / 'model.csv')}", index=False)
+
+    save_path = Path(store.checkpoint_dir) / 'model_history.csv'
+    logging.info(f"Saving model history to {save_path.name}")
+    df.to_csv(save_path.as_posix(), index=False)
 
 
 def train_rnn(store: BaseConfig):
     text = annotate_training_data(store)
     sp = train_tokenizer(store)
     dataset = create_dataset(store, text, sp)
-    logging.info("Initializing generative model")
+    logging.info("Initializing synthetic model")
     model = build_sequential_model(
         vocab_size=len(sp),
         batch_size=store.batch_size,
@@ -61,23 +69,24 @@ def train_rnn(store: BaseConfig):
         )
 
     # Save checkpoints during training
-    checkpoint_prefix = Path(store.checkpoint_dir) / "ckpt_{epoch}"
+    checkpoint_prefix = (Path(store.checkpoint_dir) / "synthetic").as_posix()
+    if store.save_all_checkpoints:
+        checkpoint_prefix = checkpoint_prefix + "-{epoch}"
+
     checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
-        filepath=checkpoint_prefix.as_posix(),
-        save_weights_only=True
+        filepath=checkpoint_prefix,
+        save_weights_only=True,
+        monitor='accuracy'
     )
     history_callback = LossHistory()
 
-    logging.info("Training model")
     model.fit(dataset, epochs=store.epochs, callbacks=[checkpoint_callback, history_callback])
     save_history_csv(history_callback, store)
-    logging.info(
-        f"Wrote latest checkpoint to disk: {tf.train.latest_checkpoint(store.checkpoint_dir)}")
+    save_model_params(store)
+    logging.info(f"Saving model to {tf.train.latest_checkpoint(store.checkpoint_dir)}")
 
     if store.dp:
         logging.info(compute_epsilon(len(text), store))
-    else:
-        logging.info('Trained with non-private optimizer')
 
 
 def annotate_training_data(store: BaseConfig):
