@@ -3,21 +3,12 @@ Tensorflow - Keras Sequential RNN (GRU)
 """
 import logging
 
-from tensorflow.keras import backend as K
 from tensorflow.keras.optimizers import RMSprop
 import tensorflow as tf
 from tensorflow_privacy.privacy.optimizers.dp_optimizer import make_gaussian_optimizer_class as make_dp_optimizer
 from tensorflow_privacy.privacy.analysis import compute_dp_sgd_privacy
 
 from gretel_synthetics.config import BaseConfig
-
-
-def perplexity(true_label, pred_label):
-    """
-    callback to compute model perplexity as training metric
-    """
-    cross_entropy = K.sparse_categorical_crossentropy(true_label, pred_label, from_logits=True)
-    return K.exp(cross_entropy)
 
 
 def build_sequential_model(vocab_size: int, batch_size: int, store: BaseConfig) -> tf.keras.Sequential:
@@ -42,12 +33,12 @@ def build_sequential_model(vocab_size: int, batch_size: int, store: BaseConfig) 
     ])
 
     if store.dp:
-        logging.info("Utilizing differential privacy in optimizer")
+        logging.info("Differentially private training enabled")
 
-        RMSPropOptimizer = tf.compat.v1.train.RMSPropOptimizer
-        DPRmsPropGaussianOptimizer = make_dp_optimizer(RMSPropOptimizer)
+        rms_prop_optimizer = tf.compat.v1.train.RMSPropOptimizer
+        dp_rms_prop_optimizer = make_dp_optimizer(rms_prop_optimizer)
 
-        optimizer = DPRmsPropGaussianOptimizer(
+        optimizer = dp_rms_prop_optimizer(
             l2_norm_clip=store.dp_l2_norm_clip,
             noise_multiplier=store.dp_noise_multiplier,
             num_microbatches=store.dp_microbatches,
@@ -61,17 +52,18 @@ def build_sequential_model(vocab_size: int, batch_size: int, store: BaseConfig) 
                                                              reduction=tf.losses.Reduction.NONE)
 
     else:
-        logging.info("Utilizing non-private RMSProp optimizer")
+        logging.warning("Differentially private training _not_ enabled")
         optimizer = RMSprop(learning_rate=0.01)
         loss = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
 
-    logging.info(model.summary())
-    model.compile(optimizer=optimizer, loss=loss, metrics=['accuracy',
-                                                           perplexity])
+    model.compile(optimizer=optimizer, loss=loss, metrics=['accuracy'])
     return model
 
 
 def compute_epsilon(steps: int, store: BaseConfig):
+    """
+    Calculate epsilon and delta values for differential privacy
+    """
     # Note: inverse of number of training samples recommended for minimum
     # delta in differential privacy
     return compute_dp_sgd_privacy.compute_dp_sgd_privacy(n=steps,

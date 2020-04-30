@@ -11,25 +11,60 @@ import logging
 from pathlib import Path
 import shutil
 
-import tensorflow as tf
+import numpy as np
+import pandas as pd
 import sentencepiece as spm
 from smart_open import open
+import tensorflow as tf
+from tqdm import tqdm
 
 from gretel_synthetics.model import build_sequential_model, compute_epsilon
 from gretel_synthetics.config import BaseConfig
 
+spm_logger = logging.getLogger('sentencepiece')
+spm_logger.setLevel(logging.INFO)
 
 logging.basicConfig(
     format='%(asctime)s : %(threadName)s : %(levelname)s : %(message)s',
     level=logging.INFO)
 
 
+class LossHistory(tf.keras.callbacks.Callback):
+    """
+    Callback class to compute loss and accuracy during model training
+    """
+    def __init__(self):
+        self.losses = []
+        self.accuracy = []
+
+    def on_epoch_end(self, epoch, logs={}):
+        self.losses.append(logs.get('loss'))
+        self.accuracy.append(logs.get('accuracy'))
+
+
+def save_history_csv(history: LossHistory, save_dir: str):
+    """
+    Save model training history to CSV format
+    """
+    loss = [np.average(x) for x in history.losses]
+    accuracy = [np.average(x) for x in history.accuracy]
+    perplexity = [2**np.average(x) for x in history.losses]
+    df = pd.DataFrame(zip(range(len(loss)), loss, accuracy, perplexity),
+                      columns=['epoch', 'loss', 'accuracy', 'perplexity'])
+
+    save_path = Path(save_dir) / 'model_history.csv'
+    logging.info(f"Saving model history to {save_path.name}")
+    df.to_csv(save_path.as_posix(), index=False)
+
+
 def train_rnn(store: BaseConfig):
+    """
+    Fit synthetic data model on training data
+    """
     text = annotate_training_data(store)
     sp = train_tokenizer(store)
-    logging.info("Creating and shuffling Tensorflow Dataset")
     dataset = create_dataset(store, text, sp)
-    logging.info("Initializing generative model")
+    logging.info("Initializing synthetic model")
     model = build_sequential_model(
         vocab_size=len(sp),
         batch_size=store.batch_size,
@@ -37,48 +72,56 @@ def train_rnn(store: BaseConfig):
         )
 
     # Save checkpoints during training
-    checkpoint_prefix = Path(store.checkpoint_dir) / "ckpt_{epoch}"
+    checkpoint_prefix = (Path(store.checkpoint_dir) / "synthetic").as_posix()
+    if store.save_all_checkpoints:
+        checkpoint_prefix = checkpoint_prefix + "-{epoch}"
+
     checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
-        filepath=checkpoint_prefix.as_posix(),
-        save_weights_only=True
+        filepath=checkpoint_prefix,
+        save_weights_only=True,
+        monitor='accuracy'
     )
+    history_callback = LossHistory()
 
-    all_cbs = [checkpoint_callback]
-
-    logging.info("Training model")
-    model.fit(dataset, epochs=store.epochs, callbacks=all_cbs)
-    logging.info(
-        f"Wrote latest checkpoint to disk: {tf.train.latest_checkpoint(store.checkpoint_dir)}")
+    model.fit(dataset, epochs=store.epochs, callbacks=[checkpoint_callback, history_callback])
+    save_history_csv(history_callback, store.checkpoint_dir)
+    store.save_model_params()
+    logging.info(f"Saving model to {tf.train.latest_checkpoint(store.checkpoint_dir)}")
 
     if store.dp:
         logging.info(compute_epsilon(len(text), store))
-    else:
-        logging.info('Trained with non-private optimizer')
 
 
 def annotate_training_data(store: BaseConfig):
-    # required for sentencepiece to tokenize newline characters
-    logging.info(f"Annotating training data from {store.input_data}")
+    """
+    Prepare training data for tokenization with SentencePiece model.
+    Including: use reserved tokens <n> to indicate end of sentences in training data.
+    """
+    # required for SentencePiece to tokenize newline characters
+    logging.info(f"Loading training data from {store.input_data_path}")
     training_text = []
-    with open(store.input_data, 'r', encoding='utf-8', errors='replace') as infile:
+    with open(store.input_data_path, 'r', encoding='utf-8', errors='replace') as infile:
         for line in infile:
             if store.max_lines and len(training_text) >= store.max_lines:
                 break
             line = line.strip().replace(",", "<c>")
             training_text.append(line)
 
-    logging.info(f"Annotating training data to {store.training_data}")
+    logging.info(f"Storing annotations to {Path(store.training_data).name}")
     labeled_text = ''
     with open(store.training_data, 'w') as f:
         for sample in training_text:
             chunk = f"{sample}<n>\n"
             f.write(chunk)
             labeled_text += chunk
-    logging.info(f"Annotated text length: {len(labeled_text)} characters")
+    logging.info(f"Dataset size: {len(training_text)} lines, {len(labeled_text)} characters")
     return labeled_text
 
 
 def move_tokenizer_model(store: BaseConfig):
+    """
+    Move SentencePiece tokenizer to model storage directory
+    """
     for model in ['model', 'vocab']:
         src = Path.cwd() / f'{store.tokenizer_prefix}.{model}'
         dst = Path(store.checkpoint_dir) / f'{store.tokenizer_prefix}.{model}'
@@ -86,6 +129,9 @@ def move_tokenizer_model(store: BaseConfig):
 
 
 def train_tokenizer(store: BaseConfig) -> spm.SentencePieceProcessor:
+    """
+    Trains SentencePiece tokenizer on training data
+    """
     logging.info("Training SentencePiece tokenizer")
     spm.SentencePieceTrainer.Train(
         f'--input={store.training_data} '
@@ -95,10 +141,9 @@ def train_tokenizer(store: BaseConfig) -> spm.SentencePieceProcessor:
         f'--hard_vocab_limit=false '
         f'--character_coverage={store.character_coverage}')
     move_tokenizer_model(store)
-    logging.info("Complete")
 
     sp = spm.SentencePieceProcessor()
-    logging.info(f"Loading tokenizer from: {store.tokenizer_model}")
+    logging.info(f"Loading tokenizer from: {Path(store.tokenizer_model).name}")
     sp.Load(store.tokenizer_model)
 
     # print sample output
@@ -121,8 +166,13 @@ def create_dataset(store: BaseConfig, text: str, sp: spm.SentencePieceProcessor)
     Create two lookup tables: one mapping characters to numbers,
     and another for numbers to characters.
     """
-    # Create training dataset
-    char_dataset = tf.data.Dataset.from_tensor_slices(sp.EncodeAsIds(text))
+    logging.info("Tokenizing training data")
+    ids = []
+    for line in tqdm(text.split("\n")):
+        ids.extend(sp.EncodeAsIds(line))
+
+    logging.info("Creating and shuffling tensorflow dataset")
+    char_dataset = tf.data.Dataset.from_tensor_slices(ids)
     sequences = char_dataset.batch(store.seq_length + 1, drop_remainder=True)
     dataset = sequences.map(split_input_target)
     dataset = dataset.shuffle(

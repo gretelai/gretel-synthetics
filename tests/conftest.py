@@ -14,7 +14,7 @@ def global_local_config():
     input_data = test_data_dir / 'data' / 'smol.txt'
     if not target.exists():
         target.mkdir()
-    config = LocalConfig(checkpoint_dir=target, input_data=input_data.as_posix())
+    config = LocalConfig(checkpoint_dir=target.as_posix(), input_data_path=input_data.as_posix())
     annotate_training_data(config)
     yield config
     shutil.rmtree(target)
