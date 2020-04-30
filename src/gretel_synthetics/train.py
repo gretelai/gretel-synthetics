@@ -95,9 +95,9 @@ def annotate_training_data(store: BaseConfig):
     Including: use reserved tokens <n> to indicate end of sentences in training data.
     """
     # required for SentencePiece to tokenize newline characters
-    logging.info(f"Loading training data from {store.input_data}")
+    logging.info(f"Loading training data from {store.input_data_path}")
     training_text = []
-    with open(store.input_data, 'r', encoding='utf-8', errors='replace') as infile:
+    with open(store.input_data_path, 'r', encoding='utf-8', errors='replace') as infile:
         for line in infile:
             if store.max_lines and len(training_text) >= store.max_lines:
                 break

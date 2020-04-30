@@ -1,7 +1,14 @@
+"""
+This module provides a set of dataclasses that can be used to hold all necessary
+confguration parameters for training a model and generating data.
+
+For example usage please see our Jupyter Notebooks.
+"""
 import json
 import logging
 from pathlib import Path
-from abc import ABC, abstractmethod
+from abc import abstractmethod
+from dataclasses import dataclass, asdict, field
 
 
 logging.basicConfig(
@@ -9,76 +16,124 @@ logging.basicConfig(
     level=logging.INFO)
 
 
-class BaseConfig(ABC):
-
-    def __init__(self, *, max_lines=0, epochs=30, batch_size=64, buffer_size=10000, seq_length=100, embedding_dim=256,
-                 rnn_units=256, dropout_rate=.2, rnn_initializer='glorot_uniform', dp=False, dp_learning_rate=0.015,
-                 dp_noise_multiplier=1.1, dp_l2_norm_clip=1.0, dp_microbatches=256, gen_temp=1.0, gen_chars=0,
-                 gen_lines=500, vocab_size=500, character_coverage=1.0, save_all_checkpoints=False):
-        self.tokenizer = None
-        self.processed_data = None
-
-        # Tokenizer model settings
-        self.vocab_size = vocab_size
-        self.character_coverage = character_coverage
-
-        # Diff privacy configs
-        self.dp = dp
-        self.dp_learning_rate = dp_learning_rate
-        self.dp_noise_multiplier = dp_noise_multiplier
-        self.dp_l2_norm_clip = dp_l2_norm_clip
-        self.dp_microbatches = dp_microbatches
-
-        # Generative model configs
-        self.max_lines = max_lines
-        self.batch_size = batch_size
-        self.buffer_size = buffer_size
-        self.seq_length = seq_length
-        self.embedding_dim = embedding_dim
-        self.rnn_units = rnn_units
-        self.epochs = epochs
-        self.dropout_rate = dropout_rate
-        self.rnn_initializer = rnn_initializer
-        self.save_all_checkpoints = save_all_checkpoints
-
-        # Text generation settings
-        self.gen_temp = gen_temp
-        self.gen_chars = gen_chars
-        self.gen_lines = gen_lines
-
-        @abstractmethod
-        def _set_tokenizer(self):  # pragma: no cover
-            pass
+TOKENIZER_PREFIX = 'm'
+MODEL_PARAMS = 'model_params.json'
 
 
-class LocalConfig(BaseConfig):
+@dataclass
+class BaseConfig:
+    """Base dataclass that contains all of the main parameters for
+    training a model and generating data.  This base config generally
+    should not be used directly. Instead you should use one of the
+    subclasses which are specific to model and checkpoint storage.
+    """
+    # Training configurations
+    max_lines: int = 0
+    epochs: int = 30
+    batch_size: int = 64
+    buffer_size: int = 10000
+    seq_length: int = 100
+    embedding_dim: int = 256
+    rnn_units: int = 256
+    dropout_rate: float = .2
+    rnn_initializer: str = 'glorot_uniform'
 
-    def __init__(self, *, checkpoint_dir, input_data, **kwargs):
-        self.checkpoint_dir = checkpoint_dir
-        self.input_data = input_data
-        super().__init__(**kwargs)
+    # Tokenizer settings
+    vocab_size: int = 500
+    character_coverage: float = 1.0
 
+    # Diff privacy configs
+    dp: bool = False
+    dp_learning_rate: float = .015
+    dp_noise_multiplier: float = 1.1
+    dp_l2_norm_clip: float = 1.0
+    dp_microbatches: int = 256
+
+    # Generation settings
+    gen_temp: float = 1.0
+    gen_chars: int = 0
+    gen_lines: int = 500
+
+    # Checkpoint storage
+    save_all_checkpoints: bool = True
+
+    @abstractmethod
+    def _set_tokenizer(self):  # pragma: no cover
+        pass
+
+
+@dataclass
+class PathSettings:
+    """This dataclass stores path locations to
+    store tokenizer and training data locations. It should not
+    be used directly. It will be utilized by any configuration
+    classes that need to utilize path-based storage.
+    """
+    tokenizer_model: str = None
+    training_data: str = None
+    tokenizer_prefix: str = TOKENIZER_PREFIX
+
+
+@dataclass
+class PathSettingsMixin:
+    """If a specific config needs to make use of
+    ``PathSettings``, this dataclass will make an
+    attr of ``paths`` available and also bring in
+    property methods to allow easy access to the
+    various path attributes.
+
+    This makes it possible to easily remove the path
+    settings when serializing the configuration.
+    """
+    paths: PathSettings = field(default_factory=PathSettings)
+
+    @property
+    def tokenizer_prefix(self):
+        return self.paths.tokenizer_prefix
+
+    @property
+    def tokenizer_model(self):
+        return self.paths.tokenizer_model
+
+    @property
+    def training_data(self):
+        return self.paths.training_data
+
+
+@dataclass
+class LocalConfig(BaseConfig, PathSettingsMixin):
+    """This configuration will use the local file system
+    to store all models, training data, and checkpoints
+
+    Args:
+        checkpoint_dir: The local directory where all checkpoints should be stored
+        input_data_path: A path to a file that will be used as initial training input.
+            This file will be opened, annotated, and then written out to a path
+            that is generated from the ``training_data` attribute.
+    """
+    checkpoint_dir: str = None
+    input_data_path: str = None
+
+    def __post_init__(self):
+        if not self.checkpoint_dir or not self.input_data_path:
+            raise AttributeError('Must provide checkpoint_dir and input_path_dir params!')
         if not Path(self.checkpoint_dir).exists():
             Path(self.checkpoint_dir).resolve().mkdir()
         self._set_tokenizer()
 
     def _set_tokenizer(self):
-        self.tokenizer_prefix = "m"
-        self.tokenizer_model = Path(self.checkpoint_dir, 'm.model').as_posix()
-        self.training_data = Path(self.checkpoint_dir, 'training_data.txt').as_posix()
+        self.paths.tokenizer_prefix = "m"
+        self.paths.tokenizer_model = Path(self.checkpoint_dir, 'm.model').as_posix()
+        self.paths.training_data = Path(self.checkpoint_dir, 'training_data.txt').as_posix()
 
     def as_dict(self):
-        config_dict = {key: value for key, value in self.__dict__.items()
-                       if not key.startswith('_') and not callable(key)}
-        # delete temporary configuration items
-        for key in ['tokenizer_prefix', 'tokenizer_model', 'training_data', 'tokenizer', 'processed_data']:
-            del config_dict[key]
-
-        return config_dict
+        d = asdict(self)
+        d.pop('paths')
+        return d
 
     def save_model_params(self):
-        save_path = Path(self.checkpoint_dir) / 'model_params.json'
+        save_path = Path(self.checkpoint_dir) / MODEL_PARAMS
         logging.info(f"Saving model history to {save_path.name}")
         with open(save_path, 'w') as f:
             json.dump(self.as_dict(), f, indent=2)
-
+        return save_path
