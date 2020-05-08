@@ -88,7 +88,7 @@ def generate_text(store: _BaseConfig, start_string: str = "<n>", line_validator:
             assume the generated line is valid. If the validator throws an exception
             then we will set the validation to ``False`` and capture the string
             repr of the exception as an ``explain`` param in the yielded record.
-    
+
     Simple validator example::
 
         def my_validator(raw_line: str):
