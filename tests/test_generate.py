@@ -4,7 +4,7 @@ import json
 import pytest 
 import tensorflow as tf
 
-from gretel_synthetics.generate import generate_text, predict_chars, pred_string
+from gretel_synthetics.generate import generate_text, _predict_chars, pred_string
 
 
 @pytest.fixture
@@ -24,7 +24,7 @@ def test_predict_chars(mock_dims, mock_cat, global_local_config, random_cat):
     sp = Mock()
     sp.DecodeIds.return_value = 'this is the end<n>'
 
-    line = predict_chars(mock_model, sp, '\n', global_local_config)
+    line = _predict_chars(mock_model, sp, '\n', global_local_config)
     assert line == pred_string(data='this is the end')
 
     mock_tensor = MagicMock()
@@ -33,13 +33,13 @@ def test_predict_chars(mock_dims, mock_cat, global_local_config, random_cat):
     global_local_config.gen_chars = 3
     sp = Mock()
     sp.DecodeIds.side_effect = ['a', 'ab', 'abc', 'abcd']
-    line = predict_chars(mock_model, sp, '\n', global_local_config)
+    line = _predict_chars(mock_model, sp, '\n', global_local_config)
     assert line.data == 'abc'
     
 
 @patch('gretel_synthetics.generate.spm.SentencePieceProcessor')
-@patch('gretel_synthetics.generate.predict_chars')
-@patch('gretel_synthetics.generate.prepare_model')
+@patch('gretel_synthetics.generate._predict_chars')
+@patch('gretel_synthetics.generate._prepare_model')
 @patch('pickle.load')
 @patch('gretel_synthetics.generate.open')
 def test_generate_text(_open, pickle, prepare, predict, spm, global_local_config):

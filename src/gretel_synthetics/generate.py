@@ -1,22 +1,41 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-"""text_generator.py
-    Edit the default_config.yaml to get started.
+"""
+This module provides the functionality to generate synthetic records.
 
-    Sources:
-        * https://www.tensorflow.org/tutorials/text/text_generation
-        * http://karpathy.github.io/2015/05/21/rnn-effectiveness/
+Before using this module you must have already:
+
+    - Created a config
+    - Trained a model
 """
 import logging
 import sentencepiece as spm
 import tensorflow as tf
 from collections import namedtuple
+from dataclasses import dataclass, asdict
 
-from gretel_synthetics.config import BaseConfig
-from gretel_synthetics.model import build_sequential_model
+from gretel_synthetics.config import _BaseConfig
+from gretel_synthetics.model import _build_sequential_model
 
-pred_string = namedtuple('pred_string', ['data'])
-gen_text = namedtuple('gen_text', ['valid', 'text', 'explain'])
+_pred_string = namedtuple('pred_string', ['data'])
+
+
+@dataclass
+class gen_text:
+    """
+    A record that is yielded from the ``generate_text`` generator.
+
+    Attributes:
+        valid: True, False, or None. If the line passed a validation function,
+            then this will be ``True``. If the validation function raised an exception
+            then this will be automatically set to ``False``. If no validation function
+            is used, then this value will be ``None.``
+        text: The actual record as a string
+        explain: A string that describes why a record failed validation. This is the
+            string representation of the ``Exception`` that is thrown in a validation
+            function. This will only be set if validation fails, otherwise will be ``None.``
+    """
+    valid: bool = None
+    text: str = None
+    explain: str = None
 
 
 logging.basicConfig(
@@ -24,15 +43,15 @@ logging.basicConfig(
     level=logging.INFO)
 
 
-def load_tokenizer(store: BaseConfig) -> spm.SentencePieceProcessor:
+def _load_tokenizer(store: _BaseConfig) -> spm.SentencePieceProcessor:
     logging.info("Loading SentencePiece tokenizer")
     sp = spm.SentencePieceProcessor()
     sp.Load(store.tokenizer_model)
     return sp
 
 
-def prepare_model(sp: spm, batch_size: int, store: BaseConfig) -> tf.keras.Sequential:
-    model = build_sequential_model(
+def _prepare_model(sp: spm, batch_size: int, store: _BaseConfig) -> tf.keras.Sequential:
+    model = _build_sequential_model(
                 vocab_size=len(sp),
                 batch_size=batch_size,
                 store=store)
@@ -49,35 +68,72 @@ def prepare_model(sp: spm, batch_size: int, store: BaseConfig) -> tf.keras.Seque
     return model
 
 
-def gen_text_factory(text: str, valid, explain) -> dict:
+def _gen_text_factory(text: str, valid, explain) -> dict:
     return dict(
-        gen_text(valid, text, explain)._asdict()
+        asdict(gen_text(valid=valid, text=text, explain=explain))
     )
 
 
-def generate_text(store: BaseConfig, start_string="<n>", line_validator=None):
+def generate_text(store: _BaseConfig, start_string: str = "<n>", line_validator: callable = None):
+    """A generator that will load a model and start creating records.
+
+    Args:
+        store: A configuration object, which you must have created previously
+        start_string:  A prefix string that is used to seed the record generation.
+            By default we use a newline, but you may substitue any initial value here
+            which will influence how the generator predicts what to generate.
+        line_validator: An optional callback validator function that will take
+            the raw string value from the generator as a single argument. This validator
+            can executue arbitrary code and if it returns successfully, then we
+            assume the generated line is valid. If the validator throws an exception
+            then we will set the validation to ``False`` and capture the string
+            repr of the exception as an ``explain`` param in the yielded record.
+    
+    Simple validator example::
+
+        def my_validator(raw_line: str):
+            parts = raw_line.split(',')
+            if len(parts) != 5:
+                raise Exception('record does not have 5 fields')
+
+    NOTE:
+        In your configuration, there are two attrs that you should be aware of.
+        These are ``gen_lines`` and ``gen_chars.`` The first one is the maximum number
+        of lines that will be generated. The generator will stop after reaching this amount.
+        The second, ``gen_chars``, controls the possible maximum number of characters a single
+        generated line can have. If a newline character has not been generated before reaching
+        this number, then the line will be returned. For example if ``gen_chars`` is 180 and a
+        newline has not been generated, once 180 chars have been created, the line will be returned
+        no matter what. As a note, if this value is 0, then each line will generate until
+        a newline is observed.
+
+    Yields:
+        A ``gen_text`` object for each record that is generated. The generator
+        will stop after the max number of lines is reached (based on your config).
+
+    """
     logging.info(
         f"Latest checkpoint: {tf.train.latest_checkpoint(store.checkpoint_dir)}")  # noqa
 
     # Restore the latest SentencePiece model
-    sp = load_tokenizer(store)
+    sp = _load_tokenizer(store)
 
     # Load the RNN
-    model = prepare_model(sp, 1, store)
+    model = _prepare_model(sp, 1, store)
 
     lines_generated = 0
 
     while True:
-        rec = predict_chars(model, sp, start_string, store).data
+        rec = _predict_chars(model, sp, start_string, store).data
         try:
             if not line_validator:
-                yield gen_text_factory(rec, None, None)
+                yield _gen_text_factory(rec, None, None)
             else:
                 line_validator(rec)
-                yield gen_text_factory(rec, True, None)
+                yield _gen_text_factory(rec, True, None)
         except Exception as err:
             # logging.warning(f'Line failed validation: {rec} errored with {str(err)}')
-            yield gen_text_factory(rec, False, str(err))
+            yield _gen_text_factory(rec, False, str(err))
         finally:
             lines_generated += 1
 
@@ -85,10 +141,10 @@ def generate_text(store: BaseConfig, start_string="<n>", line_validator=None):
             break
 
 
-def predict_chars(model: tf.keras.Sequential,
-                  sp: spm.SentencePieceProcessor,
-                  start_string: str,
-                  store: BaseConfig) -> str:
+def _predict_chars(model: tf.keras.Sequential,
+                   sp: spm.SentencePieceProcessor,
+                   start_string: str,
+                   store: _BaseConfig) -> str:
     """
     Evaluation step (generating text using the learned model).
 
@@ -131,6 +187,6 @@ def predict_chars(model: tf.keras.Sequential,
         decoded = decoded.replace('<c>', ',')
 
         if '<n>' in decoded:
-            return pred_string(decoded.replace('<n>', ''))
+            return _pred_string(decoded.replace('<n>', ''))
         elif 0 < store.gen_chars <= len(decoded):
-            return pred_string(decoded)
+            return _pred_string(decoded)

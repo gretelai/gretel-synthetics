@@ -3,7 +3,7 @@ from pathlib import Path
 import shutil
 
 from gretel_synthetics.config import LocalConfig
-from gretel_synthetics.train import annotate_training_data
+from gretel_synthetics.train import _annotate_training_data
 
 test_data_dir = Path(__file__).parent
 
@@ -15,6 +15,6 @@ def global_local_config():
     if not target.exists():
         target.mkdir()
     config = LocalConfig(checkpoint_dir=target.as_posix(), input_data_path=input_data.as_posix())
-    annotate_training_data(config)
+    _annotate_training_data(config)
     yield config
     shutil.rmtree(target)
