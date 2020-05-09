@@ -65,10 +65,6 @@ html_css_files = [
 ]
 
 
-def setup(app):
-    app.add_css_file('styles.css')
-
-
 def monkeypatch(cls):
     """ decorator to monkey-patch methods """
     def decorator(f):
