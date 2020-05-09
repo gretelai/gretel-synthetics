@@ -60,6 +60,10 @@ html_theme_options = {
     'font_family': 'Inter'
 }
 
+html_css_files = [
+    'styles.css'
+]
+
 
 def setup(app):
     app.add_css_file('styles.css')
