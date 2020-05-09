@@ -69,7 +69,7 @@ def train_rnn(store: _BaseConfig):
         store: An instance of one of the available configs that you
             previously created
 
-    Returns: 
+    Returns:
         None
     """
     text = _annotate_training_data(store)
