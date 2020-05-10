@@ -21,7 +21,7 @@ MODEL_PARAMS = 'model_params.json'
 
 
 @dataclass
-class BaseConfig:
+class _BaseConfig:
     """Base dataclass that contains all of the main parameters for
     training a model and generating data.  This base config generally
     should not be used directly. Instead you should use one of the
@@ -63,7 +63,7 @@ class BaseConfig:
 
 
 @dataclass
-class PathSettings:
+class _PathSettings:
     """This dataclass stores path locations to
     store tokenizer and training data locations. It should not
     be used directly. It will be utilized by any configuration
@@ -75,7 +75,7 @@ class PathSettings:
 
 
 @dataclass
-class PathSettingsMixin:
+class _PathSettingsMixin:
     """If a specific config needs to make use of
     ``PathSettings``, this dataclass will make an
     attr of ``paths`` available and also bring in
@@ -85,7 +85,7 @@ class PathSettingsMixin:
     This makes it possible to easily remove the path
     settings when serializing the configuration.
     """
-    paths: PathSettings = field(default_factory=PathSettings)
+    paths: _PathSettings = field(default_factory=_PathSettings)
 
     @property
     def tokenizer_prefix(self):
@@ -101,15 +101,16 @@ class PathSettingsMixin:
 
 
 @dataclass
-class LocalConfig(BaseConfig, PathSettingsMixin):
+class LocalConfig(_BaseConfig, _PathSettingsMixin):
     """This configuration will use the local file system
     to store all models, training data, and checkpoints
 
     Args:
-        checkpoint_dir: The local directory where all checkpoints should be stored
+        checkpoint_dir: The local directory where all checkpoints and additional support
+            files for training and generation will be stored.
         input_data_path: A path to a file that will be used as initial training input.
             This file will be opened, annotated, and then written out to a path
-            that is generated from the ``training_data` attribute.
+            that is generated based on the ``checkpoint_dir.``
     """
     checkpoint_dir: str = None
     input_data_path: str = None

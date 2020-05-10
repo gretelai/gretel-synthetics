@@ -3,15 +3,15 @@ Tensorflow - Keras Sequential RNN (GRU)
 """
 import logging
 
-from tensorflow.keras.optimizers import RMSprop
+from tensorflow.keras.optimizers import RMSprop  # pylint: disable=import-error
 import tensorflow as tf
 from tensorflow_privacy.privacy.optimizers.dp_optimizer import make_gaussian_optimizer_class as make_dp_optimizer
 from tensorflow_privacy.privacy.analysis import compute_dp_sgd_privacy
 
-from gretel_synthetics.config import BaseConfig
+from gretel_synthetics.config import _BaseConfig
 
 
-def build_sequential_model(vocab_size: int, batch_size: int, store: BaseConfig) -> tf.keras.Sequential:
+def _build_sequential_model(vocab_size: int, batch_size: int, store: _BaseConfig) -> tf.keras.Sequential:
     """
     Utilizing tf.keras.Sequential model (LSTM)
     """
@@ -60,7 +60,7 @@ def build_sequential_model(vocab_size: int, batch_size: int, store: BaseConfig) 
     return model
 
 
-def compute_epsilon(steps: int, store: BaseConfig):
+def _compute_epsilon(steps: int, store: _BaseConfig):
     """
     Calculate epsilon and delta values for differential privacy
     """

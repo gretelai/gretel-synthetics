@@ -1,4 +1,9 @@
-# gretel-synthetics
+# Gretel Synthetics
+
+![gretel-synthetics workflows](https://github.com/gretelai/gretel-synthetics/workflows/gretel-synthetics%20workflows/badge.svg)
+
+[![Documentation Status](https://readthedocs.org/projects/gretel-synthetics/badge/?version=stable)](https://gretel-synthetics.readthedocs.io/en/stable/?badge=stable)
+
 
 This code has been developed and tested on Python 3.7. Python 3.8 is currently unsupported.
 
