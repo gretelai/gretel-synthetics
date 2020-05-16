@@ -51,15 +51,15 @@ def test_generate_text(_open, pickle, prepare, predict, spm, global_local_config
     spm.return_value = sp
 
     for rec in generate_text(global_local_config, line_validator=json.loads):
-        out.append(rec)
-
+        out.append(rec.as_dict())
+    
     assert out == [{'valid': True, 'text': '{"foo": 0}', 'explain': None}, {'valid': True, 'text': '{"foo": 1}', 'explain': None}, {'valid': True, 'text': '{"foo": 2}', 'explain': None}, {'valid': True, 'text': '{"foo": 3}', 'explain': None}, {'valid': True, 'text': '{"foo": 4}', 'explain': None}, {'valid': True, 'text': '{"foo": 5}', 'explain': None}, {'valid': True, 'text': '{"foo": 6}', 'explain': None}, {'valid': True, 'text': '{"foo": 7}', 'explain': None}, {'valid': True, 'text': '{"foo": 8}', 'explain': None}, {'valid': True, 'text': '{"foo": 9}', 'explain': None}]
     
     # now with no validator, should be same result
     predict.side_effect = [_pred_string(json.dumps({'foo': i})) for i in range(0, 10)]
     out = []
     for rec in generate_text(global_local_config):
-        out.append(rec)
+        out.append(rec.as_dict())
     assert out == [{'valid': None, 'text': '{"foo": 0}', 'explain': None}, {'valid': None, 'text': '{"foo": 1}', 'explain': None}, {'valid': None, 'text': '{"foo": 2}', 'explain': None}, {'valid': None, 'text': '{"foo": 3}', 'explain': None}, {'valid': None, 'text': '{"foo": 4}', 'explain': None}, {'valid': None, 'text': '{"foo": 5}', 'explain': None}, {'valid': None, 'text': '{"foo": 6}', 'explain': None}, {'valid': None, 'text': '{"foo": 7}', 'explain': None}, {'valid': None, 'text': '{"foo": 8}', 'explain': None}, {'valid': None, 'text': '{"foo": 9}', 'explain': None}]    
 
 
@@ -67,5 +67,5 @@ def test_generate_text(_open, pickle, prepare, predict, spm, global_local_config
     predict.side_effect = [_pred_string(json.dumps({'foo': i})) for i in range(0, 3)] + [_pred_string('nope'), _pred_string('foo'), _pred_string('bar')] + [_pred_string(json.dumps({'foo': i})) for i in range(6, 10)]
     out = []
     for rec in generate_text(global_local_config, line_validator=json.loads):
-        out.append(rec)
+        out.append(rec.as_dict())
     assert out == [{'valid': True, 'text': '{"foo": 0}', 'explain': None}, {'valid': True, 'text': '{"foo": 1}', 'explain': None}, {'valid': True, 'text': '{"foo": 2}', 'explain': None}, {'valid': False, 'text': 'nope', 'explain': 'Expecting value: line 1 column 1 (char 0)'}, {'valid': False, 'text': 'foo', 'explain': 'Expecting value: line 1 column 1 (char 0)'}, {'valid': False, 'text': 'bar', 'explain': 'Expecting value: line 1 column 1 (char 0)'}, {'valid': True, 'text': '{"foo": 6}', 'explain': None}, {'valid': True, 'text': '{"foo": 7}', 'explain': None}, {'valid': True, 'text': '{"foo": 8}', 'explain': None}, {'valid': True, 'text': '{"foo": 9}', 'explain': None}]

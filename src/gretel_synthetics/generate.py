@@ -15,7 +15,7 @@ from dataclasses import dataclass, asdict
 from gretel_synthetics.config import _BaseConfig
 from gretel_synthetics.model import _build_sequential_model
 
-_pred_string = namedtuple('pred_string', ['data'])
+_pred_string = namedtuple("pred_string", ["data"])
 
 
 @dataclass
@@ -33,14 +33,19 @@ class gen_text:
             string representation of the ``Exception`` that is thrown in a validation
             function. This will only be set if validation fails, otherwise will be ``None.``
     """
+
     valid: bool = None
     text: str = None
     explain: str = None
 
+    def as_dict(self):
+        return asdict(self)
+
 
 logging.basicConfig(
-    format='%(asctime)s : %(threadName)s : %(levelname)s : %(message)s',
-    level=logging.INFO)
+    format="%(asctime)s : %(threadName)s : %(levelname)s : %(message)s",
+    level=logging.INFO,
+)
 
 
 def _load_tokenizer(store: _BaseConfig) -> spm.SentencePieceProcessor:
@@ -52,15 +57,12 @@ def _load_tokenizer(store: _BaseConfig) -> spm.SentencePieceProcessor:
 
 def _prepare_model(sp: spm, batch_size: int, store: _BaseConfig) -> tf.keras.Sequential:
     model = _build_sequential_model(
-                vocab_size=len(sp),
-                batch_size=batch_size,
-                store=store)
+        vocab_size=len(sp), batch_size=batch_size, store=store
+    )
 
     load_dir = store.checkpoint_dir
 
-    model.load_weights(
-        tf.train.latest_checkpoint(
-            load_dir)).expect_partial()
+    model.load_weights(tf.train.latest_checkpoint(load_dir)).expect_partial()
 
     model.build(tf.TensorShape([1, None]))
     model.summary()
@@ -68,13 +70,9 @@ def _prepare_model(sp: spm, batch_size: int, store: _BaseConfig) -> tf.keras.Seq
     return model
 
 
-def _gen_text_factory(text: str, valid, explain) -> dict:
-    return dict(
-        asdict(gen_text(valid=valid, text=text, explain=explain))
-    )
-
-
-def generate_text(store: _BaseConfig, start_string: str = "<n>", line_validator: callable = None):
+def generate_text(
+    store: _BaseConfig, start_string: str = "<n>", line_validator: callable = None
+):
     """A generator that will load a model and start creating records.
 
     Args:
@@ -113,7 +111,8 @@ def generate_text(store: _BaseConfig, start_string: str = "<n>", line_validator:
 
     """
     logging.info(
-        f"Latest checkpoint: {tf.train.latest_checkpoint(store.checkpoint_dir)}")  # noqa
+        f"Latest checkpoint: {tf.train.latest_checkpoint(store.checkpoint_dir)}"
+    )  # noqa
 
     # Restore the latest SentencePiece model
     sp = _load_tokenizer(store)
@@ -127,13 +126,13 @@ def generate_text(store: _BaseConfig, start_string: str = "<n>", line_validator:
         rec = _predict_chars(model, sp, start_string, store).data
         try:
             if not line_validator:
-                yield _gen_text_factory(rec, None, None)
+                yield gen_text(text=rec, valid=None, explain=None)
             else:
                 line_validator(rec)
-                yield _gen_text_factory(rec, True, None)
+                yield gen_text(text=rec, valid=True, explain=None)
         except Exception as err:
             # logging.warning(f'Line failed validation: {rec} errored with {str(err)}')
-            yield _gen_text_factory(rec, False, str(err))
+            yield gen_text(text=rec, valid=False, explain=str(err))
         finally:
             lines_generated += 1
 
@@ -141,10 +140,12 @@ def generate_text(store: _BaseConfig, start_string: str = "<n>", line_validator:
             break
 
 
-def _predict_chars(model: tf.keras.Sequential,
-                   sp: spm.SentencePieceProcessor,
-                   start_string: str,
-                   store: _BaseConfig) -> str:
+def _predict_chars(
+    model: tf.keras.Sequential,
+    sp: spm.SentencePieceProcessor,
+    start_string: str,
+    store: _BaseConfig,
+) -> str:
     """
     Evaluation step (generating text using the learned model).
 
@@ -175,8 +176,7 @@ def _predict_chars(model: tf.keras.Sequential,
         # using a categorical distribution to
         # predict the word returned by the model
         predictions = predictions / store.gen_temp
-        predicted_id = tf.random.categorical(
-            predictions, num_samples=1)[-1, 0].numpy()
+        predicted_id = tf.random.categorical(predictions, num_samples=1)[-1, 0].numpy()
 
         # We pass the predicted word as the next input to the model
         # along with the previous hidden state
@@ -184,9 +184,9 @@ def _predict_chars(model: tf.keras.Sequential,
         sentence_ids.append(int(predicted_id))
 
         decoded = sp.DecodeIds(sentence_ids)
-        decoded = decoded.replace('<c>', ',')
+        decoded = decoded.replace("<c>", ",")
 
-        if '<n>' in decoded:
-            return _pred_string(decoded.replace('<n>', ''))
+        if "<n>" in decoded:
+            return _pred_string(decoded.replace("<n>", ""))
         elif 0 < store.gen_chars <= len(decoded):
             return _pred_string(decoded)
