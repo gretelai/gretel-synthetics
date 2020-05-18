@@ -24,4 +24,3 @@ def test_train_rnn(model, global_local_config):
     )
 
     mock_model.fit.assert_called
-

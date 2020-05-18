@@ -19,6 +19,8 @@ from tqdm import tqdm
 
 from gretel_synthetics.model import _build_sequential_model, _compute_epsilon
 from gretel_synthetics.config import _BaseConfig
+from gretel_synthetics.generate import _load_model
+
 
 spm_logger = logging.getLogger('sentencepiece')
 spm_logger.setLevel(logging.INFO)
@@ -72,6 +74,14 @@ def train_rnn(store: _BaseConfig):
     Returns:
         None
     """
+    if not store.overwrite:  # pragma: no cover
+        try:
+            _load_model(store)
+        except Exception:
+            pass
+        else:
+            raise RuntimeError('A model already exists in the checkpoint location, you must enable overwrite mode or delete the checkpoints first.')  # noqa
+
     text = _annotate_training_data(store)
     sp = _train_tokenizer(store)
     dataset = _create_dataset(store, text, sp)

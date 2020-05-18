@@ -40,6 +40,9 @@ class _BaseConfig:
     dropout_rate: float = 0.2
     rnn_initializer: str = "glorot_uniform"
 
+    # Input data configs
+    field_delimiter: str = ","
+
     # Tokenizer settings
     vocab_size: int = 500
     character_coverage: float = 1.0
@@ -58,6 +61,7 @@ class _BaseConfig:
 
     # Checkpoint storage
     save_all_checkpoints: bool = True
+    overwrite: bool = False
 
     @abstractmethod
     def _set_tokenizer(self):  # pragma: no cover
