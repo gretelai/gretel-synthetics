@@ -42,6 +42,7 @@ class _BaseConfig:
 
     # Input data configs
     field_delimiter: str = ","
+    field_delimiter_token: str = "<d>"
 
     # Tokenizer settings
     vocab_size: int = 500

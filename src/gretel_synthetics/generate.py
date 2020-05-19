@@ -206,7 +206,10 @@ def _predict_chars(
         sentence_ids.append(int(predicted_id))
 
         decoded = sp.DecodeIds(sentence_ids)
-        decoded = decoded.replace("<c>", ",")
+        decoded = decoded.replace(
+            store.field_delimiter_token,
+            store.field_delimiter
+        )
 
         if "<n>" in decoded:
             return _pred_string(decoded.replace("<n>", ""))

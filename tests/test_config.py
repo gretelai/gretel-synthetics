@@ -51,6 +51,7 @@ def test_local_config_settings(mkdir):
         "save_all_checkpoints": True,
         "checkpoint_dir": "foo",
         "field_delimiter": ",",
+        "field_delimiter_token": "<d>",
         "overwrite": False,
         "input_data_path": "bar",
     }

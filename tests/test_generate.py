@@ -85,4 +85,3 @@ def test_generate_text(_open, pickle, prepare, predict, spm, global_local_config
         out.append(rec.as_dict())
     assert len(out) == 10
     assert not out[4]["valid"]
-
