@@ -19,6 +19,8 @@ from tqdm import tqdm
 
 from gretel_synthetics.model import _build_sequential_model, _compute_epsilon
 from gretel_synthetics.config import _BaseConfig
+from gretel_synthetics.generate import _load_model
+
 
 spm_logger = logging.getLogger('sentencepiece')
 spm_logger.setLevel(logging.INFO)
@@ -72,6 +74,14 @@ def train_rnn(store: _BaseConfig):
     Returns:
         None
     """
+    if not store.overwrite:  # pragma: no cover
+        try:
+            _load_model(store)
+        except Exception:
+            pass
+        else:
+            raise RuntimeError('A model already exists in the checkpoint location, you must enable overwrite mode or delete the checkpoints first.')  # noqa
+
     text = _annotate_training_data(store)
     sp = _train_tokenizer(store)
     dataset = _create_dataset(store, text, sp)
@@ -115,7 +125,11 @@ def _annotate_training_data(store: _BaseConfig):
         for line in infile:
             if store.max_lines and len(training_text) >= store.max_lines:
                 break
-            line = line.strip().replace(",", "<c>")
+            if store.field_delimiter is not None:
+                line = line.strip().replace(
+                    store.field_delimiter,
+                    store.field_delimiter_token
+                )
             training_text.append(line)
 
     logging.info(f"Storing annotations to {Path(store.training_data).name}")
@@ -147,7 +161,7 @@ def _train_tokenizer(store: _BaseConfig) -> spm.SentencePieceProcessor:
     spm.SentencePieceTrainer.Train(
         f'--input={store.training_data} '
         f'--model_prefix={store.tokenizer_prefix} '
-        f'--user_defined_symbols=<n>,<c> '
+        f'--user_defined_symbols=<n>,{store.field_delimiter_token} '
         f'--vocab_size={store.vocab_size} '
         f'--hard_vocab_limit=false '
         f'--character_coverage={store.character_coverage}')

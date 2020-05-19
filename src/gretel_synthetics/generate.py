@@ -6,16 +6,20 @@ Before using this module you must have already:
     - Created a config
     - Trained a model
 """
+from __future__ import annotations
 import logging
 import sentencepiece as spm
 import tensorflow as tf
 from collections import namedtuple
 from dataclasses import dataclass, asdict
+from typing import Tuple, TYPE_CHECKING, List
 
-from gretel_synthetics.config import _BaseConfig
 from gretel_synthetics.model import _build_sequential_model
 
-_pred_string = namedtuple('pred_string', ['data'])
+if TYPE_CHECKING:
+    from gretel_synthetics.config import _BaseConfig
+
+_pred_string = namedtuple("pred_string", ["data"])
 
 
 @dataclass
@@ -32,15 +36,37 @@ class gen_text:
         explain: A string that describes why a record failed validation. This is the
             string representation of the ``Exception`` that is thrown in a validation
             function. This will only be set if validation fails, otherwise will be ``None.``
+        delimiter: If the generated text are column/field based records. This will hold the delimiter
+            used to separate the fields from each other.
     """
+
     valid: bool = None
     text: str = None
     explain: str = None
+    delimiter: str = None
+
+    def as_dict(self) -> dict:
+        """Serialize the generated record to a dictionary
+        """
+        return asdict(self)
+
+    def values_as_list(self) -> List[str]:
+        """Attempt to split the generated text on the provided delimiter
+
+        Returns:
+            A list of values that are separated by the object's delimiter or None is there
+            is no delimiter in the text
+        """
+        if self.delimiter is not None:
+            tmp = self.text.rstrip(self.delimiter)
+            return tmp.split(self.delimiter)
+        return None
 
 
 logging.basicConfig(
-    format='%(asctime)s : %(threadName)s : %(levelname)s : %(message)s',
-    level=logging.INFO)
+    format="%(asctime)s : %(threadName)s : %(levelname)s : %(message)s",
+    level=logging.INFO,
+)
 
 
 def _load_tokenizer(store: _BaseConfig) -> spm.SentencePieceProcessor:
@@ -52,15 +78,12 @@ def _load_tokenizer(store: _BaseConfig) -> spm.SentencePieceProcessor:
 
 def _prepare_model(sp: spm, batch_size: int, store: _BaseConfig) -> tf.keras.Sequential:
     model = _build_sequential_model(
-                vocab_size=len(sp),
-                batch_size=batch_size,
-                store=store)
+        vocab_size=len(sp), batch_size=batch_size, store=store
+    )
 
     load_dir = store.checkpoint_dir
 
-    model.load_weights(
-        tf.train.latest_checkpoint(
-            load_dir)).expect_partial()
+    model.load_weights(tf.train.latest_checkpoint(load_dir)).expect_partial()
 
     model.build(tf.TensorShape([1, None]))
     model.summary()
@@ -68,13 +91,15 @@ def _prepare_model(sp: spm, batch_size: int, store: _BaseConfig) -> tf.keras.Seq
     return model
 
 
-def _gen_text_factory(text: str, valid, explain) -> dict:
-    return dict(
-        asdict(gen_text(valid=valid, text=text, explain=explain))
-    )
+def _load_model(store: _BaseConfig) -> Tuple[spm.SentencePieceProcessor, tf.keras.Sequential]:
+    sp = _load_tokenizer(store)
+    model = _prepare_model(sp, 1, store)
+    return sp, model
 
 
-def generate_text(store: _BaseConfig, start_string: str = "<n>", line_validator: callable = None):
+def generate_text(
+    store: _BaseConfig, start_string: str = "<n>", line_validator: callable = None
+):
     """A generator that will load a model and start creating records.
 
     Args:
@@ -113,27 +138,26 @@ def generate_text(store: _BaseConfig, start_string: str = "<n>", line_validator:
 
     """
     logging.info(
-        f"Latest checkpoint: {tf.train.latest_checkpoint(store.checkpoint_dir)}")  # noqa
+        f"Latest checkpoint: {tf.train.latest_checkpoint(store.checkpoint_dir)}"
+    )  # noqa
 
-    # Restore the latest SentencePiece model
-    sp = _load_tokenizer(store)
-
-    # Load the RNN
-    model = _prepare_model(sp, 1, store)
+    sp, model = _load_model(store)
 
     lines_generated = 0
+
+    delim = store.field_delimiter
 
     while True:
         rec = _predict_chars(model, sp, start_string, store).data
         try:
             if not line_validator:
-                yield _gen_text_factory(rec, None, None)
+                yield gen_text(text=rec, valid=None, explain=None, delimiter=delim)
             else:
                 line_validator(rec)
-                yield _gen_text_factory(rec, True, None)
+                yield gen_text(text=rec, valid=True, explain=None, delimiter=delim)
         except Exception as err:
             # logging.warning(f'Line failed validation: {rec} errored with {str(err)}')
-            yield _gen_text_factory(rec, False, str(err))
+            yield gen_text(text=rec, valid=False, explain=str(err), delimiter=delim)
         finally:
             lines_generated += 1
 
@@ -141,10 +165,12 @@ def generate_text(store: _BaseConfig, start_string: str = "<n>", line_validator:
             break
 
 
-def _predict_chars(model: tf.keras.Sequential,
-                   sp: spm.SentencePieceProcessor,
-                   start_string: str,
-                   store: _BaseConfig) -> str:
+def _predict_chars(
+    model: tf.keras.Sequential,
+    sp: spm.SentencePieceProcessor,
+    start_string: str,
+    store: _BaseConfig,
+) -> str:
     """
     Evaluation step (generating text using the learned model).
 
@@ -175,8 +201,7 @@ def _predict_chars(model: tf.keras.Sequential,
         # using a categorical distribution to
         # predict the word returned by the model
         predictions = predictions / store.gen_temp
-        predicted_id = tf.random.categorical(
-            predictions, num_samples=1)[-1, 0].numpy()
+        predicted_id = tf.random.categorical(predictions, num_samples=1)[-1, 0].numpy()
 
         # We pass the predicted word as the next input to the model
         # along with the previous hidden state
@@ -184,9 +209,13 @@ def _predict_chars(model: tf.keras.Sequential,
         sentence_ids.append(int(predicted_id))
 
         decoded = sp.DecodeIds(sentence_ids)
-        decoded = decoded.replace('<c>', ',')
+        if store.field_delimiter is not None:
+            decoded = decoded.replace(
+                store.field_delimiter_token,
+                store.field_delimiter
+            )
 
-        if '<n>' in decoded:
-            return _pred_string(decoded.replace('<n>', ''))
+        if "<n>" in decoded:
+            return _pred_string(decoded.replace("<n>", ""))
         elif 0 < store.gen_chars <= len(decoded):
             return _pred_string(decoded)
