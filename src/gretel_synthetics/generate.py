@@ -54,10 +54,13 @@ class gen_text:
         """Attempt to split the generated text on the provided delimiter
 
         Returns:
-            A list of values that are separated by the object's delimiter
+            A list of values that are separated by the object's delimiter or None is there
+            is no delimiter in the text
         """
-        tmp = self.text.rstrip(self.delimiter)
-        return tmp.split(self.delimiter)
+        if self.delimiter is not None:
+            tmp = self.text.rstrip(self.delimiter)
+            return tmp.split(self.delimiter)
+        return None
 
 
 logging.basicConfig(
@@ -206,10 +209,11 @@ def _predict_chars(
         sentence_ids.append(int(predicted_id))
 
         decoded = sp.DecodeIds(sentence_ids)
-        decoded = decoded.replace(
-            store.field_delimiter_token,
-            store.field_delimiter
-        )
+        if store.field_delimiter is not None:
+            decoded = decoded.replace(
+                store.field_delimiter_token,
+                store.field_delimiter
+            )
 
         if "<n>" in decoded:
             return _pred_string(decoded.replace("<n>", ""))

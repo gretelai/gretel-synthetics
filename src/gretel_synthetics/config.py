@@ -9,7 +9,7 @@ import logging
 from pathlib import Path
 from abc import abstractmethod
 from dataclasses import dataclass, asdict, field
-
+from typing import Optional
 
 logging.basicConfig(
     format="%(asctime)s : %(threadName)s : %(levelname)s : %(message)s",
@@ -41,7 +41,7 @@ class _BaseConfig:
     rnn_initializer: str = "glorot_uniform"
 
     # Input data configs
-    field_delimiter: str = ","
+    field_delimiter: Optional[str] = None
     field_delimiter_token: str = "<d>"
 
     # Tokenizer settings

@@ -125,10 +125,11 @@ def _annotate_training_data(store: _BaseConfig):
         for line in infile:
             if store.max_lines and len(training_text) >= store.max_lines:
                 break
-            line = line.strip().replace(
-                store.field_delimiter,
-                store.field_delimiter_token
-            )
+            if store.field_delimiter is not None:
+                line = line.strip().replace(
+                    store.field_delimiter,
+                    store.field_delimiter_token
+                )
             training_text.append(line)
 
     logging.info(f"Storing annotations to {Path(store.training_data).name}")
