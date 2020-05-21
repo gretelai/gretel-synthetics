@@ -13,6 +13,7 @@ jobs:
         python-version: 3.6
     - name: Install
       run: |
+        pip install dataclasses==0.7
         pip install -e .
         pip install -r test-requirements.txt
     - name: Lint
