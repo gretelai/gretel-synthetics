@@ -27,6 +27,7 @@ setup(
         'numpy==1.18.3'
     ],
     extras_require={
-        'tf': ['tensorflow==2.1.0']
+        'tf': ['tensorflow==2.1.0'],
+        '3.6': ['dataclasses==0.7']
     }
 )

@@ -5,7 +5,7 @@
 [![Documentation Status](https://readthedocs.org/projects/gretel-synthetics/badge/?version=stable)](https://gretel-synthetics.readthedocs.io/en/stable/?badge=stable)
 
 
-This code has been developed and tested on Python 3.7. Python 3.8 is currently unsupported.
+This code has been developed and tested on Python 3.7. Python 3.8 is currently unsupported. While not developed on Python 3.6, this code will run in Google Colab, which currently uses 3.6. If you wish to use Python 3.6, out side of Google Colab, you may install with the `3.6` extras: `pip install gretel-synthetics[tf,3.6]`, for example.
 
 This package allows developers to quickly get immersed with synthetic data generation through the use of neural networks. The more complex pieces of working with libraries like Tensorflow and differential privacy are bundled into friendly Python classes and functions.
 
