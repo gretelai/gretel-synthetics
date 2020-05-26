@@ -28,6 +28,6 @@ setup(
     ],
     extras_require={
         'tf': ['tensorflow==2.1.0'],
-        '3.6': ['dataclasses==0.7']
+        'py36': ['dataclasses==0.7']
     }
 )
