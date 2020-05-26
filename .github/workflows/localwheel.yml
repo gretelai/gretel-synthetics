@@ -16,5 +16,5 @@ jobs:
         pip install wheel
         python setup.py sdist bdist_wheel
     - name: Install wheel
-      run: pip install dist/gretel_sythetics-*.whl
+      run: pip install dist/gretel_synthetics-*.whl
 
