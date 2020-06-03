@@ -39,6 +39,7 @@ class _BaseConfig:
     rnn_units: int = 256
     dropout_rate: float = 0.2
     rnn_initializer: str = "glorot_uniform"
+    max_line_len: int = 2048
 
     # Input data configs
     field_delimiter: Optional[str] = None
