@@ -48,6 +48,7 @@ def test_local_config_settings(mkdir):
         "gen_temp": 1.0,
         "gen_chars": 0,
         "gen_lines": 500,
+        "max_line_len": 2048,
         "save_all_checkpoints": True,
         "checkpoint_dir": "foo",
         "field_delimiter": None,
