@@ -29,12 +29,15 @@ class _BaseConfig:
     subclasses which are specific to model and checkpoint storage.
 
     Args:
-        max_lines: int, optional
-            Number of rows of file to read. Useful for training on a subset of large files.
-            Specify 0 (default) to read all lines.
-        epochs: int, optional
-            Number of epochs to train the model. An epoch is an iteration over the entire
+        max_lines (optional): Number of rows of file to read. Useful for training on a subset of large files.
+            If unspecified, max_lines will default to 0 (process all lines).
+        epochs (optional): Number of epochs to train the model. An epoch is an iteration over the entire
             training set provided. For production use cases, 15-50 epochs are recommended.
+            If unspecified, epochs will default to 30.
+        batch_size (optional): Number of samples per gradient update. Using larger batch sizes can help
+            make more efficient use of CPU/GPU parallelization, at the cost of memory.
+            If unspecified, batch_size will default to 64.
+
     """
 
     # Training configurations
