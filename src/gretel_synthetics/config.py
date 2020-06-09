@@ -67,7 +67,7 @@ class _BaseConfig:
             will be replaced with the <unk> tag. Good defaults are `0.995` for languages with rich
             character sets like Japanese or Chinese, and 1.0 for other languages or machine data.
             Default is 1.0.
-        dp (optional): If `True`, train with differential privacy enabled. This setting provides
+        dp (optional): If `True`, train model with differential privacy enabled. This setting provides
             assurances that the models will encode general patterns in data rather than facts
             about specific training examples. These additional guarantees can usefully strengthen
             the protections offered for sensitive data and content, at a small loss in model
@@ -86,6 +86,10 @@ class _BaseConfig:
             Computational overhead can be reduced by increasing the size of micro-batches to include
             more than one training example. The number of micro-batches should divide evenly into
             the overall `batch_size`. Default is 64.
+        gen_temp (optional): Low temperatures result in more predictable text. Higher temperatures
+            result in more surprising text. Experiment to find the best setting. Default is `1.0`.
+        gen_chars (optional): Maximum number of characters to generate per line. Default is `0` (no limit).
+        gen_lines (optional): Maximum number of text lines to generate. Default is `1000`.
 
     """
 
@@ -119,7 +123,7 @@ class _BaseConfig:
     # Generation settings
     gen_temp: float = 1.0
     gen_chars: int = 0
-    gen_lines: int = 500
+    gen_lines: int = 1000
 
     # Checkpoint storage
     save_all_checkpoints: bool = True
