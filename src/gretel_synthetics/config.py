@@ -53,6 +53,12 @@ class _BaseConfig:
             compromise between retaining model accuracy and preventing overfitting. Default is 0.2.
         rnn_initializer (optional): Initializer for the kernal weights matrix, used for the linear
             transformation of the inputs. Default is `glorot_transform`.
+        field_delimiter (optional): Delimiter to use for training on structured data. When specified,
+            the delimiter is passed as a user-specified token to the tokenizer, which can improve
+            synthetic data quality. For unstructured text, leave as `None`. For structured text
+            such as comma or tab separated values, specify "," or "\t" respectively. Default is `None`.
+        field_delimiter_token (optional): User specified token to replace `field_delimiter` with
+            while annotating data for training the model. Default is `<d>`.
 
     """
 
