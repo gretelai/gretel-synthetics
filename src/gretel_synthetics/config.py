@@ -31,12 +31,28 @@ class _BaseConfig:
     Args:
         max_lines (optional): Number of rows of file to read. Useful for training on a subset of large files.
             If unspecified, max_lines will default to 0 (process all lines).
+        max_line_len (optional): Maximum line length for input training data. Any lines longer than
+            this length will be ignored. Default is 2048.
         epochs (optional): Number of epochs to train the model. An epoch is an iteration over the entire
             training set provided. For production use cases, 15-50 epochs are recommended.
             If unspecified, epochs will default to 30.
         batch_size (optional): Number of samples per gradient update. Using larger batch sizes can help
             make more efficient use of CPU/GPU parallelization, at the cost of memory.
             If unspecified, batch_size will default to 64.
+        buffer_size (optional): Buffer size which is used to shuffle elements during training.
+            Default size is 10000.
+        seq_length (optional): The maximum length sentence we want for a single training input in
+            characters. Default size is 100.
+        embedding_dim (optional): Vector size for the lookup table used in the neural network
+            Embedding layer that maps the numbers of each character. Default size is 256.
+        rnn_units (optional): Positive integer, dimensionality of the output space for LSTM layers.
+            Default size is 256.
+        dropout_rate (optional): Float between 0 and 1. Fraction of the units to drop for the
+            linear transformation of the inputs. Using a dropout can help to prevent overfitting
+            by ignoring randomly selected neurons during training. 0.2 (20%) is often used as a good
+            compromise between retaining model accuracy and preventing overfitting. Default is 0.2.
+        rnn_initializer (optional): Initializer for the kernal weights matrix, used for the linear
+            transformation of the inputs. Default is `glorot_transform`.
 
     """
 
