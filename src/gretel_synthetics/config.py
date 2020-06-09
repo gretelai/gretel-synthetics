@@ -30,23 +30,23 @@ class _BaseConfig:
 
     Args:
         max_lines (optional): Number of rows of file to read. Useful for training on a subset of large files.
-            If unspecified, max_lines will default to 0 (process all lines).
+            If unspecified, max_lines will default to `0` (process all lines).
         max_line_len (optional): Maximum line length for input training data. Any lines longer than
-            this length will be ignored. Default is 2048.
+            this length will be ignored. Default is `2048`.
         epochs (optional): Number of epochs to train the model. An epoch is an iteration over the entire
             training set provided. For production use cases, 15-50 epochs are recommended.
-            If unspecified, epochs will default to 30.
+            Default is `30`.
         batch_size (optional): Number of samples per gradient update. Using larger batch sizes can help
             make more efficient use of CPU/GPU parallelization, at the cost of memory.
-            If unspecified, batch_size will default to 64.
+            If unspecified, batch_size will default to `64`.
         buffer_size (optional): Buffer size which is used to shuffle elements during training.
-            Default size is 10000.
+            Default size is `10000`.
         seq_length (optional): The maximum length sentence we want for a single training input in
-            characters. Default size is 100.
+            characters. Default size is `100`.
         embedding_dim (optional): Vector size for the lookup table used in the neural network
-            Embedding layer that maps the numbers of each character. Default size is 256.
+            Embedding layer that maps the numbers of each character. Default size is `256`.
         rnn_units (optional): Positive integer, dimensionality of the output space for LSTM layers.
-            Default size is 256.
+            Default size is `256`.
         dropout_rate (optional): Float between 0 and 1. Fraction of the units to drop for the
             linear transformation of the inputs. Using a dropout can help to prevent overfitting
             by ignoring randomly selected neurons during training. 0.2 (20%) is often used as a good
@@ -62,11 +62,11 @@ class _BaseConfig:
         vocab_size (optional): Pre-determined vocabulary size prior to neural model training, based on
             subword units including byte-pair-encoding (BPE) and unigram language model, with the extension
             of direct training from raw sentences. We generally recommend using a large vocabulary
-            size of 20,000 to 50,000. Default is 20000.
+            size of 20,000 to 50,000. Default is `20000`.
         character_coverage (optional): The amount of characters covered by the model. Unknown characters
             will be replaced with the <unk> tag. Good defaults are `0.995` for languages with rich
             character sets like Japanese or Chinese, and 1.0 for other languages or machine data.
-            Default is 1.0.
+            Default is `1.0`.
         dp (optional): If `True`, train model with differential privacy enabled. This setting provides
             assurances that the models will encode general patterns in data rather than facts
             about specific training examples. These additional guarantees can usefully strengthen
@@ -81,15 +81,22 @@ class _BaseConfig:
             model accuracy. Default is `1.1`.
         dp_l2_norm_clip (optional): The maximum Euclidean (L2) norm of each gradient is applied to
             update model parameters. This hyperparameter bounds the optimizer's sensitivity to
-            individual training points. Default is 1.0.
+            individual training points. Default is `1.0`.
         dp_microbatches (optional): Each batch of data is split into smaller units called micro-batches.
             Computational overhead can be reduced by increasing the size of micro-batches to include
             more than one training example. The number of micro-batches should divide evenly into
-            the overall `batch_size`. Default is 64.
+            the overall `batch_size`. Default is `64`.
         gen_temp (optional): Low temperatures result in more predictable text. Higher temperatures
             result in more surprising text. Experiment to find the best setting. Default is `1.0`.
         gen_chars (optional): Maximum number of characters to generate per line. Default is `0` (no limit).
         gen_lines (optional): Maximum number of text lines to generate. Default is `1000`.
+        save_all_checkpoints (optional). Set to `True` to save all model checkpoints as they are created,
+            which can be useful for optimal model selection. Set to `False` to save only the latest
+            checkpoint. Default is `True`.
+        overwrite (optional). Set to `True` to automatically overwrite previously saved model checkpoints.
+            If `False`, the trainer will generate an error if checkpoints exist in the model directory.
+            Default is `False`.
+
 
     """
 
