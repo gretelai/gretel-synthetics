@@ -59,6 +59,14 @@ class _BaseConfig:
             such as comma or tab separated values, specify "," or "\t" respectively. Default is `None`.
         field_delimiter_token (optional): User specified token to replace `field_delimiter` with
             while annotating data for training the model. Default is `<d>`.
+        vocab_size (optional): Pre-determined vocabulary size prior to neural model training, based on
+            subword units including byte-pair-encoding (BPE) and unigram language model, with the extension
+            of direct training from raw sentences. We generally recommend using a large vocabulary
+            size of 20,000 to 50,000. Default is 20000.
+        character_coverage (optional): The amount of characters covered by the model. Unknown characters
+            will be replaced with the <unk> tag. Good defaults are `0.995` for languages with rich
+            character sets like Japanese or Chinese, and 1.0 for other languages or machine data.
+            Default is 1.0.
 
     """
 
@@ -79,7 +87,7 @@ class _BaseConfig:
     field_delimiter_token: str = "<d>"
 
     # Tokenizer settings
-    vocab_size: int = 500
+    vocab_size: int = 20000
     character_coverage: float = 1.0
 
     # Diff privacy configs
