@@ -81,7 +81,48 @@ def test_generate_text(_open, pickle, prepare, predict, spm, global_local_config
         + [_pred_string(json.dumps({"foo": i})) for i in range(6, 10)]
     )
     out = []
-    for rec in generate_text(global_local_config, line_validator=json.loads):
-        out.append(rec.as_dict())
+    try:
+        for rec in generate_text(global_local_config, line_validator=json.loads):
+            out.append(rec.as_dict())
+    except RuntimeError:
+        pass
     assert len(out) == 10
+    assert not out[4]["valid"]
+
+    # assert max invalid
+    predict.side_effect = (
+        [_pred_string(json.dumps({"foo": i})) for i in range(0, 3)]
+        + [_pred_string("nope"), _pred_string("foo"), _pred_string("bar")]
+        + [_pred_string(json.dumps({"foo": i})) for i in range(6, 10)]
+    )
+    out = []
+    try:
+        for rec in generate_text(global_local_config, line_validator=json.loads, max_invalid=2):
+            out.append(rec.as_dict())
+    except RuntimeError as err:
+        assert "Maximum number" in str(err)
+    assert len(out) == 6
+    assert not out[4]["valid"]
+
+    # max invalid, validator returns a bool
+    def _val(line):
+        try:
+            json.loads(line)
+        except Exception:
+            return False
+        else:
+            return True
+
+    predict.side_effect = (
+        [_pred_string(json.dumps({"foo": i})) for i in range(0, 3)]
+        + [_pred_string("nope"), _pred_string("foo"), _pred_string("bar")]
+        + [_pred_string(json.dumps({"foo": i})) for i in range(6, 10)]
+    )
+    out = []
+    try:
+        for rec in generate_text(global_local_config, line_validator=_val, max_invalid=2):
+            out.append(rec.as_dict())
+    except RuntimeError as err:
+        assert "Maximum number" in str(err)
+    assert len(out) == 6
     assert not out[4]["valid"]
