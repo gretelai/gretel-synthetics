@@ -27,6 +27,14 @@ class _BaseConfig:
     training a model and generating data.  This base config generally
     should not be used directly. Instead you should use one of the
     subclasses which are specific to model and checkpoint storage.
+
+    Args:
+        max_lines: int, optional
+            Number of rows of file to read. Useful for training on a subset of large files.
+            Specify 0 (default) to read all lines.
+        epochs: int, optional
+            Number of epochs to train the model. An epoch is an iteration over the entire
+            training set provided. For production use cases, 15-50 epochs are recommended.
     """
 
     # Training configurations
