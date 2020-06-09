@@ -15,7 +15,7 @@ from typing import Tuple, TYPE_CHECKING, List
 
 from gretel_synthetics.model import _build_sequential_model
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from gretel_synthetics.config import _BaseConfig
 
 _pred_string = namedtuple("pred_string", ["data"])
@@ -75,7 +75,7 @@ def _load_tokenizer(store: "_BaseConfig") -> spm.SentencePieceProcessor:
     return sp
 
 
-def _prepare_model(sp: spm, batch_size: int, store: "_BaseConfig") -> tf.keras.Sequential:
+def _prepare_model(sp: spm, batch_size: int, store: "_BaseConfig") -> tf.keras.Sequential:  # pragma: no cover
     model = _build_sequential_model(
         vocab_size=len(sp), batch_size=batch_size, store=store
     )
@@ -97,7 +97,7 @@ def _load_model(store: "_BaseConfig") -> Tuple[spm.SentencePieceProcessor, tf.ke
 
 
 def generate_text(
-    store: "_BaseConfig", start_string: str = "<n>", line_validator: callable = None
+    config: "_BaseConfig", start_string: str = "<n>", line_validator: callable = None, max_invalid: int = 1000
 ):
     """A generator that will load a model and start creating records.
 
@@ -108,10 +108,14 @@ def generate_text(
             which will influence how the generator predicts what to generate.
         line_validator: An optional callback validator function that will take
             the raw string value from the generator as a single argument. This validator
-            can executue arbitrary code and if it returns successfully, then we
-            assume the generated line is valid. If the validator throws an exception
-            then we will set the validation to ``False`` and capture the string
-            repr of the exception as an ``explain`` param in the yielded record.
+            can executue arbitrary code with the raw string value. The validator function
+            may return a bool to indicate line validity. This boolean value will be set
+            on the yielded ``gen_text`` object. Additionally, if the validator throws an
+            exception, the ``gen_text`` object will be set with a failed validation. If the
+            validator returns None, we will assume successful validation.
+        max_invalid: If using a ``line_validator``, this is the maximum number of invalid
+            lines to generate. If the number of invalid lines exceeds this value a ``RunTimeError``
+            will be raised.
 
     Simple validator example::
 
@@ -121,10 +125,14 @@ def generate_text(
                 raise Exception('record does not have 5 fields')
 
     NOTE:
-        In your configuration, there are two attrs that you should be aware of.
-        These are ``gen_lines`` and ``gen_chars.`` The first one is the maximum number
-        of lines that will be generated. The generator will stop after reaching this amount.
-        The second, ``gen_chars``, controls the possible maximum number of characters a single
+        ``gen_lines`` from the ``config`` is important for this function. If a line validator is not provided,
+        each line will count towards the number of total generated lines. When the total lines generated is >=
+        ``gen_lines`` we stop. If a line validator is provided, only *valid* lines will count towards
+        the total number of lines generated. When the total number of valid lines generated is >= ``gen_lines``,
+        we stop.
+
+    NOTE:
+        ``gen_chars``, controls the possible maximum number of characters a single
         generated line can have. If a newline character has not been generated before reaching
         this number, then the line will be returned. For example if ``gen_chars`` is 180 and a
         newline has not been generated, once 180 chars have been created, the line will be returned
@@ -137,30 +145,44 @@ def generate_text(
 
     """
     logging.info(
-        f"Latest checkpoint: {tf.train.latest_checkpoint(store.checkpoint_dir)}"
+        f"Latest checkpoint: {tf.train.latest_checkpoint(config.checkpoint_dir)}"
     )  # noqa
 
-    sp, model = _load_model(store)
-
+    sp, model = _load_model(config)
     lines_generated = 0
-
-    delim = store.field_delimiter
+    delim = config.field_delimiter
+    invalid = 0
 
     while True:
-        rec = _predict_chars(model, sp, start_string, store).data
+        rec = _predict_chars(model, sp, start_string, config).data
+        _valid = None
         try:
             if not line_validator:
                 yield gen_text(text=rec, valid=None, explain=None, delimiter=delim)
             else:
-                line_validator(rec)
-                yield gen_text(text=rec, valid=True, explain=None, delimiter=delim)
+                check = line_validator(rec)
+                if check is False:
+                    _valid = False
+                    invalid += 1
+                else:
+                    _valid = True
+                yield gen_text(text=rec, valid=_valid, explain=None, delimiter=delim)
         except Exception as err:
             # logging.warning(f'Line failed validation: {rec} errored with {str(err)}')
+            invalid += 1
             yield gen_text(text=rec, valid=False, explain=str(err), delimiter=delim)
-        finally:
-            lines_generated += 1
+        else:
+            if line_validator and _valid:
+                lines_generated += 1
+            elif not line_validator:
+                lines_generated += 1
+            else:
+                ...
 
-        if lines_generated >= store.gen_lines:
+        if invalid > max_invalid:
+            raise RuntimeError("Maximum number of invalid lines reached!")
+
+        if lines_generated >= config.gen_lines:
             break
 
 
