@@ -42,7 +42,9 @@ class _BaseConfig:
         buffer_size (optional): Buffer size which is used to shuffle elements during training.
             Default size is ``10000``.
         seq_length (optional): The maximum length sentence we want for a single training input in
-            characters. Default size is ``100``.
+            characters. Note that this setting is different than max_line_length, as seq_length
+            simply affects the length of the training examples passed to the neural network to
+            predict the next token. Default size is ``100``.
         embedding_dim (optional): Vector size for the lookup table used in the neural network
             Embedding layer that maps the numbers of each character. Default size is ``256``.
         rnn_units (optional): Positive integer, dimensionality of the output space for LSTM layers.
@@ -59,8 +61,8 @@ class _BaseConfig:
             such as comma or tab separated values, specify "," or "\t" respectively. Default is ``None``.
         field_delimiter_token (optional): User specified token to replace ``field_delimiter`` with
             while annotating data for training the model. Default is ``<d>``.
-        vocab_size (optional): Pre-determined vocabulary size prior to neural model training, based on
-            subword units including byte-pair-encoding (BPE) and unigram language model, with the extension
+        vocab_size (optional): Pre-determined maximum vocabulary size prior to neural model training, based
+            on subword units including byte-pair-encoding (BPE) and unigram language model, with the extension
             of direct training from raw sentences. We generally recommend using a large vocabulary
             size of 20,000 to 50,000. Default is ``20000``.
         character_coverage (optional): The amount of characters covered by the model. Unknown characters
@@ -71,7 +73,8 @@ class _BaseConfig:
             assurances that the models will encode general patterns in data rather than facts
             about specific training examples. These additional guarantees can usefully strengthen
             the protections offered for sensitive data and content, at a small loss in model
-            accuracy and synthetic data quality. Default is ``False``.
+            accuracy and synthetic data quality. The differential privacy epsilon and delta values
+            will be printed when training completes. Default is ``False``.
         dp_learning_rate (optional): The higher the learning rate, the more that each update during
             training matters. If the updates are noisy (such as when the additive noise is large
             compared to the clipping threshold), a low learning rate may help with training.
@@ -86,7 +89,8 @@ class _BaseConfig:
             Computational overhead can be reduced by increasing the size of micro-batches to include
             more than one training example. The number of micro-batches should divide evenly into
             the overall ``batch_size``. Default is ``64``.
-        gen_temp (optional): Low temperatures result in more predictable text. Higher temperatures
+        gen_temp (optional): Controls the randomness of predictions by scaling the logits before
+            applying softmax. Low temperatures result in more predictable text. Higher temperatures
             result in more surprising text. Experiment to find the best setting. Default is ``1.0``.
         gen_chars (optional): Maximum number of characters to generate per line. Default is ``0`` (no limit).
         gen_lines (optional): Maximum number of text lines to generate. This function is used by
