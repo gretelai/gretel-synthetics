@@ -11,7 +11,7 @@ import sentencepiece as spm
 import tensorflow as tf
 from collections import namedtuple
 from dataclasses import dataclass, asdict
-from typing import Tuple, TYPE_CHECKING, List
+from typing import Tuple, TYPE_CHECKING, List, Callable
 
 from gretel_synthetics.model import _build_sequential_model
 
@@ -97,7 +97,7 @@ def _load_model(store: "_BaseConfig") -> Tuple[spm.SentencePieceProcessor, tf.ke
 
 
 def generate_text(
-    config: "_BaseConfig", start_string: str = "<n>", line_validator: callable = None, max_invalid: int = 1000
+    config: "_BaseConfig", start_string: str = "<n>", line_validator: Callable = None, max_invalid: int = 1000
 ):
     """A generator that will load a model and start creating records.
 

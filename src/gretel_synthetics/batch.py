@@ -67,6 +67,23 @@ class Batch:
         self.gen_data_invalid = []
         self.gen_data_valid = []
 
+    def _basic_validator(self, raw_line: str):  # pragma: no cover
+        return len(raw_line.split(self.config.field_delimiter)) == len(self.headers)
+
+    def get_validator(self):
+        """If a custom validator is set, we return that. Otherwise,
+        we return the built-in validator, which simply checks if a generated
+        line has the right number of values based on the number of headers
+        for this batch.
+
+        This at least makes sure the resulting DataFrame will be the right
+        shape
+        """
+        if self.validator is not None:
+            return self.validator
+
+        return self._basic_validator
+
 
 def _build_batch_dirs(base_ckpoint: str, headers: List[List[str]], config: dict) -> dict:
     """Return a mapping of batch number => ``Batch`` object
@@ -194,7 +211,8 @@ class DataFrameBatch:
             raise ValueError("invalid batch index")
         batch.reset_gen_data()
         line: gen_text
-        for line in generate_text(batch.config, line_validator=batch.validator, max_invalid=MAX_INVALID):
+        validator = batch.get_validator()
+        for line in generate_text(batch.config, line_validator=validator, max_invalid=MAX_INVALID):
             if line.valid is None or line.valid is True:
                 batch.gen_data_valid.append(line)
             else:
