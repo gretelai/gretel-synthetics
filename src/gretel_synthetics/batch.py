@@ -214,7 +214,7 @@ class DataFrameBatch:
         line: gen_text
         validator = batch.get_validator()
         t = tqdm(total=batch.config.gen_lines, desc="Valid record count ")
-        t2 = tqdm(total=batch.config.gen_lines, desc="Valid record count ")
+        t2 = tqdm(total=max_invalid, desc="Invalid record count ")
         for line in generate_text(batch.config, line_validator=validator, max_invalid=MAX_INVALID):
             if line.valid is None or line.valid is True:
                 batch.gen_data_valid.append(line)
