@@ -15,6 +15,7 @@ import logging
 
 import pandas as pd
 import numpy as np
+from tqdm.auto import tqdm
 
 from gretel_synthetics.config import LocalConfig
 from gretel_synthetics.generate import gen_text, generate_text
@@ -212,12 +213,14 @@ class DataFrameBatch:
         batch.reset_gen_data()
         line: gen_text
         validator = batch.get_validator()
+        t = tqdm(total=batch.config.gen_lines, desc="Valid record count ")
         for line in generate_text(batch.config, line_validator=validator, max_invalid=MAX_INVALID):
             if line.valid is None or line.valid is True:
                 batch.gen_data_valid.append(line)
+                t.update(1)
             else:
                 batch.gen_data_invalid.append(line)
-
+        t.close()
         return len(batch.gen_data_valid) == batch.config.gen_lines
 
     def generate_all_batch_lines(self, max_invalid=MAX_INVALID):
