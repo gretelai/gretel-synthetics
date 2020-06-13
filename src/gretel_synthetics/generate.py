@@ -7,18 +7,19 @@ Before using this module you must have already:
     - Trained a model
 """
 import logging
-import sentencepiece as spm
-import tensorflow as tf
 from collections import namedtuple
 from dataclasses import dataclass, asdict
 from typing import Tuple, TYPE_CHECKING, List, Callable
+
+import sentencepiece as spm
+import tensorflow as tf
 
 from gretel_synthetics.model import _build_sequential_model
 
 if TYPE_CHECKING:  # pragma: no cover
     from gretel_synthetics.config import _BaseConfig
 
-_pred_string = namedtuple("pred_string", ["data"])
+PredString = namedtuple("pred_string", ["data"])
 
 
 @dataclass
@@ -75,7 +76,9 @@ def _load_tokenizer(store: "_BaseConfig") -> spm.SentencePieceProcessor:
     return sp
 
 
-def _prepare_model(sp: spm, batch_size: int, store: "_BaseConfig") -> tf.keras.Sequential:  # pragma: no cover
+def _prepare_model(
+    sp: spm, batch_size: int, store: "_BaseConfig"
+) -> tf.keras.Sequential:  # pragma: no cover
     model = _build_sequential_model(
         vocab_size=len(sp), batch_size=batch_size, store=store
     )
@@ -90,14 +93,19 @@ def _prepare_model(sp: spm, batch_size: int, store: "_BaseConfig") -> tf.keras.S
     return model
 
 
-def _load_model(store: "_BaseConfig") -> Tuple[spm.SentencePieceProcessor, tf.keras.Sequential]:
+def _load_model(
+    store: "_BaseConfig",
+) -> Tuple[spm.SentencePieceProcessor, tf.keras.Sequential]:
     sp = _load_tokenizer(store)
     model = _prepare_model(sp, 1, store)
     return sp, model
 
 
 def generate_text(
-    config: "_BaseConfig", start_string: str = "<n>", line_validator: Callable = None, max_invalid: int = 1000
+    config: "_BaseConfig",
+    start_string: str = "<n>",
+    line_validator: Callable = None,
+    max_invalid: int = 1000,
 ):
     """A generator that will load a model and start creating records.
 
@@ -232,11 +240,10 @@ def _predict_chars(
         decoded = sp.DecodeIds(sentence_ids)
         if store.field_delimiter is not None:
             decoded = decoded.replace(
-                store.field_delimiter_token,
-                store.field_delimiter
+                store.field_delimiter_token, store.field_delimiter
             )
 
         if "<n>" in decoded:
-            return _pred_string(decoded.replace("<n>", ""))
+            return PredString(decoded.replace("<n>", ""))
         elif 0 < store.gen_chars <= len(decoded):
-            return _pred_string(decoded)
+            return PredString(decoded)

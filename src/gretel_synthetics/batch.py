@@ -50,12 +50,16 @@ class Batch:
 
     @property
     def synthetic_df(self) -> pd.DataFrame:
+        """Get a DataFrame constructed from the generated lines """
         if not self.gen_data_stream.getvalue():  # pragma: no cover
             return pd.DataFrame()
         self.gen_data_stream.seek(0)
         return pd.read_csv(self.gen_data_stream)
 
     def set_validator(self, fn: Callable, save=True):
+        """Assign a validation callable to this batch. Optionally
+        pickling and saving the validator for loading later
+        """
         self.validator = fn
         if save:
             p = Path(self.checkpoint_dir) / "validator.p.gz"
@@ -63,12 +67,16 @@ class Batch:
                 fout.write(pickle.dumps(fn))
 
     def load_validator_from_file(self):
+        """Load a saved validation object if it exists """
         p = Path(self.checkpoint_dir) / "validator.p.gz"
         if p.exists():
             with gzip.open(p, "r") as fin:
                 self.validator = pickle.loads(fin.read())
 
     def reset_gen_data(self):
+        """Reset all objects that accumulate or track synthetic
+        data generation
+        """
         self.gen_data_invalid = []
         self.gen_data_stream = io.StringIO()
         self.gen_data_stream.write(
@@ -77,6 +85,9 @@ class Batch:
         self.gen_data_count = 0
 
     def add_valid_data(self, data: gen_text):
+        """Take a ``gen_text`` object and add the generated
+        line to the generated data stream
+        """
         self.gen_data_stream.write(data.text + "\n")
         self.gen_data_count += 1
 
