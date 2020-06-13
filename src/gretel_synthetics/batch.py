@@ -296,7 +296,7 @@ class DataFrameBatch:
         """Generate synthetic lines for all batches.
 
         Args:
-            max_invalid: The number of invalid lines, per batch. If this number 
+            max_invalid: The number of invalid lines, per batch. If this number
                 is exceeded for any batch, generation will stop.
         """
         batch_status = {}
