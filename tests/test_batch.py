@@ -142,18 +142,23 @@ def test_init(test_data):
 
 
 def test_batches_to_df(test_data):
-    batches = DataFrameBatch(df=pd.DataFrame([{"foo": "bar", "foo1": "bar1", "foo2": "bar2"}]), config=config_template, batch_size=1)
+    batches = DataFrameBatch(df=pd.DataFrame([
+        {"foo": "bar", "foo1": "bar1", "foo2": "bar2", "foo3": 3}]), config=config_template, batch_size=1)
 
-    batches.batches[0].gen_data_valid = [
+    batches.batches[0].add_valid_data(
         gen_text(text="baz", valid=True, delimiter=",")
-    ]
-    batches.batches[1].gen_data_valid = [
+    )
+    batches.batches[1].add_valid_data(
         gen_text(text="baz1", valid=True, delimiter=",")
-    ]
-    batches.batches[2].gen_data_valid = [
+    )
+    batches.batches[2].add_valid_data(
         gen_text(text="baz2", valid=True, delimiter=",")
-    ]
+    )
+    batches.batches[3].add_valid_data(
+        gen_text(text="5", valid=True, delimiter=",")
+    )
 
     check = batches.batches_to_df()
-    assert list(check.columns) == ["foo", "foo1", "foo2"]
-    assert check.shape == (1, 3)
+    assert list(check.columns) == ["foo", "foo1", "foo2", "foo3"]
+    assert check.shape == (1, 4)
+    assert [t.name for t in list(check.dtypes)] == ['object', 'object', 'object', 'int64']

@@ -12,6 +12,7 @@ from typing import List, Type, Callable, Dict
 import pickle
 from copy import deepcopy
 import logging
+import io
 
 import pandas as pd
 import numpy as np
@@ -36,20 +37,23 @@ class Batch:
     input_data_path: str
     headers: List[str]
     config: LocalConfig
+    gen_data_count: int = 0
 
     training_df: Type[pd.DataFrame] = field(default_factory=lambda: None, init=False)
-    gen_data_valid: List[gen_text] = field(default_factory=list, init=False)
+    # gen_data_valid: List[gen_text] = field(default_factory=list, init=False)
+    gen_data_stream: io.StringIO = field(default_factory=io.StringIO, init=False)
     gen_data_invalid: List[gen_text] = field(default_factory=list, init=False)
     validator: Callable = field(default_factory=lambda: None, init=False)
 
+    def __post_init__(self):
+        self.reset_gen_data()
+
     @property
     def synthetic_df(self) -> pd.DataFrame:
-        rows = []
-        if not self.gen_data_valid:  # pragma: no cover
+        if not self.gen_data_stream.getvalue():  # pragma: no cover
             return pd.DataFrame()
-        for row in self.gen_data_valid:
-            rows.append(row.values_as_list())
-        return pd.DataFrame(rows, columns=self.headers)
+        self.gen_data_stream.seek(0)
+        return pd.read_csv(self.gen_data_stream)
 
     def set_validator(self, fn: Callable, save=True):
         self.validator = fn
@@ -66,7 +70,15 @@ class Batch:
 
     def reset_gen_data(self):
         self.gen_data_invalid = []
-        self.gen_data_valid = []
+        self.gen_data_stream = io.StringIO()
+        self.gen_data_stream.write(
+            self.config.field_delimiter.join(self.headers) + "\n"
+        )
+        self.gen_data_count = 0
+
+    def add_valid_data(self, data: gen_text):
+        self.gen_data_stream.write(data.text + "\n")
+        self.gen_data_count += 1
 
     def _basic_validator(self, raw_line: str):  # pragma: no cover
         return len(raw_line.split(self.config.field_delimiter)) == len(self.headers)
@@ -86,7 +98,9 @@ class Batch:
         return self._basic_validator
 
 
-def _build_batch_dirs(base_ckpoint: str, headers: List[List[str]], config: dict) -> dict:
+def _build_batch_dirs(
+    base_ckpoint: str, headers: List[List[str]], config: dict
+) -> dict:
     """Return a mapping of batch number => ``Batch`` object
     """
     out = {}
@@ -101,16 +115,15 @@ def _build_batch_dirs(base_ckpoint: str, headers: List[List[str]], config: dict)
         checkpoint_dir = str(ckpoint)
         input_data_path = str(ckpoint / "train.csv")
         new_config = deepcopy(config)
-        new_config.update({
-            "checkpoint_dir": checkpoint_dir,
-            "input_data_path": input_data_path
-        })
+        new_config.update(
+            {"checkpoint_dir": checkpoint_dir, "input_data_path": input_data_path}
+        )
         out[i] = Batch(
-                    checkpoint_dir=checkpoint_dir,
-                    input_data_path=input_data_path,
-                    headers=headers,
-                    config=LocalConfig(**new_config)
-                )
+            checkpoint_dir=checkpoint_dir,
+            input_data_path=input_data_path,
+            headers=headers,
+            config=LocalConfig(**new_config),
+        )
         # try and load any previously saved validators
         out[i].load_validator_from_file()
 
@@ -124,7 +137,14 @@ class DataFrameBatch:
     increments from 0..N where N is the number of batches being used.
     """
 
-    def __init__(self, *, df: pd.DataFrame, batch_size: int = 15, batch_headers: List[List[str]] = None, config: dict):
+    def __init__(
+        self,
+        *,
+        df: pd.DataFrame,
+        batch_size: int = 15,
+        batch_headers: List[List[str]] = None,
+        config: dict,
+    ):
         if not isinstance(df, pd.DataFrame):
             raise ValueError("df must be a Data Frame")
         self._source_df = df
@@ -141,9 +161,7 @@ class DataFrameBatch:
             self.batch_headers = batch_headers
 
         self.batches = _build_batch_dirs(
-            self.config["checkpoint_dir"],
-            self.batch_headers,
-            self.config
+            self.config["checkpoint_dir"], self.batch_headers, self.config
         )
 
     def _create_header_batches(self):
@@ -210,21 +228,24 @@ class DataFrameBatch:
             batch = self.batches[batch_idx]
         except KeyError:  # pragma: no cover
             raise ValueError("invalid batch index")
+        batch: Batch
         batch.reset_gen_data()
-        line: gen_text
         validator = batch.get_validator()
         t = tqdm(total=batch.config.gen_lines, desc="Valid record count ")
         t2 = tqdm(total=max_invalid, desc="Invalid record count ")
-        for line in generate_text(batch.config, line_validator=validator, max_invalid=MAX_INVALID):
+        line: gen_text
+        for line in generate_text(
+            batch.config, line_validator=validator, max_invalid=MAX_INVALID
+        ):
             if line.valid is None or line.valid is True:
-                batch.gen_data_valid.append(line)
+                batch.add_valid_data(line)
                 t.update(1)
             else:
                 t2.update(1)
                 batch.gen_data_invalid.append(line)
         t.close()
         t2.close()
-        return len(batch.gen_data_valid) == batch.config.gen_lines
+        return batch.gen_data_count == batch.config.gen_lines
 
     def generate_all_batch_lines(self, max_invalid=MAX_INVALID):
         batch_status = {}
