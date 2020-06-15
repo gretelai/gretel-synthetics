@@ -18,7 +18,7 @@ import tensorflow as tf
 from tqdm import tqdm
 
 from gretel_synthetics.model import _build_sequential_model, _compute_epsilon
-from gretel_synthetics.config import _BaseConfig
+from gretel_synthetics.config import BaseConfig
 from gretel_synthetics.generate import _load_model
 
 
@@ -58,7 +58,7 @@ def _save_history_csv(history: _LossHistory, save_dir: str):
     df.to_csv(save_path.as_posix(), index=False)
 
 
-def train_rnn(store: _BaseConfig):
+def train_rnn(store: BaseConfig):
     """
     Fit synthetic data model on training data.
 
@@ -113,7 +113,7 @@ def train_rnn(store: _BaseConfig):
         logging.info(_compute_epsilon(len(text), store))
 
 
-def _annotate_training_data(store: _BaseConfig):
+def _annotate_training_data(store: BaseConfig):
     """
     Prepare training data for tokenization with SentencePiece model.
     Including: use reserved tokens <n> to indicate end of sentences in training data.
@@ -143,7 +143,7 @@ def _annotate_training_data(store: _BaseConfig):
     return labeled_text
 
 
-def _move_tokenizer_model(store: _BaseConfig):
+def _move_tokenizer_model(store: BaseConfig):
     """
     Move SentencePiece tokenizer to model storage directory
     """
@@ -153,7 +153,7 @@ def _move_tokenizer_model(store: _BaseConfig):
         shutil.move(src.as_posix(), dst.as_posix())
 
 
-def _train_tokenizer(store: _BaseConfig) -> spm.SentencePieceProcessor:
+def _train_tokenizer(store: BaseConfig) -> spm.SentencePieceProcessor:
     """
     Trains SentencePiece tokenizer on training data
     """
@@ -196,7 +196,7 @@ def _train_tokenizer(store: _BaseConfig) -> spm.SentencePieceProcessor:
     return sp
 
 
-def _create_dataset(store: _BaseConfig, text: str, sp: spm.SentencePieceProcessor) -> tf.data.Dataset:
+def _create_dataset(store: BaseConfig, text: str, sp: spm.SentencePieceProcessor) -> tf.data.Dataset:
     """
     Before training, we need to map strings to a numerical representation.
     Create two lookup tables: one mapping characters to numbers,

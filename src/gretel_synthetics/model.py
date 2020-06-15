@@ -10,11 +10,11 @@ from tensorflow_privacy.privacy.optimizers.dp_optimizer import (
 )
 from tensorflow_privacy.privacy.analysis import compute_dp_sgd_privacy
 
-from gretel_synthetics.config import _BaseConfig
+from gretel_synthetics.config import BaseConfig
 
 
 def _build_sequential_model(
-    vocab_size: int, batch_size: int, store: _BaseConfig
+    vocab_size: int, batch_size: int, store: BaseConfig
 ) -> tf.keras.Sequential:
     """
     Utilizing tf.keras.Sequential model (LSTM)
@@ -73,7 +73,7 @@ def _build_sequential_model(
     return model
 
 
-def _compute_epsilon(steps: int, store: _BaseConfig):
+def _compute_epsilon(steps: int, store: BaseConfig):
     """
     Calculate epsilon and delta values for differential privacy
     """
