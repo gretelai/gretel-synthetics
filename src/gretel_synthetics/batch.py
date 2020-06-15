@@ -32,6 +32,7 @@ logger.setLevel(logging.INFO)
 
 MAX_INVALID = 1000
 FIELD_DELIM = "field_delimiter"
+GEN_LINES = "gen_lines"
 
 
 @dataclass
@@ -194,14 +195,20 @@ class DataFrameBatch:
         df: pd.DataFrame,
         batch_size: int = 15,
         batch_headers: List[List[str]] = None,
-        config: dict,
+        config: dict = None
     ):
+
+        if not config:
+            raise ValueError("config is required!")
 
         if not isinstance(df, pd.DataFrame):
             raise ValueError("df must be a Data Frame")
 
         if FIELD_DELIM not in config:
             raise ValueError("field_delimiter must be in config")
+
+        if GEN_LINES not in config:
+            config[GEN_LINES] = df.shape[0]
 
         self._source_df = df
         self.batch_size = batch_size

@@ -49,6 +49,18 @@ def simple_validator(line: str):
     return len(line.split(",")) == 5
 
 
+def test_missing_config(test_data):
+    with pytest.raises(ValueError):
+        DataFrameBatch(df=test_data)
+
+
+def test_auto_gen_lines(test_data):
+    config = deepcopy(config_template)
+    config.pop("gen_lines")
+    d = DataFrameBatch(df=test_data, config=config)
+    assert d.config["gen_lines"] == test_data.shape[0]
+
+
 def test_missing_delim():
     config = deepcopy(config_template)
     config.pop("field_delimiter")
