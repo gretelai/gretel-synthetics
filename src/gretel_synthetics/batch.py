@@ -324,7 +324,7 @@ class DataFrameBatch:
         t2.close()
         return batch.gen_data_count == batch.config.gen_lines
 
-    def generate_all_batch_lines(self, max_invalid=MAX_INVALID):
+    def generate_all_batch_lines(self, max_invalid=MAX_INVALID) -> dict:
         """Generate synthetic lines for all batches. Lines for each batch
         are added to the individual ``Batch`` objects. Once generateion is
         done, you may re-assemble the dataset into a DataFrame.
@@ -338,6 +338,15 @@ class DataFrameBatch:
         Args:
             max_invalid: The number of invalid lines, per batch. If this number
                 is exceeded for any batch, generation will stop.
+
+        Returns:
+            A dictionary of batch number to a bool value that shows if each batch
+            was able to generate the full number of requested lines::
+
+                {
+                    0: True,
+                    1: True
+                }
         """
         batch_status = {}
         for idx in self.batches.keys():
