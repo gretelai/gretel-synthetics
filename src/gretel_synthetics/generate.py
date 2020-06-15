@@ -17,7 +17,7 @@ import tensorflow as tf
 from gretel_synthetics.model import _build_sequential_model
 
 if TYPE_CHECKING:  # pragma: no cover
-    from gretel_synthetics.config import _BaseConfig
+    from gretel_synthetics.config import BaseConfig
 
 PredString = namedtuple("pred_string", ["data"])
 
@@ -69,7 +69,7 @@ logging.basicConfig(
 )
 
 
-def _load_tokenizer(store: "_BaseConfig") -> spm.SentencePieceProcessor:
+def _load_tokenizer(store: "BaseConfig") -> spm.SentencePieceProcessor:
     logging.info("Loading SentencePiece tokenizer")
     sp = spm.SentencePieceProcessor()
     sp.Load(store.tokenizer_model)
@@ -77,7 +77,7 @@ def _load_tokenizer(store: "_BaseConfig") -> spm.SentencePieceProcessor:
 
 
 def _prepare_model(
-    sp: spm, batch_size: int, store: "_BaseConfig"
+    sp: spm, batch_size: int, store: "BaseConfig"
 ) -> tf.keras.Sequential:  # pragma: no cover
     model = _build_sequential_model(
         vocab_size=len(sp), batch_size=batch_size, store=store
@@ -94,7 +94,7 @@ def _prepare_model(
 
 
 def _load_model(
-    store: "_BaseConfig",
+    store: "BaseConfig",
 ) -> Tuple[spm.SentencePieceProcessor, tf.keras.Sequential]:
     sp = _load_tokenizer(store)
     model = _prepare_model(sp, 1, store)
@@ -102,7 +102,7 @@ def _load_model(
 
 
 def generate_text(
-    config: "_BaseConfig",
+    config: "BaseConfig",
     start_string: str = "<n>",
     line_validator: Callable = None,
     max_invalid: int = 1000,
@@ -198,7 +198,7 @@ def _predict_chars(
     model: tf.keras.Sequential,
     sp: spm.SentencePieceProcessor,
     start_string: str,
-    store: "_BaseConfig",
+    store: "BaseConfig",
 ) -> str:
     """
     Evaluation step (generating text using the learned model).

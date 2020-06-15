@@ -1,4 +1,4 @@
-Config
+Batch
 ======
 
 .. automodule:: gretel_synthetics.batch

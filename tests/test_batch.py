@@ -1,12 +1,13 @@
 from pathlib import Path
 import shutil
-from unittest.mock import patch, Mock
+from unittest.mock import patch
 import random
+from copy import deepcopy
 
 import pytest
 import pandas as pd
 
-from gretel_synthetics.batch import DataFrameBatch, Batch
+from gretel_synthetics.batch import DataFrameBatch
 from gretel_synthetics.generate import gen_text
 
 
@@ -30,7 +31,7 @@ config_template = {
     "dp_noise_multiplier": 1.1,
     "dp_l2_norm_clip": 1.0,
     "dp_microbatches": 256,
-    "field_delimiter": ",",
+    "field_delimiter": "|",
     "overwrite": False,
     "checkpoint_dir": checkpoint_dir,
 }
@@ -42,10 +43,17 @@ def test_data():
     yield pd.read_csv(path)
     if Path(checkpoint_dir).is_dir():
         shutil.rmtree(checkpoint_dir)
-
+        pass
 
 def simple_validator(line: str):
     return len(line.split(",")) == 5
+
+
+def test_missing_delim():
+    config = deepcopy(config_template)
+    config.pop("field_delimiter")
+    with pytest.raises(ValueError):
+        DataFrameBatch(df=test_data, config=config)
 
 
 def test_init(test_data):
@@ -80,7 +88,7 @@ def test_init(test_data):
         assert Path(batch.checkpoint_dir).name == f"batch_{i}"
 
     batches.create_training_data()
-    df = pd.read_csv(batches.batches[0].input_data_path)
+    df = pd.read_csv(batches.batches[0].input_data_path, sep=config_template["field_delimiter"])
     assert len(df.columns) == len(first_row)
 
     with pytest.raises(ValueError):

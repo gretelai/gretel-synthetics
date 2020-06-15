@@ -1,9 +1,11 @@
 """
-Experimental module that allows automatic splitting of a DataFrame
+This module allows automatic splitting of a DataFrame
 into smaller DataFrames (by clusters of columns) and doing
 model training and text generation on each sub-DF independently.
 
 Then we can concat each sub-DF back into one final synthetic dataset.
+
+For example usage, please see our Jupyter Notebook.
 """
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -29,10 +31,16 @@ logger.setLevel(logging.INFO)
 
 
 MAX_INVALID = 1000
+FIELD_DELIM = "field_delimiter"
 
 
 @dataclass
 class Batch:
+    """A representation of a synthetic data workflow.  It should not be used
+    directly. This object is created automatically by the primary batch handler,
+    such as ``DataFrameBatch``.  This class holds all of the necessary information
+    for training, data generation and DataFrame re-assembly.
+    """
     checkpoint_dir: str
     input_data_path: str
     headers: List[str]
@@ -40,7 +48,6 @@ class Batch:
     gen_data_count: int = 0
 
     training_df: Type[pd.DataFrame] = field(default_factory=lambda: None, init=False)
-    # gen_data_valid: List[gen_text] = field(default_factory=list, init=False)
     gen_data_stream: io.StringIO = field(default_factory=io.StringIO, init=False)
     gen_data_invalid: List[gen_text] = field(default_factory=list, init=False)
     validator: Callable = field(default_factory=lambda: None, init=False)
@@ -142,7 +149,38 @@ def _build_batch_dirs(
 
 
 class DataFrameBatch:
-    """Multi-batch trainer / generator from a DataFrame
+    """Create a multi-batch trainer / generator. When created, the directory
+    structure to store models and training data will automatically be created.
+    The directory structure will be created under the "checkpoint_dir" location
+    provided in the ``config`` template. There will be one directory per batch,
+    where each directory will be called "batch_N" where N is the batch number, starting
+    from 0.
+
+    Training and generating can happen per-batch or we can loop over all batches to
+    do both train / generation functions.
+
+    Example:
+        When creating this object, you must explicitly create the training data
+        from the input DataFrame before training models::
+
+            my_batch = DataFrameBatch(df=my_df, config=my_config)
+            my_batch.create_training_data()
+            my_batch.train_all_batches()
+
+    Args:
+        df: The input, source DataFrame
+        batch_size:  If ``batch_headers`` is not provided we automatically break up
+            the number of colums in the source DataFrame into batches of N columns.
+        batch_headers:  A list of lists of strings can be provided which will control
+            the number of batches. The number of inner lists is the number of batches, and each
+            inner list represents the columns that belong to that batch
+        config: A template training config to use, this will be used as kwargs for each Batch's
+            synthetic configuration.
+
+    NOTE:
+        When providing a config, the source of training data is not necessary, only the
+        ``checkpoint_dir`` is needed. Each batch will control its input training data path
+        after it creates the training dataset.
     """
 
     batches: Dict[int, Batch]
@@ -158,33 +196,13 @@ class DataFrameBatch:
         batch_headers: List[List[str]] = None,
         config: dict,
     ):
-        """Create a multi-batch trainer / generator. When created, the directory
-        structure to store models and training data will automatically be created.
-        The directory structure will be created under the "checkpoint_dir" location
-        provided in the ``config`` template. There will be one directory per batch,
-        where each directory will be called "batch_N" where N is the batch number, starting
-        from 0.
 
-        Training and generating can happen per-batch or we can loop over all batches to
-        do both train / generation functions
-
-        Args:
-            df: The input, source DataFrame
-            batch_size:  If ``batch_headers`` is not provided we automatically break up
-                the number of colums in the source DataFrame into batches of N columns.
-            batch_headers:  A list of lists of strings can be provided which will control
-                the number of batches. The number of inner lists is the number of batches, and each
-                inner list represents the columns that belong to that batch
-            config: A template training config to use, this will be used as kwargs for each Batch's
-                synthetic configuration.
-
-            NOTE:
-                When providing a config, the source of training data is not necessary, only the
-                ``checkpoint_dir`` is needed. Each batch will control its input training data path
-                after it creates the training dataset.
-        """
         if not isinstance(df, pd.DataFrame):
             raise ValueError("df must be a Data Frame")
+
+        if FIELD_DELIM not in config:
+            raise ValueError("field_delimiter must be in config")
+
         self._source_df = df
         self.batch_size = batch_size
         self.config = config
@@ -223,11 +241,16 @@ class DataFrameBatch:
             logger.info(f"Generating training DF and CSV for batch {i}")
             out_df = self._source_df[batch.headers]
             batch.training_df = out_df.copy(deep=True)
-            out_df.to_csv(batch.input_data_path, header=False, index=False)
+            out_df.to_csv(
+                batch.input_data_path,
+                header=False,
+                index=False,
+                sep=self.config[FIELD_DELIM],
+            )
 
     def train_batch(self, batch_idx: int):
         """Train a model for a single batch. All model information will
-        be written into that batch's directory
+        be written into that batch's directory.
 
         Args:
             batch_idx: The index of the batch, from the ``batches`` dictionary
@@ -238,7 +261,7 @@ class DataFrameBatch:
             raise ValueError("batch_idx is invalid")
 
     def train_all_batches(self):
-        """Train a model for each batch
+        """Train a model for each batch.
         """
         for idx in self.batches.keys():
             self.train_batch(idx)
@@ -262,7 +285,9 @@ class DataFrameBatch:
             raise ValueError("invalid batch number!")
 
     def generate_batch_lines(self, batch_idx: int, max_invalid=1000):
-        """Train a model for a single batch.
+        """Generate lines for a single batch. Lines generated are added
+        to the underlying ``Batch`` object for each batch. The lines
+        can be accessed after generation and re-assembled into a DataFrame.
 
         Args:
             batch_idx: The batch number
@@ -293,7 +318,15 @@ class DataFrameBatch:
         return batch.gen_data_count == batch.config.gen_lines
 
     def generate_all_batch_lines(self, max_invalid=MAX_INVALID):
-        """Generate synthetic lines for all batches.
+        """Generate synthetic lines for all batches. Lines for each batch
+        are added to the individual ``Batch`` objects. Once generateion is
+        done, you may re-assemble the dataset into a DataFrame.
+
+        Example::
+
+            my_batch.generate_all_batch_lines()
+            # Wait for all generation to complete
+            synthetic_df = my_batch.batches_to_df()
 
         Args:
             max_invalid: The number of invalid lines, per batch. If this number
@@ -305,11 +338,11 @@ class DataFrameBatch:
         return batch_status
 
     def batch_to_df(self, batch_idx: int) -> pd.DataFrame:  # pragma: no cover
-        """Extract a synthetic data DataFrame from a single batch
+        """Extract a synthetic data DataFrame from a single batch.
 
         Args:
             batch_idx: The batch number
-        
+
         Returns:
             A DataFrame with synthetic data
         """
@@ -323,7 +356,7 @@ class DataFrameBatch:
 
         Returns:
             A single DataFrame that is the concatenation of all the
-            batch DataFrames
+            batch DataFrames.
         """
         batch_iter = iter(self.batches.values())
         base_batch = next(batch_iter)

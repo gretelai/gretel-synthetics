@@ -22,7 +22,7 @@ MODEL_PARAMS = "model_params.json"
 
 
 @dataclass
-class _BaseConfig:
+class BaseConfig:
     """Base dataclass that contains all of the main parameters for
     training a model and generating data.  This base config generally
     should not be used directly. Instead you should use one of the
@@ -188,7 +188,7 @@ class _PathSettingsMixin:
 
 
 @dataclass
-class LocalConfig(_BaseConfig, _PathSettingsMixin):
+class LocalConfig(BaseConfig, _PathSettingsMixin):
     """This configuration will use the local file system
     to store all models, training data, and checkpoints
 
