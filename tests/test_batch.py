@@ -163,19 +163,13 @@ def test_init(test_data):
 
 def test_batches_to_df(test_data):
     batches = DataFrameBatch(df=pd.DataFrame([
-        {"foo": "bar", "foo1": "bar1", "foo2": "bar2", "foo3": 3}]), config=config_template, batch_size=1)
+        {"foo": "bar", "foo1": "bar1", "foo2": "bar2", "foo3": 3}]), config=config_template, batch_size=2)
 
     batches.batches[0].add_valid_data(
-        gen_text(text="baz", valid=True, delimiter=",")
+        gen_text(text="baz|baz1", valid=True, delimiter="|")
     )
     batches.batches[1].add_valid_data(
-        gen_text(text="baz1", valid=True, delimiter=",")
-    )
-    batches.batches[2].add_valid_data(
-        gen_text(text="baz2", valid=True, delimiter=",")
-    )
-    batches.batches[3].add_valid_data(
-        gen_text(text="5", valid=True, delimiter=",")
+        gen_text(text="baz2|5", valid=True, delimiter="|")
     )
 
     check = batches.batches_to_df()

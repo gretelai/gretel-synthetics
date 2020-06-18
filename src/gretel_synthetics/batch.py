@@ -62,7 +62,7 @@ class Batch:
         if not self.gen_data_stream.getvalue():  # pragma: no cover
             return pd.DataFrame()
         self.gen_data_stream.seek(0)
-        return pd.read_csv(self.gen_data_stream)
+        return pd.read_csv(self.gen_data_stream, sep=self.config.field_delimiter)
 
     def set_validator(self, fn: Callable, save=True):
         """Assign a validation callable to this batch. Optionally
