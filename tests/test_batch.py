@@ -173,7 +173,6 @@ def test_batches_to_df(test_data):
     )
 
     check = batches.batches_to_df()
-    print(check)
     assert list(check.columns) == ["foo", "foo1", "foo2", "foo3"]
     assert check.shape == (1, 4)
     assert [t.name for t in list(check.dtypes)] == ['object', 'object', 'object', 'int64']
