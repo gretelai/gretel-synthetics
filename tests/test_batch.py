@@ -141,6 +141,13 @@ def test_init(test_data):
 
     with patch("gretel_synthetics.batch.generate_text") as mock_gen:
         mock_gen.return_value = [good(), good(), good(), bad(), bad(), good(), good()]
+        assert batches.generate_batch_lines(5, max_invalid=1)
+        check_call = mock_gen.mock_calls[0]
+        _, _, kwargs = check_call
+        assert kwargs["max_invalid"] == 1
+
+    with patch("gretel_synthetics.batch.generate_text") as mock_gen:
+        mock_gen.return_value = [good(), good(), good(), bad(), bad(), good(), good()]
         assert batches.generate_batch_lines(5)
 
     with patch("gretel_synthetics.batch.generate_text") as mock_gen:
@@ -148,8 +155,11 @@ def test_init(test_data):
         assert not batches.generate_batch_lines(5)
 
     with patch.object(batches, "generate_batch_lines") as mock_gen:
-        batches.generate_all_batch_lines()
+        batches.generate_all_batch_lines(max_invalid=15)
         assert mock_gen.call_count == len(batches.batches.keys())
+        check_call = mock_gen.mock_calls[0]
+        _, _, kwargs = check_call
+        assert kwargs["max_invalid"] == 15
        
 
     # get synthetic df
