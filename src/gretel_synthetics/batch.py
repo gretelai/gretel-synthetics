@@ -10,6 +10,7 @@ For example usage, please see our Jupyter Notebook.
 from dataclasses import dataclass, field
 from pathlib import Path
 import gzip
+from math import ceil
 from typing import List, Type, Callable, Dict
 import pickle
 from copy import deepcopy
@@ -31,6 +32,7 @@ logger.setLevel(logging.INFO)
 
 
 MAX_INVALID = 1000
+BATCH_SIZE = 15
 FIELD_DELIM = "field_delimiter"
 GEN_LINES = "gen_lines"
 
@@ -171,7 +173,7 @@ class DataFrameBatch:
     Args:
         df: The input, source DataFrame
         batch_size:  If ``batch_headers`` is not provided we automatically break up
-            the number of colums in the source DataFrame into batches of N columns.
+            the number of columns in the source DataFrame into batches of N columns.
         batch_headers:  A list of lists of strings can be provided which will control
             the number of batches. The number of inner lists is the number of batches, and each
             inner list represents the columns that belong to that batch
@@ -193,7 +195,7 @@ class DataFrameBatch:
         self,
         *,
         df: pd.DataFrame,
-        batch_size: int = 15,
+        batch_size: int = BATCH_SIZE,
         batch_headers: List[List[str]] = None,
         config: dict = None
     ):
@@ -228,7 +230,7 @@ class DataFrameBatch:
         )
 
     def _create_header_batches(self):
-        num_batches = len(self._source_df.columns) // self.batch_size
+        num_batches = ceil(len(self._source_df.columns) / self.batch_size)
         tmp = np.array_split(list(self._source_df.columns), num_batches)
         return [list(row) for row in tmp]
 

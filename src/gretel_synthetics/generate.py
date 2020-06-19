@@ -110,7 +110,7 @@ def generate_text(
     """A generator that will load a model and start creating records.
 
     Args:
-        store: A configuration object, which you must have created previously
+        config: A configuration object, which you must have created previously
         start_string:  A prefix string that is used to seed the record generation.
             By default we use a newline, but you may substitue any initial value here
             which will influence how the generator predicts what to generate.

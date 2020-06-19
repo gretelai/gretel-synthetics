@@ -45,8 +45,21 @@ def test_data():
         shutil.rmtree(checkpoint_dir)
         pass
 
+
 def simple_validator(line: str):
     return len(line.split(",")) == 5
+
+
+def test_batch_size(test_data):
+    test_data = test_data.iloc[:, :60]
+    batches = DataFrameBatch(df=test_data, config=config_template, batch_size=15)
+    assert batches.batch_size == 15
+    assert [len(x) for x in batches.batch_headers] == [15, 15, 15, 15]
+
+    test_data = test_data.iloc[:, :59]
+    batches = DataFrameBatch(df=test_data, config=config_template, batch_size=15)
+    assert batches.batch_size == 15
+    assert [len(x) for x in batches.batch_headers] == [15, 15, 15, 14]
 
 
 def test_missing_config(test_data):
@@ -74,7 +87,7 @@ def test_init(test_data):
 
     # should create the dir structure based on auto
     # batch sizing
-    batches = DataFrameBatch(df=test_data, config=config_template)
+    batches = DataFrameBatch(df=test_data, config=config_template, batch_size=15)
     first_row = [
         "ID_code",
         "target",
@@ -91,10 +104,9 @@ def test_init(test_data):
         "var_10",
         "var_11",
         "var_12",
-        "var_13",
     ]
     assert batches.batches[0].headers == first_row
-    assert len(batches.batches.keys()) == 13
+    assert len(batches.batches.keys()) == 14
     for i, batch in batches.batches.items():
         assert Path(batch.checkpoint_dir).is_dir()
         assert Path(batch.checkpoint_dir).name == f"batch_{i}"
