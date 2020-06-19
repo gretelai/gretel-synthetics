@@ -291,7 +291,7 @@ class DataFrameBatch:
         except KeyError:
             raise ValueError("invalid batch number!")
 
-    def generate_batch_lines(self, batch_idx: int, max_invalid=1000):
+    def generate_batch_lines(self, batch_idx: int, max_invalid=MAX_INVALID):
         """Generate lines for a single batch. Lines generated are added
         to the underlying ``Batch`` object for each batch. The lines
         can be accessed after generation and re-assembled into a DataFrame.
@@ -312,7 +312,7 @@ class DataFrameBatch:
         t2 = tqdm(total=max_invalid, desc="Invalid record count ")
         line: gen_text
         for line in generate_text(
-            batch.config, line_validator=validator, max_invalid=MAX_INVALID
+            batch.config, line_validator=validator, max_invalid=max_invalid
         ):
             if line.valid is None or line.valid is True:
                 batch.add_valid_data(line)
