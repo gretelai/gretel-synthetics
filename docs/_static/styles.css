@@ -19,9 +19,6 @@ footer {
 .wy-nav-side {
   background-color: #0c0c0d;
 }
-.wy-side-nav-search {
-  background-color: #3c1ae5;
-}
 
 .wy-form input[type="text"] {
   border-radius: 0;
@@ -38,9 +35,9 @@ h6 {
   font-family: "Inter", sans-serif;
 }
 
-a {
+/* a {
   color: #1a3ce5;
 }
 a:visited {
   color: #6347eb;
-}
+} */

@@ -55,6 +55,7 @@ exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 # a list of builtin themes.
 #
 html_theme = "sphinx_rtd_theme"
+html_logo = "img/gretel_logo_white.png"
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
@@ -62,6 +63,12 @@ html_theme = "sphinx_rtd_theme"
 html_static_path = ["_static"]
 
 html_css_files = ["styles.css"]
+
+html_theme_options = {
+    'logo_only': True,
+    'display_version': True,
+    'style_nav_header_background': '#3c1ae5',
+}
 
 
 def monkeypatch(cls):
