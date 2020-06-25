@@ -16,7 +16,8 @@ footer {
   max-width: 60rem;
   min-height: 100vh;
 }
-.wy-nav-side {
+.wy-nav-side,
+.wy-nav-top {
   background-color: #0c0c0d;
 }
 
