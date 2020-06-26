@@ -61,7 +61,6 @@ html_logo = "img/gretel_logo_white.png"
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ["_static"]
-
 html_css_files = ["styles.css"]
 
 html_theme_options = {
@@ -69,7 +68,6 @@ html_theme_options = {
     'display_version': True,
     'style_nav_header_background': '#0c0c0d',
 }
-
 
 def monkeypatch(cls):
     """ decorator to monkey-patch methods """
