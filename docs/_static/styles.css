@@ -35,3 +35,12 @@ h5,
 h6 {
   font-family: "Inter", sans-serif;
 }
+
+/** This fixes the horizontal scroll on mobile */
+@media only screen and (max-width: 770px) {
+  .py.class dt,
+  .py.function dt {
+    display: block !important;
+    overflow-x: auto;
+  }
+}
