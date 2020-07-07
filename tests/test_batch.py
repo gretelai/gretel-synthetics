@@ -1,13 +1,14 @@
 from pathlib import Path
 import shutil
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 import random
 from copy import deepcopy
+from dataclasses import asdict
 
 import pytest
 import pandas as pd
 
-from gretel_synthetics.batch import DataFrameBatch
+from gretel_synthetics.batch import DataFrameBatch, MAX_INVALID, READ, WRITE
 from gretel_synthetics.generate import gen_text
 
 
@@ -43,7 +44,6 @@ def test_data():
     yield pd.read_csv(path)
     if Path(checkpoint_dir).is_dir():
         shutil.rmtree(checkpoint_dir)
-        pass
 
 
 def simple_validator(line: str):
@@ -74,12 +74,11 @@ def test_auto_gen_lines(test_data):
     assert d.config["gen_lines"] == test_data.shape[0]
 
 
-def test_missing_delim():
+def test_missing_delim(test_data):
     config = deepcopy(config_template)
     config.pop("field_delimiter")
     with pytest.raises(ValueError):
         DataFrameBatch(df=test_data, config=config)
-
 
 def test_init(test_data):
     with pytest.raises(ValueError):
@@ -198,3 +197,74 @@ def test_batches_to_df(test_data):
     assert list(check.columns) == ["foo", "foo1", "foo2", "foo3"]
     assert check.shape == (1, 4)
     assert [t.name for t in list(check.dtypes)] == ['object', 'object', 'object', 'int64']
+
+
+def test_generate_batch_lines_raise_on_exceed(test_data):
+    batches = DataFrameBatch(df=test_data, config=config_template)
+    batches.create_training_data()
+
+    with patch("gretel_synthetics.batch.generate_text") as mock_gen:
+        mock_gen.side_effect = RuntimeError()
+        assert not batches.generate_batch_lines(0)
+
+    with patch("gretel_synthetics.batch.generate_text") as mock_gen:
+        mock_gen.side_effect = RuntimeError()
+        with pytest.raises(RuntimeError):
+            assert not batches.generate_batch_lines(0, raise_on_exceed_invalid=True)
+
+
+def test_generate_all_batch_lines_raise_on_failed(test_data):
+    batches = DataFrameBatch(df=test_data, config=config_template)
+    batches.create_training_data()
+
+    batches.generate_batch_lines = Mock()
+    batches.generate_all_batch_lines()
+    _, args, kwargs = batches.generate_batch_lines.mock_calls[0]
+    assert args == (0,)
+    assert kwargs == {
+        "max_invalid": MAX_INVALID,
+        "raise_on_exceed_invalid": False,
+        "num_lines": None
+    }
+
+    batches.generate_batch_lines = Mock()
+    batches.generate_all_batch_lines(max_invalid=10, raise_on_failed_batch=True, num_lines=5)
+    _, args, kwargs = batches.generate_batch_lines.mock_calls[0]
+    assert args == (0,)
+    assert kwargs == {
+        "max_invalid": 10,
+        "raise_on_exceed_invalid": True,
+        "num_lines": 5
+    }
+
+
+def test_read_mode(test_data):
+    writer = DataFrameBatch(df=test_data, config=config_template)
+    writer.create_training_data()
+
+    # missing checkpoint dir
+    with pytest.raises(ValueError):
+        DataFrameBatch(mode=READ)
+
+    # bad checkpoint dir
+    with pytest.raises(ValueError):
+        DataFrameBatch(mode=READ, checkpoint_dir="bad_dir")
+
+    # NOTE: normally saving the params is done during training,
+    # but we do it here manually since we won't actually train
+    for _, batch in writer.batches.items():
+        batch.config.save_model_params()
+
+    # checkpoint dir exists in config
+    DataFrameBatch(config=config_template, mode=READ)
+
+    # checkpoint dir as a kwarg
+    reader = DataFrameBatch(checkpoint_dir=checkpoint_dir, mode=READ)
+
+    write_batch = writer.batches[0]
+    read_batch = reader.batches[0]
+
+    assert write_batch.checkpoint_dir == read_batch.checkpoint_dir
+    assert write_batch.headers == read_batch.headers
+    assert asdict(write_batch.config) == asdict(read_batch.config)
+    assert reader.master_header_list == writer.master_header_list

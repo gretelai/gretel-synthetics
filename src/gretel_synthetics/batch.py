@@ -16,6 +16,8 @@ import pickle
 from copy import deepcopy
 import logging
 import io
+import json
+import glob
 
 import pandas as pd
 import numpy as np
@@ -35,6 +37,11 @@ MAX_INVALID = 1000
 BATCH_SIZE = 15
 FIELD_DELIM = "field_delimiter"
 GEN_LINES = "gen_lines"
+READ = "read"
+WRITE = "write"
+HEADER_FILE = "headers.json"
+CONFIG_FILE = "model_params.json"
+TRAIN_FILE = "train.csv"
 
 
 @dataclass
@@ -44,6 +51,7 @@ class Batch:
     such as ``DataFrameBatch``.  This class holds all of the necessary information
     for training, data generation and DataFrame re-assembly.
     """
+
     checkpoint_dir: str
     input_data_path: str
     headers: List[str]
@@ -119,6 +127,52 @@ class Batch:
         return self._basic_validator
 
 
+def _create_batch_from_dir(batch_dir: str):
+    path = Path(batch_dir)
+    if not path.is_dir():  # pragma: no cover
+        raise ValueError("%s is not a directory" % batch_dir)
+
+    if not (path / HEADER_FILE).is_file():  # pragma: no cover
+        raise ValueError("missing headers")
+    headers = json.loads(open(path / HEADER_FILE).read())
+
+    if not (path / CONFIG_FILE).is_file():  # pragma: no cover
+        raise ValueError("missing model param file")
+    config = json.loads(open(path / CONFIG_FILE).read())
+
+    if not (path / TRAIN_FILE).is_file():  # pragma: no cover
+        raise ValueError("missing training data")
+    train_path = str(path / TRAIN_FILE)
+
+    batch = Batch(
+        checkpoint_dir=batch_dir,
+        input_data_path=train_path,
+        headers=headers,
+        config=LocalConfig(**config),
+    )
+
+    batch.load_validator_from_file()
+
+    return batch
+
+
+def _crawl_checkpoint_for_batches(checkpoint_dir: str):
+    logger.info("Looking for and loading batch data...")
+    matching_dirs = glob.glob(str(Path(checkpoint_dir) / "batch_*"))
+    if not matching_dirs:
+        raise ValueError(
+            "checkpoint directory does not exist or does not contain batch data"
+        )
+
+    batches = []
+    for batch_dir in matching_dirs:
+        idx = int(Path(batch_dir).name.split("_")[-1])
+        batches.append((idx, _create_batch_from_dir(batch_dir)))
+ 
+    logger.info("Found and loaded %d batches", len(batches))
+    return dict(sorted(batches, key=lambda b: b[0]))
+
+
 def _build_batch_dirs(
     base_ckpoint: str, headers: List[List[str]], config: dict
 ) -> dict:
@@ -147,6 +201,12 @@ def _build_batch_dirs(
         )
         # try and load any previously saved validators
         out[i].load_validator_from_file()
+
+        # we write the headers out as well incase we load these
+        # batches back in via "read" mode only later...it's the only
+        # way to get the header names back
+        with open(ckpoint / "headers.json", "w") as fout:
+            fout.write(json.dumps(headers))
 
     return out
 
@@ -194,40 +254,62 @@ class DataFrameBatch:
     def __init__(
         self,
         *,
-        df: pd.DataFrame,
+        df: pd.DataFrame = None,
         batch_size: int = BATCH_SIZE,
         batch_headers: List[List[str]] = None,
-        config: dict = None
+        config: dict = None,
+        mode: str = WRITE,
+        checkpoint_dir: str = None,
     ):
 
-        if not config:
-            raise ValueError("config is required!")
+        if mode not in (WRITE, READ):  # pragma: no cover
+            raise ValueError("mode must be read or write")
 
-        if not isinstance(df, pd.DataFrame):
-            raise ValueError("df must be a Data Frame")
+        self.mode = mode
 
-        if FIELD_DELIM not in config:
-            raise ValueError("field_delimiter must be in config")
+        if self.mode == READ:
+            if isinstance(config, dict):
+                _ckpoint_dir = config.get("checkpoint_dir")
+            else:
+                _ckpoint_dir = checkpoint_dir
 
-        if GEN_LINES not in config:
-            config[GEN_LINES] = df.shape[0]
+            if _ckpoint_dir is None:
+                raise ValueError("checkpoint_dir required for read mode")
+            else:
+                self._read_checkpoint_dir = _ckpoint_dir
 
-        self._source_df = df
-        self.batch_size = batch_size
-        self.config = config
+        if self.mode == WRITE:
+            if not config:
+                raise ValueError("config is required!")
 
-        self._source_df.fillna("", inplace=True)
+            if not isinstance(df, pd.DataFrame):
+                raise ValueError("df must be a DataFrame in write mode")
 
-        self.master_header_list = list(self._source_df.columns)
+            if FIELD_DELIM not in config:
+                raise ValueError("field_delimiter must be in config")
 
-        if not batch_headers:
-            self.batch_headers = self._create_header_batches()
+            if GEN_LINES not in config:
+                config[GEN_LINES] = df.shape[0]
+
+            self._source_df = df
+            self.batch_size = batch_size
+            self.config = config
+            self._source_df.fillna("", inplace=True)
+            self.master_header_list = list(self._source_df.columns)
+
+            if not batch_headers:
+                self.batch_headers = self._create_header_batches()
+            else:  # pragma: no cover
+                self.batch_headers = batch_headers
+
+            self.batches = _build_batch_dirs(
+                self.config["checkpoint_dir"], self.batch_headers, self.config
+            )
         else:
-            self.batch_headers = batch_headers
-
-        self.batches = _build_batch_dirs(
-            self.config["checkpoint_dir"], self.batch_headers, self.config
-        )
+            self.batches = _crawl_checkpoint_for_batches(self._read_checkpoint_dir)
+            self.master_header_list = []
+            for batch in self.batches.values():
+                self.master_header_list.extend(batch.headers)
 
     def _create_header_batches(self):
         num_batches = ceil(len(self._source_df.columns) / self.batch_size)
@@ -246,6 +328,8 @@ class DataFrameBatch:
         Finally, a training CSV is written to disk in the specific
         batch directory
         """
+        if self.mode == READ:  # pragma: no cover
+            raise RuntimeError("Method cannot be used in read-only mode")
         for i, batch in self.batches.items():
             logger.info(f"Generating training DF and CSV for batch {i}")
             out_df = self._source_df[batch.headers]
@@ -264,6 +348,8 @@ class DataFrameBatch:
         Args:
             batch_idx: The index of the batch, from the ``batches`` dictionary
         """
+        if self.mode == READ:  # pragma: no cover
+            raise RuntimeError("Method cannot be used in read-only mode")
         try:
             train_rnn(self.batches[batch_idx].config)
         except KeyError:
@@ -272,6 +358,8 @@ class DataFrameBatch:
     def train_all_batches(self):
         """Train a model for each batch.
         """
+        if self.mode == READ:  # pragma: no cover
+            raise RuntimeError("Method cannot be used in read-only mode")
         for idx in self.batches.keys():
             self.train_batch(idx)
 
@@ -286,6 +374,8 @@ class DataFrameBatch:
                 which will be the raw line generated from the ``generate_text``
                 function.
         """
+        if self.mode == READ:  # pragma: no cover
+            raise RuntimeError("Method cannot be used in read-only mode")
         if not callable(validator):
             raise ValueError("validator must be callable!")
         try:
@@ -293,7 +383,13 @@ class DataFrameBatch:
         except KeyError:
             raise ValueError("invalid batch number!")
 
-    def generate_batch_lines(self, batch_idx: int, max_invalid=MAX_INVALID):
+    def generate_batch_lines(
+        self,
+        batch_idx: int,
+        max_invalid=MAX_INVALID,
+        raise_on_exceed_invalid: bool = False,
+        num_lines: int = None,
+    ) -> bool:
         """Generate lines for a single batch. Lines generated are added
         to the underlying ``Batch`` object for each batch. The lines
         can be accessed after generation and re-assembled into a DataFrame.
@@ -302,6 +398,12 @@ class DataFrameBatch:
             batch_idx: The batch number
             max_invalid: The max number of invalid lines that can be generated, if
                 this is exceeded, generation will stop
+            raise_on_exceed_invalid: If true and if the number of lines generated exceeds the ``max_invalid``
+                amount, we will re-raise the error thrown by the generation module which will interrupt
+                the running process. Otherwise, we will not raise the caught exception and just return ``False``
+                indicating that the batch failed to generate all lines.
+            num_lines: The number of lines to generate, if ``None``, then we use the number from the
+                batch's config
         """
         try:
             batch = self.batches[batch_idx]
@@ -310,23 +412,33 @@ class DataFrameBatch:
         batch: Batch
         batch.reset_gen_data()
         validator = batch.get_validator()
-        t = tqdm(total=batch.config.gen_lines, desc="Valid record count ")
+        if num_lines is None:
+            num_lines = batch.config.gen_lines
+        t = tqdm(total=num_lines, desc="Valid record count ")
         t2 = tqdm(total=max_invalid, desc="Invalid record count ")
         line: gen_text
-        for line in generate_text(
-            batch.config, line_validator=validator, max_invalid=max_invalid
-        ):
-            if line.valid is None or line.valid is True:
-                batch.add_valid_data(line)
-                t.update(1)
+        try:
+            for line in generate_text(
+                batch.config, line_validator=validator, max_invalid=max_invalid, num_lines=num_lines
+            ):
+                if line.valid is None or line.valid is True:
+                    batch.add_valid_data(line)
+                    t.update(1)
+                else:
+                    t2.update(1)
+                    batch.gen_data_invalid.append(line)
+        except RuntimeError:
+            if raise_on_exceed_invalid:
+                raise
             else:
-                t2.update(1)
-                batch.gen_data_invalid.append(line)
+                return False
         t.close()
         t2.close()
-        return batch.gen_data_count == batch.config.gen_lines
+        return batch.gen_data_count == num_lines
 
-    def generate_all_batch_lines(self, max_invalid=MAX_INVALID) -> dict:
+    def generate_all_batch_lines(
+        self, max_invalid=MAX_INVALID, raise_on_failed_batch: bool = False, num_lines: int = None
+    ) -> dict:
         """Generate synthetic lines for all batches. Lines for each batch
         are added to the individual ``Batch`` objects. Once generateion is
         done, you may re-assemble the dataset into a DataFrame.
@@ -340,6 +452,11 @@ class DataFrameBatch:
         Args:
             max_invalid: The number of invalid lines, per batch. If this number
                 is exceeded for any batch, generation will stop.
+            raise_on_failed_batch: If True, then an exception will be raised if any single batch
+                fails to generate the requested number of lines. If False, then the failed batch
+                will be set to ``False`` in the result dictionary from this method.
+            num_lines: The number of lines to create from each batch.  If ``None`` then the value
+                from the config template will be used.
 
         Returns:
             A dictionary of batch number to a bool value that shows if each batch
@@ -352,7 +469,12 @@ class DataFrameBatch:
         """
         batch_status = {}
         for idx in self.batches.keys():
-            batch_status[idx] = self.generate_batch_lines(idx, max_invalid=max_invalid)
+            batch_status[idx] = self.generate_batch_lines(
+                idx,
+                max_invalid=max_invalid,
+                raise_on_exceed_invalid=raise_on_failed_batch,
+                num_lines=num_lines
+            )
         return batch_status
 
     def batch_to_df(self, batch_idx: int) -> pd.DataFrame:  # pragma: no cover

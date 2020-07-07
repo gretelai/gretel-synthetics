@@ -106,6 +106,7 @@ def generate_text(
     start_string: str = "<n>",
     line_validator: Callable = None,
     max_invalid: int = 1000,
+    num_lines: int = None
 ):
     """A generator that will load a model and start creating records.
 
@@ -124,6 +125,7 @@ def generate_text(
         max_invalid: If using a ``line_validator``, this is the maximum number of invalid
             lines to generate. If the number of invalid lines exceeds this value a ``RunTimeError``
             will be raised.
+        num_lines: If not ``None``, this will override the ``gen_lines`` value that is provided in the ``config``
 
     Simple validator example::
 
@@ -151,6 +153,9 @@ def generate_text(
         A ``gen_text`` object for each record that is generated. The generator
         will stop after the max number of lines is reached (based on your config).
 
+    Raises:
+        A  ``RunTimeError`` if the ``max_invalid`` number of lines is generated
+
     """
     logging.info(
         f"Latest checkpoint: {tf.train.latest_checkpoint(config.checkpoint_dir)}"
@@ -160,6 +165,11 @@ def generate_text(
     lines_generated = 0
     delim = config.field_delimiter
     invalid = 0
+
+    if num_lines is not None:
+        _line_count = num_lines
+    else:
+        _line_count = config.gen_lines
 
     while True:
         rec = _predict_chars(model, sp, start_string, config).data
@@ -190,7 +200,7 @@ def generate_text(
         if invalid > max_invalid:
             raise RuntimeError("Maximum number of invalid lines reached!")
 
-        if lines_generated >= config.gen_lines:
+        if lines_generated >= _line_count:
             break
 
 

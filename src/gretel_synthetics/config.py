@@ -108,7 +108,7 @@ class BaseConfig:
 
     # Training configurations
     max_lines: int = 0
-    epochs: int = 30
+    epochs: int = 15
     batch_size: int = 64
     buffer_size: int = 10000
     seq_length: int = 100
@@ -139,7 +139,7 @@ class BaseConfig:
     gen_lines: int = 1000
 
     # Checkpoint storage
-    save_all_checkpoints: bool = True
+    save_all_checkpoints: bool = False
     overwrite: bool = False
 
     @abstractmethod
