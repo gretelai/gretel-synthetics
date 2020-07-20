@@ -3,3 +3,4 @@ flake8
 pytest
 pytest-cov
 pylint
+cloudpickle==1.5.0
