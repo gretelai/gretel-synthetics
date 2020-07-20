@@ -19,7 +19,7 @@ from tqdm import tqdm
 
 from gretel_synthetics.model import _build_sequential_model, _compute_epsilon
 from gretel_synthetics.config import BaseConfig
-from gretel_synthetics.generate import _load_model
+from gretel_synthetics.generator import _load_model
 
 
 spm_logger = logging.getLogger('sentencepiece')

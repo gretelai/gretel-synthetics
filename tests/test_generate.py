@@ -4,7 +4,8 @@ import json
 import pytest
 import tensorflow as tf
 
-from gretel_synthetics.generate import generate_text, _predict_chars, PredString
+from gretel_synthetics.generator import _predict_chars
+from gretel_synthetics.generate import generate_text, PredString
 
 
 @pytest.fixture
@@ -37,9 +38,9 @@ def test_predict_chars(mock_dims, mock_cat, global_local_config, random_cat):
     assert line.data == "abc"
 
 
-@patch("gretel_synthetics.generate.spm.SentencePieceProcessor")
-@patch("gretel_synthetics.generate._predict_chars")
-@patch("gretel_synthetics.generate._prepare_model")
+@patch("gretel_synthetics.generator.spm.SentencePieceProcessor")
+@patch("gretel_synthetics.generator._predict_chars")
+@patch("gretel_synthetics.generator._prepare_model")
 @patch("pickle.load")
 @patch("gretel_synthetics.generate.open")
 def test_generate_text(_open, pickle, prepare, predict, spm, global_local_config):

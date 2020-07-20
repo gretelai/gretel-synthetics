@@ -168,7 +168,7 @@ def _crawl_checkpoint_for_batches(checkpoint_dir: str):
     for batch_dir in matching_dirs:
         idx = int(Path(batch_dir).name.split("_")[-1])
         batches.append((idx, _create_batch_from_dir(batch_dir)))
- 
+
     logger.info("Found and loaded %d batches", len(batches))
     return dict(sorted(batches, key=lambda b: b[0]))
 
@@ -389,6 +389,7 @@ class DataFrameBatch:
         max_invalid=MAX_INVALID,
         raise_on_exceed_invalid: bool = False,
         num_lines: int = None,
+        parallelism: int = 1,
     ) -> bool:
         """Generate lines for a single batch. Lines generated are added
         to the underlying ``Batch`` object for each batch. The lines
@@ -404,6 +405,10 @@ class DataFrameBatch:
                 indicating that the batch failed to generate all lines.
             num_lines: The number of lines to generate, if ``None``, then we use the number from the
                 batch's config
+            parallelism: The number of concurrent workers to use. ``1`` (the default) disables parallelization,
+                while a non-positive value means "number of CPUs + x" (i.e., use ``0`` for using as many workers
+                as there are CPUs). A floating-point value is interpreted as a fraction of the available CPUs,
+                rounded down.
         """
         try:
             batch = self.batches[batch_idx]
@@ -419,7 +424,8 @@ class DataFrameBatch:
         line: gen_text
         try:
             for line in generate_text(
-                batch.config, line_validator=validator, max_invalid=max_invalid, num_lines=num_lines
+                batch.config, line_validator=validator, max_invalid=max_invalid, num_lines=num_lines,
+                parallelism=parallelism,
             ):
                 if line.valid is None or line.valid is True:
                     batch.add_valid_data(line)
@@ -437,7 +443,8 @@ class DataFrameBatch:
         return batch.gen_data_count == num_lines
 
     def generate_all_batch_lines(
-        self, max_invalid=MAX_INVALID, raise_on_failed_batch: bool = False, num_lines: int = None
+        self, max_invalid=MAX_INVALID, raise_on_failed_batch: bool = False, num_lines: int = None,
+        parallelism: int = 1,
     ) -> dict:
         """Generate synthetic lines for all batches. Lines for each batch
         are added to the individual ``Batch`` objects. Once generateion is
@@ -457,6 +464,10 @@ class DataFrameBatch:
                 will be set to ``False`` in the result dictionary from this method.
             num_lines: The number of lines to create from each batch.  If ``None`` then the value
                 from the config template will be used.
+            parallelism: The number of concurrent workers to use. ``1`` (the default) disables parallelization,
+                while a non-positive value means "number of CPUs + x" (i.e., use ``0`` for using as many workers
+                as there are CPUs). A floating-point value is interpreted as a fraction of the available CPUs,
+                rounded down.
 
         Returns:
             A dictionary of batch number to a bool value that shows if each batch
@@ -473,7 +484,8 @@ class DataFrameBatch:
                 idx,
                 max_invalid=max_invalid,
                 raise_on_exceed_invalid=raise_on_failed_batch,
-                num_lines=num_lines
+                num_lines=num_lines,
+                parallelism=parallelism,
             )
         return batch_status
 

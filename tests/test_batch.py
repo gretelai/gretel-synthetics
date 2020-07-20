@@ -224,7 +224,8 @@ def test_generate_all_batch_lines_raise_on_failed(test_data):
     assert kwargs == {
         "max_invalid": MAX_INVALID,
         "raise_on_exceed_invalid": False,
-        "num_lines": None
+        "num_lines": None,
+        "parallelism": 1,
     }
 
     batches.generate_batch_lines = Mock()
@@ -234,7 +235,8 @@ def test_generate_all_batch_lines_raise_on_failed(test_data):
     assert kwargs == {
         "max_invalid": 10,
         "raise_on_exceed_invalid": True,
-        "num_lines": 5
+        "num_lines": 5,
+        "parallelism": 1,
     }
 
 
