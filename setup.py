@@ -27,6 +27,7 @@ setup(
         'pandas==1.0.3',
         'numpy==1.18.3',
         'dataclasses==0.7;python_version<"3.7"',
+        'cloudpickle==1.5.0',
     ],
     extras_require={
         'tf': ['tensorflow==2.1.0']

@@ -389,7 +389,7 @@ class DataFrameBatch:
         max_invalid=MAX_INVALID,
         raise_on_exceed_invalid: bool = False,
         num_lines: int = None,
-        parallelism: int = 1,
+        parallelism: int = 0,
     ) -> bool:
         """Generate lines for a single batch. Lines generated are added
         to the underlying ``Batch`` object for each batch. The lines
@@ -444,7 +444,7 @@ class DataFrameBatch:
 
     def generate_all_batch_lines(
         self, max_invalid=MAX_INVALID, raise_on_failed_batch: bool = False, num_lines: int = None,
-        parallelism: int = 1,
+        parallelism: int = 0,
     ) -> dict:
         """Generate synthetic lines for all batches. Lines for each batch
         are added to the individual ``Batch`` objects. Once generateion is

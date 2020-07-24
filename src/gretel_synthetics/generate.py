@@ -11,14 +11,15 @@ from typing import TYPE_CHECKING, Callable
 
 import tensorflow as tf
 
-from . import generate_parallel, generator
+from gretel_synthetics.generator import Generator, Settings
+from gretel_synthetics.generator import gen_text, PredString  # noqa # pylint: disable=unused-import
+from gretel_synthetics.generate_parallel import split_work, generate_parallel
 
 if TYPE_CHECKING:  # pragma: no cover
     from gretel_synthetics.config import LocalConfig
+else:
+    LocalConfig = None
 
-
-gen_text = generator.gen_text
-PredString = generator.PredString
 
 logging.basicConfig(
     format="%(asctime)s : %(threadName)s : %(levelname)s : %(message)s",
@@ -27,12 +28,12 @@ logging.basicConfig(
 
 
 def generate_text(
-    config: "LocalConfig",
+    config: LocalConfig,
     start_string: str = "<n>",
     line_validator: Callable = None,
     max_invalid: int = 1000,
     num_lines: int = None,
-    parallelism: int = 1,
+    parallelism: int = 0,
 ):
     """A generator that will load a model and start creating records.
 
@@ -91,7 +92,7 @@ def generate_text(
         f"Latest checkpoint: {tf.train.latest_checkpoint(config.checkpoint_dir)}"
     )  # noqa
 
-    settings = generator.Settings(
+    settings = Settings(
         config=config,
         start_string=start_string,
         line_validator=line_validator,
@@ -103,10 +104,10 @@ def generate_text(
     else:
         _line_count = config.gen_lines
 
-    num_workers, chunks = generate_parallel.split_work(parallelism, _line_count)
+    num_workers, chunks = split_work(parallelism, _line_count)
 
     if num_workers == 1:  # Sequential operation
-        gen = generator.Generator(settings)
+        gen = Generator(settings)
         yield from gen.generate_next(_line_count)
     else:
-        yield from generate_parallel.generate_parallel(settings, num_workers, chunks)
+        yield from generate_parallel(settings, num_workers, chunks)

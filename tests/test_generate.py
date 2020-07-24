@@ -51,7 +51,7 @@ def test_generate_text(_open, pickle, prepare, predict, spm, global_local_config
     sp = Mock()
     spm.return_value = sp
 
-    for rec in generate_text(global_local_config, line_validator=json.loads):
+    for rec in generate_text(global_local_config, line_validator=json.loads, parallelism=1):
         out.append(rec.as_dict())
 
     assert len(out) == 10
@@ -65,7 +65,7 @@ def test_generate_text(_open, pickle, prepare, predict, spm, global_local_config
     # now with no validator
     predict.side_effect = [PredString(json.dumps({"foo": i})) for i in range(0, 10)]
     out = []
-    for rec in generate_text(global_local_config):
+    for rec in generate_text(global_local_config, parallelism=1):
         out.append(rec.as_dict())
     assert len(out) == 10
     assert out[0] == {
@@ -83,7 +83,7 @@ def test_generate_text(_open, pickle, prepare, predict, spm, global_local_config
     )
     out = []
     try:
-        for rec in generate_text(global_local_config, line_validator=json.loads):
+        for rec in generate_text(global_local_config, line_validator=json.loads, parallelism=1):
             out.append(rec.as_dict())
     except RuntimeError:
         pass
@@ -98,7 +98,7 @@ def test_generate_text(_open, pickle, prepare, predict, spm, global_local_config
     )
     out = []
     try:
-        for rec in generate_text(global_local_config, line_validator=json.loads, max_invalid=2):
+        for rec in generate_text(global_local_config, line_validator=json.loads, max_invalid=2, parallelism=1):
             out.append(rec.as_dict())
     except RuntimeError as err:
         assert "Maximum number" in str(err)
@@ -121,7 +121,7 @@ def test_generate_text(_open, pickle, prepare, predict, spm, global_local_config
     )
     out = []
     try:
-        for rec in generate_text(global_local_config, line_validator=_val, max_invalid=2):
+        for rec in generate_text(global_local_config, line_validator=_val, max_invalid=2, parallelism=1):
             out.append(rec.as_dict())
     except RuntimeError as err:
         assert "Maximum number" in str(err)

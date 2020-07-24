@@ -7,20 +7,23 @@ import cloudpickle
 import sentencepiece as spm
 import tensorflow as tf
 
-from .model import _build_sequential_model
+from gretel_synthetics.model import _build_sequential_model
 
 if TYPE_CHECKING:
-    from .config import BaseConfig, LocalConfig
+    from gretel_synthetics.config import BaseConfig, LocalConfig
+else:
+    BaseConfig = None
+    LocalConfig = None
 
 
-def _load_tokenizer(store: "LocalConfig") -> spm.SentencePieceProcessor:
+def _load_tokenizer(store: LocalConfig) -> spm.SentencePieceProcessor:
     sp = spm.SentencePieceProcessor()
     sp.Load(store.tokenizer_model)
     return sp
 
 
 def _prepare_model(
-    sp: spm.SentencePieceProcessor, batch_size: int, store: "LocalConfig"
+    sp: spm.SentencePieceProcessor, batch_size: int, store: LocalConfig
 ) -> tf.keras.Sequential:  # pragma: no cover
     model = _build_sequential_model(
         vocab_size=len(sp), batch_size=batch_size, store=store
@@ -37,7 +40,7 @@ def _prepare_model(
 
 
 def _load_model(
-    store: "LocalConfig",
+    store: LocalConfig,
 ) -> Tuple[spm.SentencePieceProcessor, tf.keras.Sequential]:
     sp = _load_tokenizer(store)
     model = _prepare_model(sp, 1, store)
@@ -56,7 +59,7 @@ class Settings:
     for ensuring reliable serializability without an excess amount of code tied to it.
     """
 
-    config: "LocalConfig"
+    config: LocalConfig
     start_string: str = "<n>"
     line_validator: Optional[Callable] = None
     max_invalid: int = 1000
@@ -64,12 +67,24 @@ class Settings:
     def serialize(self) -> bytes:
         return cloudpickle.dumps(self)
 
-    @staticmethod
-    def deserialize(serialized: bytes) -> "Settings":
-        obj = cloudpickle.loads(serialized)
-        if not isinstance(obj, Settings):
-            raise TypeError("deserialized object is of type {}, not Settings".format(type(obj).__name__))
-        return obj
+
+def deserialize_settings(serialized: bytes) -> Settings:
+    """
+    Deserializes a serialized ``Settings`` instance.
+
+    Args:
+        serialized: the bytes of the serialized ``Settings`` instance.
+
+    Returns:
+        The deserialized ``Settings`` instance.
+
+    Raises:
+        A ``TypeError`` if the deserialized object is not a ``Settings`` instance.
+    """
+    obj = cloudpickle.loads(serialized)
+    if not isinstance(obj, Settings):
+        raise TypeError("deserialized object is of type {}, not Settings".format(type(obj).__name__))
+    return obj
 
 
 @dataclass
@@ -120,6 +135,9 @@ class Generator:
     Text generation is initiated via the ``generate_next`` method, which returns an iterable that yields values
     until the given number of _valid_ lines is returned. Each Generator also has a maximum budget of the number
     of invalid lines that can be generated across _all_ calls to ``generate_next``.
+
+    Args:
+            settings: the generator settings to use.
     """
     settings: Settings
     model: tf.keras.Sequential
@@ -129,12 +147,6 @@ class Generator:
     total_generated: int = 0
 
     def __init__(self, settings: Settings):
-        """
-        Constructor.
-
-        Args:
-            settings: the generator settings to use.
-        """
         self.settings = settings
         self.sp, self.model = _load_model(settings.config)
         self.delim = settings.config.field_delimiter
@@ -185,7 +197,7 @@ def _predict_chars(
     model: tf.keras.Sequential,
     sp: spm.SentencePieceProcessor,
     start_string: str,
-    store: "BaseConfig",
+    store: BaseConfig,
 ) -> PredString:
     """
     Evaluation step (generating text using the learned model).

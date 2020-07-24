@@ -2,11 +2,13 @@ import multiprocessing
 from dataclasses import dataclass, field
 from typing import Iterable, List, Optional, Union, Tuple
 import queue
-import cloudpickle
 import sys
 import os
 
-from .generator import Generator, Settings, gen_text
+import cloudpickle
+
+from gretel_synthetics.generator import Generator, Settings, deserialize_settings, gen_text
+
 
 mp = multiprocessing.get_context('spawn')  # fork does not work with tensorflow
 
@@ -29,12 +31,12 @@ class _WorkerStatus:
     def serialize(self) -> bytes:
         return cloudpickle.dumps(self)
 
-    @staticmethod
-    def deserialize(serialized: bytes) -> "_WorkerStatus":
-        obj = cloudpickle.loads(serialized)
-        if not isinstance(obj, _WorkerStatus):
-            raise TypeError("serialized object is of type {}, not WorkerStatus".format(type(obj).__name__))
-        return obj
+
+def _deserialize_status(serialized: bytes) -> _WorkerStatus:
+    obj = cloudpickle.loads(serialized)
+    if not isinstance(obj, _WorkerStatus):
+        raise TypeError("serialized object is of type {}, not _WorkerStatus".format(type(obj).__name__))
+    return obj
 
 
 def split_work(parallelism: Union[int, float], total_lines: int, chunk_size: int = 5) -> Tuple[int, List[int]]:
@@ -53,12 +55,18 @@ def split_work(parallelism: Union[int, float], total_lines: int, chunk_size: int
         A pair consisting of the number of required workers, and the list of chunks of work.
     """
     num_chunks = (total_lines - 1) // chunk_size + 1
+    non_positive = False
+    if parallelism <= 0:
+        parallelism = -parallelism
+        non_positive = True
+
     if isinstance(parallelism, float):
         num_workers = int(mp.cpu_count() * parallelism)
-    elif parallelism <= 0:
-        num_workers = mp.cpu_count() + parallelism
     else:
         num_workers = parallelism
+
+    if non_positive:
+        num_workers = mp.cpu_count() - num_workers
 
     num_workers = min(max(num_workers, 1), num_chunks)
 
@@ -122,9 +130,9 @@ def generate_parallel(settings: Settings, num_workers: int, chunks: List[int]):
         # However, we also allow sending a raw string as an escape hatch to communicate, e.g., exceptions while
         # serializing.
         if isinstance(output, str):
-            raise Exception('Fatal top-level exception from worker: {}'.format(output))
+            raise RuntimeError('Fatal top-level exception from worker: {}'.format(output))
 
-        parsed_output = _WorkerStatus.deserialize(output)
+        parsed_output = _deserialize_status(output)
 
         if parsed_output.exception is not None:
             # First order of business: check for any exception and raise in the main program.
@@ -159,7 +167,7 @@ def _run_parallel_worker(
         pass
 
     try:
-        settings = Settings.deserialize(pickled_settings)
+        settings = deserialize_settings(pickled_settings)
 
         for status in _process_all_chunks(settings, input_queue):
             output_queue.put(cloudpickle.dumps(status))
