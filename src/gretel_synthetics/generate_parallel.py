@@ -158,6 +158,9 @@ def _run_parallel_worker(
         pickled_settings: bytes,
         input_queue: mp.Queue,
         output_queue: mp.Queue):
+    # Workers should be using CPU only (note, this has no effect on the parent process)
+    os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+
     # Suppress stdout and stderr in worker threads. Do so on a best-effort basis only.
     try:
         devnull = open(os.devnull, 'w')
