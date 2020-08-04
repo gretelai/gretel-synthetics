@@ -4,7 +4,8 @@ import json
 import pytest
 import tensorflow as tf
 
-from gretel_synthetics.generate import generate_text, _predict_chars, PredString
+from gretel_synthetics.generator import _predict_chars
+from gretel_synthetics.generate import generate_text, PredString
 
 
 @pytest.fixture
@@ -15,14 +16,14 @@ def random_cat():
 @patch("tensorflow.random.categorical")
 @patch("tensorflow.expand_dims")
 def test_predict_chars(mock_dims, mock_cat, global_local_config, random_cat):
-    global_local_config.gen_chars = 10
+    global_local_config.gen_chars = 0
     mock_model = Mock(return_value=[1.0])
     mock_tensor = MagicMock()
     mock_tensor[-1, 0].numpy.return_value = 1
     mock_cat.return_value = mock_tensor
 
     sp = Mock()
-    sp.DecodeIds.return_value = "this is the end<n>"
+    sp.DecodeIds.side_effect = ["this", " ", "is", " ", "the", " ", "end", "<n>"]
 
     line = _predict_chars(mock_model, sp, "\n", global_local_config)
     assert line == PredString(data="this is the end")
@@ -32,14 +33,14 @@ def test_predict_chars(mock_dims, mock_cat, global_local_config, random_cat):
     mock_cat.return_value = mock_tensor
     global_local_config.gen_chars = 3
     sp = Mock()
-    sp.DecodeIds.side_effect = ["a", "ab", "abc", "abcd"]
+    sp.DecodeIds.side_effect = ["a", "b", "c", "d"]
     line = _predict_chars(mock_model, sp, "\n", global_local_config)
     assert line.data == "abc"
 
 
-@patch("gretel_synthetics.generate.spm.SentencePieceProcessor")
-@patch("gretel_synthetics.generate._predict_chars")
-@patch("gretel_synthetics.generate._prepare_model")
+@patch("gretel_synthetics.generator.spm.SentencePieceProcessor")
+@patch("gretel_synthetics.generator._predict_chars")
+@patch("gretel_synthetics.generator._prepare_model")
 @patch("pickle.load")
 @patch("gretel_synthetics.generate.open")
 def test_generate_text(_open, pickle, prepare, predict, spm, global_local_config):
@@ -50,7 +51,7 @@ def test_generate_text(_open, pickle, prepare, predict, spm, global_local_config
     sp = Mock()
     spm.return_value = sp
 
-    for rec in generate_text(global_local_config, line_validator=json.loads):
+    for rec in generate_text(global_local_config, line_validator=json.loads, parallelism=1):
         out.append(rec.as_dict())
 
     assert len(out) == 10
@@ -64,7 +65,7 @@ def test_generate_text(_open, pickle, prepare, predict, spm, global_local_config
     # now with no validator
     predict.side_effect = [PredString(json.dumps({"foo": i})) for i in range(0, 10)]
     out = []
-    for rec in generate_text(global_local_config):
+    for rec in generate_text(global_local_config, parallelism=1):
         out.append(rec.as_dict())
     assert len(out) == 10
     assert out[0] == {
@@ -82,7 +83,7 @@ def test_generate_text(_open, pickle, prepare, predict, spm, global_local_config
     )
     out = []
     try:
-        for rec in generate_text(global_local_config, line_validator=json.loads):
+        for rec in generate_text(global_local_config, line_validator=json.loads, parallelism=1):
             out.append(rec.as_dict())
     except RuntimeError:
         pass
@@ -97,7 +98,7 @@ def test_generate_text(_open, pickle, prepare, predict, spm, global_local_config
     )
     out = []
     try:
-        for rec in generate_text(global_local_config, line_validator=json.loads, max_invalid=2):
+        for rec in generate_text(global_local_config, line_validator=json.loads, max_invalid=2, parallelism=1):
             out.append(rec.as_dict())
     except RuntimeError as err:
         assert "Maximum number" in str(err)
@@ -120,7 +121,7 @@ def test_generate_text(_open, pickle, prepare, predict, spm, global_local_config
     )
     out = []
     try:
-        for rec in generate_text(global_local_config, line_validator=_val, max_invalid=2):
+        for rec in generate_text(global_local_config, line_validator=_val, max_invalid=2, parallelism=1):
             out.append(rec.as_dict())
     except RuntimeError as err:
         assert "Maximum number" in str(err)
