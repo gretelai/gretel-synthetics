@@ -6,13 +6,14 @@ this_dir = path.abspath(path.dirname(__file__))
 with open(path.join(this_dir, 'README.md'), encoding='utf-8') as f:
     long_description = f.read()
 
-with open(path.join(this_dir, 'VERSION')) as f:
-    version = f.read()
+# with open(path.join(this_dir, 'VERSION')) as f:
+#    version = f.read()
 
 
 setup(
     name='gretel-synthetics',
-    version=version,
+    use_scm_version=True,
+    setup_requires=["setuptools_scm"],
     description='Synthetic Data Generation with optional Differential Privacy',
     long_description=long_description,
     long_description_content_type='text/markdown',
