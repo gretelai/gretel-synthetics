@@ -179,7 +179,9 @@ class Generator:
                         _valid = True
                     yield gen_text(text=rec, valid=_valid, explain=None, delimiter=self.delim)
             except Exception as err:
-                # logging.warning(f'Line failed validation: {rec} errored with {str(err)}')
+                # NOTE: this catches any exception raised by the line validator, which
+                # also creates an invalid record
+                lines_generated += 1
                 self.total_invalid += 1
                 yield gen_text(text=rec, valid=False, explain=str(err), delimiter=self.delim)
             else:
