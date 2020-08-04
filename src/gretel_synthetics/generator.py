@@ -162,8 +162,8 @@ class Generator:
         Yields:
             A ``gen_text`` object for every line (valid or invalid) that is generated.
         """
-        lines_generated = 0
-        while lines_generated < num_lines:
+        valid_lines_generated = 0
+        while valid_lines_generated < num_lines:
             rec = _predict_chars(self.model, self.sp, self.settings.start_string, self.settings.config).data
             _valid = None
             try:
@@ -180,14 +180,13 @@ class Generator:
             except Exception as err:
                 # NOTE: this catches any exception raised by the line validator, which
                 # also creates an invalid record
-                lines_generated += 1
                 self.total_invalid += 1
                 yield gen_text(text=rec, valid=False, explain=str(err), delimiter=self.delim)
             else:
                 if self.settings.line_validator and _valid:
-                    lines_generated += 1
+                    valid_lines_generated += 1
                 elif not self.settings.line_validator:
-                    lines_generated += 1
+                    valid_lines_generated += 1
                 else:
                     ...
 
