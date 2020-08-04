@@ -248,6 +248,7 @@ def _predict_chars(
 
         buf.write(decoded)
         buf_len += len(decoded)
+        print(buf.getvalue())
 
         if 0 < store.gen_chars <= buf_len:
             break
