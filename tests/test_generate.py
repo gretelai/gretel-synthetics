@@ -16,14 +16,15 @@ def random_cat():
 @patch("tensorflow.random.categorical")
 @patch("tensorflow.expand_dims")
 def test_predict_chars(mock_dims, mock_cat, global_local_config, random_cat):
-    global_local_config.gen_chars = 0
+    global_local_config.gen_chars = 10
     mock_model = Mock(return_value=[1.0])
     mock_tensor = MagicMock()
     mock_tensor[-1, 0].numpy.return_value = 1
     mock_cat.return_value = mock_tensor
 
     sp = Mock()
-    sp.DecodeIds.side_effect = ["this", " ", "is", " ", "the", " ", "end", "<n>"]
+    sp.DecodeIds.return_value = "this is the end<n>"
+    # sp.DecodeIds.side_effect = ["this", " ", "is", " ", "the", " ", "end", "<n>"]
 
     line = _predict_chars(mock_model, sp, "\n", global_local_config)
     assert line == PredString(data="this is the end")
@@ -33,7 +34,8 @@ def test_predict_chars(mock_dims, mock_cat, global_local_config, random_cat):
     mock_cat.return_value = mock_tensor
     global_local_config.gen_chars = 3
     sp = Mock()
-    sp.DecodeIds.side_effect = ["a", "b", "c", "d"]
+    sp.DecodeIds.side_effect = ["a", "ab", "abc", "abcd"]
+    # sp.DecodeIds.side_effect = ["a", "b", "c", "d"]
     line = _predict_chars(mock_model, sp, "\n", global_local_config)
     assert line.data == "abc"
 

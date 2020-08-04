@@ -9,6 +9,7 @@ to the ``train_rnn`` function.
 import logging
 from pathlib import Path
 import shutil
+from typing import Tuple
 
 import numpy as np
 import pandas as pd
@@ -217,7 +218,7 @@ def _create_dataset(store: BaseConfig, text: str, sp: spm.SentencePieceProcessor
     return dataset
 
 
-def _split_input_target(chunk: str) -> (str, str):
+def _split_input_target(chunk: str) -> Tuple[str, str]:
     """
     For each sequence, duplicate and shift it to form the input and target text
     by using the map method to apply a simple function to each batch:
