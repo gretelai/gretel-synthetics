@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING, Callable, List, Iterable, Optional, Tuple
 from dataclasses import dataclass, asdict
 from collections import namedtuple
+from io import StringIO
 
 import cloudpickle
 
@@ -221,6 +222,9 @@ def _predict_chars(
     # Here batch size == 1
     model.reset_states()
 
+    buf = StringIO()
+    buf_len = 0
+
     while True:
         predictions = model(input_eval)
         # remove the batch dimension
@@ -234,15 +238,19 @@ def _predict_chars(
         # We pass the predicted word as the next input to the model
         # along with the previous hidden state
         input_eval = tf.expand_dims([predicted_id], 0)
-        sentence_ids.append(int(predicted_id))
+        next_id = int(predicted_id)
 
-        decoded = sp.DecodeIds(sentence_ids)
-        if store.field_delimiter is not None:
-            decoded = decoded.replace(
-                store.field_delimiter_token, store.field_delimiter
-            )
+        decoded = sp.DecodeIds([next_id])
+        if store.field_delimiter is not None and decoded == store.field_delimiter_token:
+            decoded = store.field_delimiter
 
-        if "<n>" in decoded:
-            return PredString(decoded.replace("<n>", ""))
-        elif 0 < store.gen_chars <= len(decoded):
-            return PredString(decoded)
+        if decoded == "<n>":
+            break
+
+        buf.write(decoded)
+        buf_len += len(decoded)
+
+        if 0 < store.gen_chars <= buf_len:
+            break
+
+    return PredString(buf.getvalue())
