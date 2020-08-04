@@ -216,9 +216,6 @@ def _predict_chars(
     input_eval = sp.EncodeAsIds(start_string)
     input_eval = tf.expand_dims(input_eval, 0)
 
-    # Empty string to store each line
-    sentence_ids = []
-
     # Here batch size == 1
     model.reset_states()
 
