@@ -198,13 +198,13 @@ def _process_all_chunks(settings: Settings,
             chunk_size = input_queue.get_nowait()
             prev_invalid = gen.total_invalid
             all_lines = list(gen.generate_next(chunk_size, hard_limit=max_response_size))
-            num_invalid_lines = gen.total_invalid - prev_invalid
-            if num_invalid_lines:
+            num_valid_lines = len(all_lines) - (gen.total_invalid - prev_invalid)
+            if num_valid_lines < chunk_size:
                 # Return the number of lines by which we fell short to the queue.
                 # This is guaranteed to succeed because every worker will only do this after
                 # at least removing an element from the queue, thus ensuring that capacity
                 # constraints are never violated.
-                input_queue.put_nowait(num_invalid_lines)
+                input_queue.put_nowait(chunk_size - num_valid_lines)
             yield _WorkerStatus(lines=all_lines)
     except queue.Empty:
         # Input queue is pre-filled, so empty queue means we are done with our initially
