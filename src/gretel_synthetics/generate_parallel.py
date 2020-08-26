@@ -111,7 +111,7 @@ def generate_parallel(settings: Settings, num_workers: int, chunks: List[int]):
 
     # Instruct each worker to return an intermediate result (at the cost of putting a partial chunk
     # back into the queue) if it has generated 105% of the requested number of valid lines per chunk
-    # (regardless of how many lines are valid in the intermediate result). This ensures that works
+    # (regardless of how many lines are valid in the intermediate result). This ensures that workers
     # don't get stuck for a long time generating data from bad models, where the ratio of invalid:valid
     # lines is very high.
     max_response_size = int(chunks[0] * 1.05)
