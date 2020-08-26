@@ -186,10 +186,24 @@ def _process_all_chunks(settings: Settings, input_queue: mp.Queue) -> Iterable[_
 
         while True:
             chunk_size = input_queue.get_nowait()
-            all_lines = list(gen.generate_next(chunk_size))
+            prev_invalid = gen.total_invalid
+            # Attempt to generate the required number of valid lines, but tolerate at most
+            # 5% invalid lines before returning early.
+            all_lines = list(gen.generate_next(chunk_size, hard_limit=int(chunk_size * 1.05)))
+            num_invalid_lines = gen.total_invalid - prev_invalid
+            if num_invalid_lines:
+                # Return the number of lines by which we fell short to the queue.
+                # This is guaranteed to succeed because every worker will only do this after
+                # at least removing an element from the queue, thus ensuring that capacity
+                # constraints are never violated.
+                input_queue.put_nowait(num_invalid_lines)
             yield _WorkerStatus(lines=all_lines)
     except queue.Empty:
-        # Input queue is pre-filled, so empty queue means we are done.
+        # Input queue is pre-filled, so empty queue means we are done with our initially
+        # allocated workload. It is possible that further elements will be added to the queue
+        # because a worker generated too many invalid lines, but in this case we can be certain
+        # that the number of running workers will never fall below the number of concurrently
+        # pending chunks.
         yield _WorkerStatus(done=True)
     except BaseException as e:
         # Send any exception in its own status object.

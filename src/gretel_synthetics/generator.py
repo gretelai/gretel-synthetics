@@ -151,20 +151,25 @@ class Generator:
         self.sp, self.model = _load_model(settings.config)
         self.delim = settings.config.field_delimiter
 
-    def generate_next(self, num_lines: int) -> Iterable[gen_text]:
+    def generate_next(self, num_lines: int, hard_limit: Optional[int] = None) -> Iterable[gen_text]:
         """
         Returns a sequence of lines.
 
         Args:
             num_lines: the number of _valid_ lines that should be generated during this call. The actual
                 number of lines returned may be higher, in case of invalid lines in the generation output.
+            hard_limit: if set, imposes a hard limit on the overall number of lines that are generated during
+                this call, regardless of whether the requested number of valid lines was hit.
 
         Yields:
             A ``gen_text`` object for every line (valid or invalid) that is generated.
         """
         valid_lines_generated = 0
-        while valid_lines_generated < num_lines:
+        total_lines_generated = 0
+
+        while valid_lines_generated < num_lines and (hard_limit is None or total_lines_generated < hard_limit):
             rec = _predict_chars(self.model, self.sp, self.settings.start_string, self.settings.config).data
+            total_lines_generated += 1
             _valid = None
             try:
                 if not self.settings.line_validator:
