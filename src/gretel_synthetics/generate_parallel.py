@@ -109,10 +109,17 @@ def generate_parallel(settings: Settings, num_workers: int, chunks: List[int]):
 
     pickled_settings = cloudpickle.dumps(settings)
 
+    # Instruct each worker to return an intermediate result (at the cost of putting a partial chunk
+    # back into the queue) if it has generated 105% of the requested number of valid lines per chunk
+    # (regardless of how many lines are valid in the intermediate result). This ensures that works
+    # don't get stuck for a long time generating data from bad models, where the ratio of invalid:valid
+    # lines is very high.
+    max_response_size = int(chunks[0] * 1.05)
+
     workers = [
         mp.Process(
             target=_run_parallel_worker,
-            args=(pickled_settings, worker_input_queue, worker_output_queue),
+            args=(pickled_settings, worker_input_queue, worker_output_queue, max_response_size),
         )
         for _ in range(num_workers)
     ]
@@ -157,7 +164,8 @@ def generate_parallel(settings: Settings, num_workers: int, chunks: List[int]):
 def _run_parallel_worker(
         pickled_settings: bytes,
         input_queue: mp.Queue,
-        output_queue: mp.Queue):
+        output_queue: mp.Queue,
+        max_response_size: Optional[int] = None):
     # Workers should be using CPU only (note, this has no effect on the parent process)
     os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
@@ -172,7 +180,7 @@ def _run_parallel_worker(
     try:
         settings = deserialize_settings(pickled_settings)
 
-        for status in _process_all_chunks(settings, input_queue):
+        for status in _process_all_chunks(settings, input_queue, max_response_size):
             output_queue.put(cloudpickle.dumps(status))
     except BaseException as e:
         # Catch serialization errors etc., and put into queue as a raw str to avoid triggering an exception a
@@ -180,16 +188,16 @@ def _run_parallel_worker(
         output_queue.put(str(e))
 
 
-def _process_all_chunks(settings: Settings, input_queue: mp.Queue) -> Iterable[_WorkerStatus]:
+def _process_all_chunks(settings: Settings,
+                        input_queue: mp.Queue,
+                        max_response_size: Optional[int] = None) -> Iterable[_WorkerStatus]:
     try:
         gen = Generator(settings)
 
         while True:
             chunk_size = input_queue.get_nowait()
             prev_invalid = gen.total_invalid
-            # Attempt to generate the required number of valid lines, but tolerate at most
-            # 5% invalid lines before returning early.
-            all_lines = list(gen.generate_next(chunk_size, hard_limit=int(chunk_size * 1.05)))
+            all_lines = list(gen.generate_next(chunk_size, hard_limit=max_response_size))
             num_invalid_lines = gen.total_invalid - prev_invalid
             if num_invalid_lines:
                 # Return the number of lines by which we fell short to the queue.
