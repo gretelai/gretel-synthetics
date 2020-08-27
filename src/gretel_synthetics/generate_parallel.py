@@ -197,10 +197,9 @@ def _run_parallel_worker(
 
     # Suppress stdout and stderr in worker threads. Do so on a best-effort basis only.
     try:
-        # devnull = open(os.devnull, 'w')
-        # os.dup2(devnull.fileno(), sys.stdout.fileno())
-        # os.dup2(devnull.fileno(), sys.stderr.fileno())
-        ...
+        devnull = open(os.devnull, 'w')
+        os.dup2(devnull.fileno(), sys.stdout.fileno())
+        os.dup2(devnull.fileno(), sys.stderr.fileno())
     except BaseException:  # pylint: disable=broad-except
         pass
 
