@@ -110,4 +110,4 @@ def generate_text(
         gen = Generator(settings)
         yield from gen.generate_next(_line_count)
     else:
-        yield from generate_parallel(settings, num_workers, chunks)
+        yield from generate_parallel(settings, num_workers, chunks, num_lines)

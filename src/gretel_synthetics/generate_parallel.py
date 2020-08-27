@@ -2,7 +2,6 @@ import multiprocessing
 from dataclasses import dataclass, field
 from typing import Iterable, List, Optional, Union, Tuple
 import queue
-import sys
 import os
 
 import cloudpickle
@@ -11,6 +10,9 @@ from gretel_synthetics.generator import Generator, Settings, deserialize_setting
 
 
 mp = multiprocessing.get_context('spawn')  # fork does not work with tensorflow
+
+
+MAX_QUEUE_SIZE = 30000
 
 
 @dataclass
@@ -79,7 +81,7 @@ def split_work(parallelism: Union[int, float], total_lines: int, chunk_size: int
     return num_workers, chunks
 
 
-def generate_parallel(settings: Settings, num_workers: int, chunks: List[int]):
+def generate_parallel(settings: Settings, num_workers: int, chunks: List[int], num_lines: int):
     """
     Runs text generation in parallel mode.
 
@@ -95,26 +97,28 @@ def generate_parallel(settings: Settings, num_workers: int, chunks: List[int]):
         ``gen_text`` objects.
     """
 
-    # Create a queue of chunks (integers indicating the number of lines that need to be generated).
-    # This queue is created with sufficient capacity to hold all chunks, and implements a flow control
-    # mechanism for the parallel generation. It also is used to signal the exit condition to subprocesses,
-    # as pre-filling the queue once ensures that an empty queue to a worker will always mean to exit.
-    worker_input_queue = mp.Queue(maxsize=len(chunks))
-    for chunk in chunks:
-        worker_input_queue.put_nowait(chunk)
-
-    # Create a queue for output produced by the worker. This queue should be large enough to buffer all
-    # intermediate statuses to ensure that upstream processing doesn't block downstream workers.
-    worker_output_queue = mp.Queue(maxsize=len(chunks) + num_workers)
-
-    pickled_settings = cloudpickle.dumps(settings)
-
     # Instruct each worker to return an intermediate result (at the cost of putting a partial chunk
     # back into the queue) if it has generated 105% of the requested number of valid lines per chunk
     # (regardless of how many lines are valid in the intermediate result). This ensures that workers
     # don't get stuck for a long time generating data from bad models, where the ratio of invalid:valid
     # lines is very high.
     max_response_size = int(chunks[0] * 1.05)
+
+    worker_input_queue = mp.Queue(MAX_QUEUE_SIZE)
+
+    # Because of the upper limit on the max queue size, we pre-load
+    # either all chunks or the max queue size amount of chunks
+    # If there are still more chunks, we'll load those into the queue
+    # as space becomes more available
+    for _ in range(min(MAX_QUEUE_SIZE, len(chunks))):
+        chunk = chunks.pop()
+        worker_input_queue.put_nowait(chunk)
+
+    # Create a queue for output produced by the worker. This queue should be large enough to buffer all
+    # intermediate statuses to ensure that upstream processing doesn't block downstream workers.
+    worker_output_queue = mp.Queue(MAX_QUEUE_SIZE)
+
+    pickled_settings = cloudpickle.dumps(settings)
 
     workers = [
         mp.Process(
@@ -130,6 +134,7 @@ def generate_parallel(settings: Settings, num_workers: int, chunks: List[int]):
 
     live_workers = len(workers)
     total_invalid = 0
+    total_valid = 0
     while live_workers > 0:
         output = worker_output_queue.get()
 
@@ -149,12 +154,33 @@ def generate_parallel(settings: Settings, num_workers: int, chunks: List[int]):
         for line in parsed_output.lines:
             if line.valid is not None and not line.valid:
                 total_invalid += 1
+            else:
+                total_valid += 1
             if total_invalid > settings.max_invalid:
                 raise RuntimeError("Maximum number of invalid lines reached!")
             yield line
 
         if parsed_output.done:
             live_workers -= 1  # We aren't expecting anything more from this worker
+
+        # if there are still chunks left, try and add them to the queue
+        # if there are no more chunks, signal the workers to shutdown
+        while True:
+            if not chunks:
+                break
+            chunk = chunks.pop()
+            try:
+                worker_input_queue.put_nowait(chunk)
+            except queue.Full:
+                chunks.append(chunk)
+                break
+
+        if total_valid == num_lines:
+            for _ in range(len(workers)):
+                try:
+                    worker_input_queue.put_nowait(None)
+                except queue.Full:
+                    pass
 
     # Join all worker processes (not strictly necessary, but cleaner).
     for worker in workers:
@@ -171,9 +197,10 @@ def _run_parallel_worker(
 
     # Suppress stdout and stderr in worker threads. Do so on a best-effort basis only.
     try:
-        devnull = open(os.devnull, 'w')
-        os.dup2(devnull.fileno(), sys.stdout.fileno())
-        os.dup2(devnull.fileno(), sys.stderr.fileno())
+        # devnull = open(os.devnull, 'w')
+        # os.dup2(devnull.fileno(), sys.stdout.fileno())
+        # os.dup2(devnull.fileno(), sys.stderr.fileno())
+        ...
     except BaseException:  # pylint: disable=broad-except
         pass
 
@@ -195,7 +222,10 @@ def _process_all_chunks(settings: Settings,
         gen = Generator(settings)
 
         while True:
-            chunk_size = input_queue.get_nowait()
+            chunk_size = input_queue.get()
+            if chunk_size is None:
+                yield _WorkerStatus(done=True)
+                break
             prev_invalid = gen.total_invalid
             all_lines = list(gen.generate_next(chunk_size, hard_limit=max_response_size))
             num_valid_lines = len(all_lines) - (gen.total_invalid - prev_invalid)
@@ -204,11 +234,13 @@ def _process_all_chunks(settings: Settings,
                 # This is guaranteed to succeed because every worker will only do this after
                 # at least removing an element from the queue, thus ensuring that capacity
                 # constraints are never violated.
-                input_queue.put_nowait(chunk_size - num_valid_lines)
+                input_queue.put(chunk_size - num_valid_lines)
             yield _WorkerStatus(lines=all_lines)
     except queue.Empty:
-        # Input queue is pre-filled, so empty queue means we are done with our initially
-        # allocated workload. It is possible that further elements will be added to the queue
+        # NOTE: We shouldn't really get here, but leaving it for now, since we are
+        # relying on signaling shutdown via a sentinel
+        #
+        # It is possible that further elements will be added to the queue
         # because a worker generated too many invalid lines, but in this case we can be certain
         # that the number of running workers will never fall below the number of concurrently
         # pending chunks.
