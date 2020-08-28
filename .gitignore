@@ -134,5 +134,6 @@ dmypy.json
 venv*
 
 checkpoints
+examples/checkpoints.zip
 
 docs/_build
