@@ -143,7 +143,7 @@ def generate_parallel(settings: Settings, num_lines: int, num_workers: int, chun
 # Global variable for the generator used in this process. Since we are not reusing processes across
 # generation tasks, we do not lose any ability of running multiple top-level generation tasks in parallel.
 # Also note that each worker picks up tasks in a strictly sequential fashion and is not multi-threaded.
-_loky_worker_generator : Optional[Generator] = None
+_loky_worker_generator: Optional[Generator] = None
 
 
 def _loky_init_worker(settings: Settings):
