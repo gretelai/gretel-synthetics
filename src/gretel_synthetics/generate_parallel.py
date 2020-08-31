@@ -1,13 +1,11 @@
-import multiprocessing
 from dataclasses import dataclass, field
-from typing import Iterable, List, Optional, Union, Set, Tuple
-import queue
+from typing import List, Optional, Union, Set, Tuple
 import os
 import sys
 import loky
 from concurrent import futures
 
-from gretel_synthetics.generator import Generator, Settings, deserialize_settings, gen_text
+from gretel_synthetics.generator import Generator, Settings, gen_text
 
 
 @dataclass
