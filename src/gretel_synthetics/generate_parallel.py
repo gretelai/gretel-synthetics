@@ -153,8 +153,17 @@ def _loky_init_worker(settings: Settings):
         # Suppress stdout and stderr in worker threads. Do so on a best-effort basis only.
         try:
             devnull = open(os.devnull, 'w')
-            os.dup2(devnull.fileno(), sys.stdout.fileno())
-            os.dup2(devnull.fileno(), sys.stderr.fileno())
+            try:
+                os.dup2(devnull.fileno(), sys.stdout.fileno())
+                os.dup2(devnull.fileno(), sys.stderr.fileno())
+            except BaseException:
+                pass
+            # On Windows in a Jupyter notebook, we have observed an
+            # 'OSError [WinError 1]: Incorrect function' when trying to sys.stdout/sys.stderr
+            # after the dup2 invocation. Hence, set the references explicitly to make prevent this
+            # (the native code writing to stdout/stderr directly seems to be unaffected).
+            sys.stdout = devnull
+            sys.stderr = devnull
         except BaseException:  # pylint: disable=broad-except
             pass
 
