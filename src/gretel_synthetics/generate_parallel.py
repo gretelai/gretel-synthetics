@@ -1,4 +1,3 @@
-from dataclasses import dataclass, field
 from typing import List, Optional, Union, Set, Tuple
 import os
 import sys
@@ -6,22 +5,6 @@ import loky
 from concurrent import futures
 
 from gretel_synthetics.generator import Generator, Settings, gen_text
-
-
-@dataclass
-class _WorkerStatus:
-    """
-    Status of a parallel worker to be communicated back to the main thread after each chunk.
-    """
-
-    lines: List[gen_text] = field(default_factory=list)
-    """Generated lines in this chunk, if any. This contains both valid and invalid lines."""
-
-    exception: Optional[BaseException] = None
-    """Exception that was encountered during processing. Implies done=True when not None."""
-
-    done: bool = False
-    """Flag indicating whether the worker is complete."""
 
 
 def get_num_workers(parallelism: Union[int, float], total_lines: int, chunk_size: int = 5) -> int:
@@ -103,13 +86,19 @@ def generate_parallel(settings: Settings, num_lines: int, num_workers: int, chun
     # it has generated itself.
     total_invalid = 0
 
+    # hard_limit is the number of lines (valid or invalid) after which a task should give up and return
+    # the intermediate result, even if it has not managed to generated the requested number of lines yet.
+    # This ensures that we get frequent status updates, even if a lot of invalid lines are generated.
+    # We currently hardcode this to 110% of a chunk size.
+    hard_limit = int(chunk_size * 1.10)
+
     try:
         while remaining_lines > 0:
             # If we have capacity to add new pending tasks, do so until we are at capacity or there are
             # no more lines that can be assigned to workers.
             while len(pending_tasks) < max_pending_tasks and assigned_lines < remaining_lines:
                 next_chunk = min(chunk_size, remaining_lines)
-                pending_tasks.add(worker_pool.submit(_loky_worker_process_chunk, next_chunk))
+                pending_tasks.add(worker_pool.submit(_loky_worker_process_chunk, next_chunk, hard_limit))
                 assigned_lines += next_chunk
 
             # Wait for at least one worker to complete its current task (or fail with an exception).
@@ -168,7 +157,7 @@ def _loky_init_worker(settings: Settings):
     _loky_worker_generator = Generator(settings)
 
 
-def _loky_worker_process_chunk(chunk_size: int) -> Tuple[int, List[gen_text], int]:
+def _loky_worker_process_chunk(chunk_size: int, hard_limit: Optional[int] = None) -> Tuple[int, List[gen_text], int]:
     """
     Processes a single chunk by attempting to generate the given number of lines.
 
@@ -190,7 +179,7 @@ def _loky_worker_process_chunk(chunk_size: int) -> Tuple[int, List[gen_text], in
         raise RuntimeError("generator has not been initialized in loky worker process")
 
     old_num_invalid = _loky_worker_generator.total_invalid
-    lines = list(_loky_worker_generator.generate_next(chunk_size))
+    lines = list(_loky_worker_generator.generate_next(chunk_size, hard_limit))
     num_invalid = _loky_worker_generator.total_invalid - old_num_invalid
 
     return chunk_size, lines, num_invalid
