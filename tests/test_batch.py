@@ -9,7 +9,7 @@ import pytest
 import pandas as pd
 
 from gretel_synthetics.batch import DataFrameBatch, MAX_INVALID, READ, WRITE
-from gretel_synthetics.generate import gen_text
+from gretel_synthetics.generator import gen_text, TooManyInvalidError
 
 
 checkpoint_dir = str(Path(__file__).parent / "checkpoints")
@@ -204,8 +204,23 @@ def test_generate_batch_lines_raise_on_exceed(test_data):
     batches.create_training_data()
 
     with patch("gretel_synthetics.batch.generate_text") as mock_gen:
-        mock_gen.side_effect = RuntimeError()
+        mock_gen.side_effect = TooManyInvalidError()
         assert not batches.generate_batch_lines(0)
+
+    with patch("gretel_synthetics.batch.generate_text") as mock_gen:
+        mock_gen.side_effect = TooManyInvalidError()
+        with pytest.raises(TooManyInvalidError):
+            assert not batches.generate_batch_lines(0, raise_on_exceed_invalid=True)
+
+
+def test_generate_batch_lines_always_raise_other_exceptions(test_data):
+    batches = DataFrameBatch(df=test_data, config=config_template)
+    batches.create_training_data()
+
+    with patch("gretel_synthetics.batch.generate_text") as mock_gen:
+        mock_gen.side_effect = RuntimeError()
+        with pytest.raises(RuntimeError):
+            assert not batches.generate_batch_lines(0)
 
     with patch("gretel_synthetics.batch.generate_text") as mock_gen:
         mock_gen.side_effect = RuntimeError()
