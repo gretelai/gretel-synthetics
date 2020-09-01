@@ -104,6 +104,10 @@ class gen_text:
         return None
 
 
+class TooManyInvalidError(RuntimeError):
+    pass
+
+
 class Generator:
     """
     A class for generating synthetic lines of text.
@@ -172,7 +176,7 @@ class Generator:
                     ...
 
             if self.total_invalid > self.settings.max_invalid:
-                raise RuntimeError("Maximum number of invalid lines reached!")
+                raise TooManyInvalidError("Maximum number of invalid lines reached!")
 
 
 def _predict_chars(

@@ -4,7 +4,7 @@ import sys
 import loky
 from concurrent import futures
 
-from gretel_synthetics.generator import Generator, Settings, gen_text
+from gretel_synthetics.generator import Generator, Settings, gen_text, TooManyInvalidError
 
 
 def get_num_workers(parallelism: Union[int, float], total_lines: int, chunk_size: int = 5) -> int:
@@ -116,7 +116,7 @@ def generate_parallel(settings: Settings, num_lines: int, num_workers: int, chun
                     if line.valid is not None and not line.valid:
                         total_invalid += 1
                     if total_invalid > settings.max_invalid:
-                        raise RuntimeError("Maximum number of invalid lines reached!")
+                        raise TooManyInvalidError("Maximum number of invalid lines reached!")
                     yield line
 
     finally:
@@ -128,6 +128,10 @@ def generate_parallel(settings: Settings, num_lines: int, num_workers: int, chun
 # All code below this line is ONLY run in workers spawned by loky #
 ###################################################################
 
+# Global variable for any exception encountered during initialization. We store them here any raise them
+# upon a call to _loky_worker_process_chunk to make the root cause visible with stack trace and all; otherwise,
+# we would just see a generic TerminatedWorkerError.
+_loky_worker_init_exception: Optional[BaseException] = None
 
 # Global variable for the generator used in this process. Since we are not reusing processes across
 # generation tasks, we do not lose any ability of running multiple top-level generation tasks in parallel.
@@ -142,19 +146,25 @@ def _loky_init_worker(settings: Settings):
     Args:
         settings: the settings for the generator.
     """
-    # Workers should be using CPU only (note, this has no effect on the parent process)
-    os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
-
-    # Suppress stdout and stderr in worker threads. Do so on a best-effort basis only.
     try:
-        devnull = open(os.devnull, 'w')
-        os.dup2(devnull.fileno(), sys.stdout.fileno())
-        os.dup2(devnull.fileno(), sys.stderr.fileno())
-    except BaseException:  # pylint: disable=broad-except
-        pass
+        # Workers should be using CPU only (note, this has no effect on the parent process)
+        os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
-    global _loky_worker_generator
-    _loky_worker_generator = Generator(settings)
+        # Suppress stdout and stderr in worker threads. Do so on a best-effort basis only.
+        try:
+            devnull = open(os.devnull, 'w')
+            os.dup2(devnull.fileno(), sys.stdout.fileno())
+            os.dup2(devnull.fileno(), sys.stderr.fileno())
+        except BaseException:  # pylint: disable=broad-except
+            pass
+
+        global _loky_worker_generator
+        _loky_worker_generator = Generator(settings)
+
+    except BaseException as e:  # pylint: disable=broad-except
+        global _loky_worker_init_exception
+        _loky_worker_init_exception = e
+        # Simply return without raising, to keep the worker alive.
 
 
 def _loky_worker_process_chunk(chunk_size: int, hard_limit: Optional[int] = None) -> Tuple[int, List[gen_text], int]:
@@ -172,7 +182,13 @@ def _loky_worker_process_chunk(chunk_size: int, hard_limit: Optional[int] = None
 
     Raises:
         RuntimeError: if _loky_init_worker has not been called yet in this process.
+        BaseException: if _loky_init_worker encountered an exception.
     """
+
+    # Raise any exception encountered during initialization.
+    global _loky_worker_init_exception
+    if _loky_worker_init_exception:
+        raise _loky_worker_init_exception
 
     global _loky_worker_generator
     if not _loky_worker_generator:
