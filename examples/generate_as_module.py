@@ -36,7 +36,7 @@ config = LocalConfig(
 
 # Let's generate some text!
 #
-# The ``generate_text`` funtion is a generator that will return
+# The ``generate_text`` function is a generator that will return
 # a line of predicted text based on the ``gen_lines`` setting in your
 # config.
 #
