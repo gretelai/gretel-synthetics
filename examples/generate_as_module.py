@@ -8,8 +8,6 @@ In the event that you choose to export a Notebook to a pure module, please note 
 changes will have a ``NOTE:`` comment.
 """
 
-# NOTE: Required import for launching from standlone module
-from multiprocessing import freeze_support
 from pathlib import Path
 
 from gretel_synthetics.config import LocalConfig
@@ -72,7 +70,7 @@ def start():
         print(line)
 
 
-# NOTE: Invoke your generation this way
+# NOTE: It is preferred to always invoke your generation this way. Simply invoking start() from
+# the top-level of the main module *should* work, but YMMV.
 if __name__ == "__main__":
-    freeze_support()
     start()
