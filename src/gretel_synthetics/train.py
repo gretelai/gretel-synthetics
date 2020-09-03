@@ -163,7 +163,7 @@ def _train_tokenizer(store: BaseConfig) -> spm.SentencePieceProcessor:
         input=store.training_data,
         model_prefix=store.tokenizer_prefix,
         user_defined_symbols=["<n>", store.field_delimiter_token],
-        vocab_size=store.sp_vocab_size,
+        vocab_size=store.vocab_size,
         hard_vocab_limit=False,
         max_sentence_length=store.max_line_len,
         input_sentence_size=store.pretrain_sentences,
