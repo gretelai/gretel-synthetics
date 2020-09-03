@@ -1,8 +1,9 @@
 
 """
 Example module on how to run data generation from a standlone python invocation. Tensorflow
-requires that processes are launch with "spawn" mode, which requires the use of ``freeze_support()``
-that has to be called in the `__main__` scope of the module.
+requires that processes are launch with "spawn" mode, for which it is a good practice to ensure
+that any code is only executed after checking that we are in the main module
+(`if __name__ == '__main__'`).
 
 In the event that you choose to export a Notebook to a pure module, please note the changes below. These
 changes will have a ``NOTE:`` comment.
