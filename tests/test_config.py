@@ -40,6 +40,7 @@ def test_local_config_settings(mkdir):
         "rnn_initializer": "glorot_uniform",
         "vocab_size": 20000,
         "character_coverage": 1.0,
+        "pretrain_sentence_count": 1000000,
         "dp": False,
         "dp_learning_rate": 0.015,
         "dp_noise_multiplier": 1.1,
