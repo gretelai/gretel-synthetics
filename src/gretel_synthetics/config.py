@@ -69,10 +69,10 @@ class BaseConfig:
             will be replaced with the <unk> tag. Good defaults are ``0.995`` for languages with rich
             character sets like Japanese or Chinese, and 1.0 for other languages or machine data.
             Default is ``1.0``.
-        pretrain_sentences (optional): The number of lines spm_train first loads. Remaining lines are simply
+        pretrain_sentence_count (optional): The number of lines spm_train first loads. Remaining lines are simply
             discarded. Since spm_train loads entire corpus into memory, this size will depend on the memory
             size of the machine. It also affects training time.
-            Default is ``100000``.
+            Default is ``1000000``.
         dp (optional): If ``True``, train model with differential privacy enabled. This setting provides
             assurances that the models will encode general patterns in data rather than facts
             about specific training examples. These additional guarantees can usefully strengthen
@@ -128,7 +128,7 @@ class BaseConfig:
     # Tokenizer settings
     vocab_size: int = 20000
     character_coverage: float = 1.0
-    pretrain_sentences: int = 100000
+    pretrain_sentence_count: int = 1000000
     max_line_len: int = 2048
 
     # Diff privacy configs

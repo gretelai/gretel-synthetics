@@ -166,7 +166,7 @@ def _train_tokenizer(store: BaseConfig) -> spm.SentencePieceProcessor:
         vocab_size=store.vocab_size,
         hard_vocab_limit=False,
         max_sentence_length=store.max_line_len,
-        input_sentence_size=store.pretrain_sentences,
+        input_sentence_size=store.pretrain_sentence_count,
         shuffle_input_sentence=True,
         character_coverage=store.character_coverage
     )
