@@ -13,7 +13,7 @@ import tensorflow as tf
 
 from gretel_synthetics.generator import Generator, Settings
 from gretel_synthetics.generator import gen_text, PredString  # noqa # pylint: disable=unused-import
-from gretel_synthetics.generate_parallel import split_work, generate_parallel
+from gretel_synthetics.generate_parallel import get_num_workers, generate_parallel
 
 if TYPE_CHECKING:  # pragma: no cover
     from gretel_synthetics.config import LocalConfig
@@ -104,10 +104,10 @@ def generate_text(
     else:
         _line_count = config.gen_lines
 
-    num_workers, chunks = split_work(parallelism, _line_count)
+    num_workers = get_num_workers(parallelism, _line_count, chunk_size=5)
 
     if num_workers == 1:  # Sequential operation
         gen = Generator(settings)
         yield from gen.generate_next(_line_count)
     else:
-        yield from generate_parallel(settings, num_workers, chunks, num_lines)
+        yield from generate_parallel(settings, _line_count, num_workers, chunk_size=5)

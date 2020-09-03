@@ -25,6 +25,7 @@ from tqdm.auto import tqdm
 
 from gretel_synthetics.config import LocalConfig
 from gretel_synthetics.generate import gen_text, generate_text
+from gretel_synthetics.generator import TooManyInvalidError
 from gretel_synthetics.train import train_rnn
 
 
@@ -433,7 +434,7 @@ class DataFrameBatch:
                 else:
                     t2.update(1)
                     batch.gen_data_invalid.append(line)
-        except RuntimeError:
+        except TooManyInvalidError:
             if raise_on_exceed_invalid:
                 raise
             else:

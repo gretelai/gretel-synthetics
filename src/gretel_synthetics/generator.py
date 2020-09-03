@@ -2,8 +2,6 @@ from typing import TYPE_CHECKING, Callable, List, Iterable, Optional, Tuple
 from dataclasses import dataclass, asdict
 from collections import namedtuple
 
-import cloudpickle
-
 import sentencepiece as spm
 import tensorflow as tf
 
@@ -64,28 +62,6 @@ class Settings:
     line_validator: Optional[Callable] = None
     max_invalid: int = 1000
 
-    def serialize(self) -> bytes:
-        return cloudpickle.dumps(self)
-
-
-def deserialize_settings(serialized: bytes) -> Settings:
-    """
-    Deserializes a serialized ``Settings`` instance.
-
-    Args:
-        serialized: the bytes of the serialized ``Settings`` instance.
-
-    Returns:
-        The deserialized ``Settings`` instance.
-
-    Raises:
-        A ``TypeError`` if the deserialized object is not a ``Settings`` instance.
-    """
-    obj = cloudpickle.loads(serialized)
-    if not isinstance(obj, Settings):
-        raise TypeError("deserialized object is of type {}, not Settings".format(type(obj).__name__))
-    return obj
-
 
 @dataclass
 class gen_text:
@@ -126,6 +102,10 @@ class gen_text:
             tmp = self.text.rstrip(self.delimiter)
             return tmp.split(self.delimiter)
         return None
+
+
+class TooManyInvalidError(RuntimeError):
+    pass
 
 
 class Generator:
@@ -196,7 +176,7 @@ class Generator:
                     ...
 
             if self.total_invalid > self.settings.max_invalid:
-                raise RuntimeError("Maximum number of invalid lines reached!")
+                raise TooManyInvalidError("Maximum number of invalid lines reached!")
 
 
 def _predict_chars(

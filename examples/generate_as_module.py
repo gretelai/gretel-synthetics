@@ -1,15 +1,14 @@
 
 """
 Example module on how to run data generation from a standlone python invocation. Tensorflow
-requires that processes are launch with "spawn" mode, which requires the use of ``freeze_support()``
-that has to be called in the `__main__` scope of the module.
+requires that processes are launch with "spawn" mode, for which it is a good practice to ensure
+that any code is only executed after checking that we are in the main module
+(`if __name__ == '__main__'`).
 
 In the event that you choose to export a Notebook to a pure module, please note the changes below. These
 changes will have a ``NOTE:`` comment.
 """
 
-# NOTE: Required import for launching from standlone module
-from multiprocessing import freeze_support
 from pathlib import Path
 
 from gretel_synthetics.config import LocalConfig
@@ -38,7 +37,7 @@ config = LocalConfig(
 
 # Let's generate some text!
 #
-# The ``generate_text`` funtion is a generator that will return
+# The ``generate_text`` function is a generator that will return
 # a line of predicted text based on the ``gen_lines`` setting in your
 # config.
 #
@@ -72,7 +71,7 @@ def start():
         print(line)
 
 
-# NOTE: Invoke your generation this way
+# NOTE: It is preferred to always invoke your generation this way. Simply invoking start() from
+# the top-level of the main module *should* work, but YMMV.
 if __name__ == "__main__":
-    freeze_support()
     start()
