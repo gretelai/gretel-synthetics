@@ -168,15 +168,6 @@ def _train_tokenizer(store: BaseConfig) -> spm.SentencePieceProcessor:
         max_sentence_length=store.max_line_len,
         character_coverage=store.character_coverage
     )
-    """
-    spm.SentencePieceTrainer.Train(
-        f'--input={store.training_data} '
-        f'--model_prefix={store.tokenizer_prefix} '
-        f'--user_defined_symbols=<n>,{store.field_delimiter_token} '
-        f'--vocab_size={store.vocab_size} '
-        f'--hard_vocab_limit=false '
-        f'--character_coverage={store.character_coverage}')
-    """
     _move_tokenizer_model(store)
 
     sp = spm.SentencePieceProcessor()
