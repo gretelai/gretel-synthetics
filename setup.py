@@ -13,7 +13,7 @@ with open(path.join(this_dir, 'README.md'), encoding='utf-8') as f:
 setup(
     name='gretel-synthetics',
     author='Gretel Labs, Inc.',
-    author_email='customer-support@gretel.ai',
+    author_email='open-source@gretel.ai',
     use_scm_version=True,
     setup_requires=["setuptools_scm"],
     description='Synthetic Data Generation with optional Differential Privacy',
