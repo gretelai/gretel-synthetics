@@ -142,6 +142,7 @@ class BaseConfig:
     gen_temp: float = 1.0
     gen_chars: int = 0
     gen_lines: int = 1000
+    predict_batch_size: int = 1
 
     # Checkpoint storage
     save_all_checkpoints: bool = False
