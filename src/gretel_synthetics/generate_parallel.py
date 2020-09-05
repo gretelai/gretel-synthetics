@@ -97,7 +97,7 @@ def generate_parallel(settings: Settings, num_lines: int, num_workers: int, chun
             # If we have capacity to add new pending tasks, do so until we are at capacity or there are
             # no more lines that can be assigned to workers.
             while len(pending_tasks) < max_pending_tasks and assigned_lines < remaining_lines:
-                next_chunk = min(chunk_size, remaining_lines)
+                next_chunk = min(chunk_size, remaining_lines - assigned_lines)
                 pending_tasks.add(worker_pool.submit(_loky_worker_process_chunk, next_chunk, hard_limit))
                 assigned_lines += next_chunk
 

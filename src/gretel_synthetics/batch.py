@@ -441,7 +441,7 @@ class DataFrameBatch:
                 return False
         t.close()
         t2.close()
-        return batch.gen_data_count == num_lines
+        return batch.gen_data_count >= num_lines
 
     def generate_all_batch_lines(
         self, max_invalid=MAX_INVALID, raise_on_failed_batch: bool = False, num_lines: int = None,
