@@ -125,11 +125,15 @@ class Generator:
     delim: str
     total_invalid: int = 0
     total_generated: int = 0
+    _compiled_predict_and_sample: Callable
 
     def __init__(self, settings: Settings):
         self.settings = settings
         self.sp, self.model = _load_model(settings.config)
         self.delim = settings.config.field_delimiter
+
+        self._compiled_predict_and_sample = tf.function(
+            lambda input_eval: _predict_and_sample(self.model, input_eval, self.settings.config.gen_temp))
 
     def generate_next(self, num_lines: int, hard_limit: Optional[int] = None) -> Iterable[gen_text]:
         """
@@ -148,7 +152,9 @@ class Generator:
         total_lines_generated = 0
 
         while valid_lines_generated < num_lines and (hard_limit is None or total_lines_generated < hard_limit):
-            rec = _predict_chars(self.model, self.sp, self.settings.start_string, self.settings.config).data
+            rec = _predict_chars(
+                self.model, self.sp, self.settings.start_string, self.settings.config,
+                self._compiled_predict_and_sample).data
             total_lines_generated += 1
             _valid = None
             try:
@@ -184,6 +190,7 @@ def _predict_chars(
     sp: spm.SentencePieceProcessor,
     start_string: str,
     store: BaseConfig,
+    predict_and_sample: Optional[Callable] = None,
 ) -> PredString:
     """
     Evaluation step (generating text using the learned model).
@@ -201,25 +208,19 @@ def _predict_chars(
     input_eval = sp.EncodeAsIds(start_string)
     input_eval = tf.expand_dims(input_eval, 0)
 
+    if predict_and_sample is None:
+        def predict_and_sample(this_input):
+            return _predict_and_sample(model, this_input, store.gen_temp)
+
     # Here batch size == 1
     model.reset_states()
 
     sentence_ids = []
 
     while True:
-        predictions = model(input_eval)
-        # remove the batch dimension
-        predictions = tf.squeeze(predictions, 0)
+        predicted_id, input_eval = predict_and_sample(input_eval)
 
-        # using a categorical distribution to
-        # predict the word returned by the model
-        predictions = predictions / store.gen_temp
-        predicted_id = tf.random.categorical(predictions, num_samples=1)[-1, 0].numpy()
-
-        # We pass the predicted word as the next input to the model
-        # along with the previous hidden state
-        input_eval = tf.expand_dims([predicted_id], 0)
-        sentence_ids.append(int(predicted_id))
+        sentence_ids.append(int(predicted_id.numpy()))
 
         decoded = sp.DecodeIds(sentence_ids)
         if store.field_delimiter is not None:
@@ -231,3 +232,19 @@ def _predict_chars(
             return PredString(decoded.replace("<n>", ""))
         elif 0 < store.gen_chars <= len(decoded):
             return PredString(decoded)
+
+
+def _predict_and_sample(model, input_eval, gen_temp):
+    predictions = model(input_eval)
+    predictions = tf.squeeze(predictions, 0)
+
+    # using a categorical distribution to
+    # predict the word returned by the model
+    predictions = predictions / gen_temp
+    predicted_id = tf.random.categorical(predictions, num_samples=1)[-1, 0]
+
+    # We pass the predicted word as the next input to the model
+    # along with the previous hidden state
+    next_input_eval = tf.expand_dims([predicted_id], 0)
+
+    return predicted_id, next_input_eval
