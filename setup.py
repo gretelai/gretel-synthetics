@@ -12,9 +12,12 @@ with open(path.join(this_dir, 'README.md'), encoding='utf-8') as f:
 
 setup(
     name='gretel-synthetics',
+    author='Gretel Labs, Inc.',
+    author_email='open-source@gretel.ai',
     use_scm_version=True,
     setup_requires=["setuptools_scm"],
     description='Synthetic Data Generation with optional Differential Privacy',
+    url='https://github.com/gretelai/gretel-synthetics',
     long_description=long_description,
     long_description_content_type='text/markdown',
     package_dir={'': 'src'},
@@ -32,5 +35,12 @@ setup(
     ],
     extras_require={
         'tf': ['tensorflow==2.1.0']
-    }
+    },
+    classifiers=[
+        "Programming Language :: Python :: 3",
+        "License :: OSI Approved :: Apache License",
+        "Operating System :: POSIX :: Linux",
+        "Operating System :: MacOS",
+        "Operating System :: Microsoft :: Windows"
+    ],
 )
