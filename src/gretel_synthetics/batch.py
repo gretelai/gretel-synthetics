@@ -141,9 +141,14 @@ def _create_batch_from_dir(batch_dir: str):
         raise ValueError("missing model param file")
     config = json.loads(open(path / CONFIG_FILE).read())
 
-    if not (path / TRAIN_FILE).is_file():  # pragma: no cover
-        raise ValueError("missing training data")
-    train_path = str(path / TRAIN_FILE)
+    # training path can be empty, since we will not need access
+    # to training data simply for read-only data generation
+    train_path = ""
+
+    # overwrite the previously saved config with the location that we are reading
+    # the model data in from. this enables a model to be loaded from a different
+    # location other than the exact location the data was stored during training
+    config["checkpoint_dir"] = batch_dir
 
     batch = Batch(
         checkpoint_dir=batch_dir,
