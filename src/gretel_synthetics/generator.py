@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Callable, List, Iterable, Optional, Tuple
+from typing import TYPE_CHECKING, Callable, Generator as GeneratorType, List, Iterable, Optional, Tuple
 from dataclasses import dataclass, asdict
 from collections import namedtuple
 
@@ -125,18 +125,13 @@ class Generator:
     delim: str
     total_invalid: int = 0
     total_generated: int = 0
-    _compiled_predict_and_sample: Callable
+    _predictions: GeneratorType[PredString, None, None]
 
     def __init__(self, settings: Settings):
         self.settings = settings
         self.sp, self.model = _load_model(settings.config)
         self.delim = settings.config.field_delimiter
-
-        @tf.function
-        def compiled_predict_and_sample(input_eval):
-            return _predict_and_sample(self.model, input_eval, self.settings.config.gen_temp)
-
-        self._compiled_predict_and_sample = compiled_predict_and_sample
+        self._predictions = self._predict_forever()
 
     def generate_next(self, num_lines: int, hard_limit: Optional[int] = None) -> Iterable[gen_text]:
         """
@@ -154,9 +149,8 @@ class Generator:
         valid_lines_generated = 0
         total_lines_generated = 0
 
-        predictions = self._predict_forever()
         while valid_lines_generated < num_lines and (hard_limit is None or total_lines_generated < hard_limit):
-            rec = next(predictions).data
+            rec = next(self._predictions).data
             total_lines_generated += 1
             _valid = None
             try:
@@ -186,11 +180,21 @@ class Generator:
             if self.total_invalid > self.settings.max_invalid:
                 raise TooManyInvalidError("Maximum number of invalid lines reached!")
 
-    def _predict_forever(self):
+    def _predict_forever(self) -> GeneratorType[PredString, None, None]:
+        """
+        Returns a generator infinitely producing prediction strings.
+
+        Returns:
+            A generator producing an infinite sequence of ``PredString``s.
+        """
+        @tf.function
+        def compiled_predict_and_sample(input_eval):
+            return _predict_and_sample(self.model, input_eval, self.settings.config.gen_temp)
+
         while True:
             yield from _predict_chars(
                 self.model, self.sp, self.settings.start_string, self.settings.config,
-                self._compiled_predict_and_sample)
+                compiled_predict_and_sample)
 
 
 def _predict_chars(
@@ -199,7 +203,7 @@ def _predict_chars(
     start_string: str,
     store: BaseConfig,
     predict_and_sample: Optional[Callable] = None,
-) -> Iterable[PredString]:
+) -> GeneratorType[PredString, None, None]:
     """
     Evaluation step (generating text using the learned model).
 

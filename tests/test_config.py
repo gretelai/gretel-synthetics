@@ -56,6 +56,7 @@ def test_local_config_settings(mkdir):
         "field_delimiter_token": "<d>",
         "overwrite": False,
         "input_data_path": "bar",
+        "predict_batch_size": 1,
     }
 
 
