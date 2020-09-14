@@ -12,7 +12,6 @@ from pathlib import Path
 import gzip
 from math import ceil
 from typing import List, Type, Callable, Dict
-import pickle
 from copy import deepcopy
 import logging
 import io
@@ -22,6 +21,7 @@ import glob
 import pandas as pd
 import numpy as np
 from tqdm.auto import tqdm
+import cloudpickle
 
 from gretel_synthetics.config import LocalConfig
 from gretel_synthetics.generate import gen_text, generate_text
@@ -83,14 +83,14 @@ class Batch:
         if save:
             p = Path(self.checkpoint_dir) / "validator.p.gz"
             with gzip.open(p, "w") as fout:
-                fout.write(pickle.dumps(fn))
+                fout.write(cloudpickle.dumps(fn))
 
     def load_validator_from_file(self):
         """Load a saved validation object if it exists """
         p = Path(self.checkpoint_dir) / "validator.p.gz"
         if p.exists():
             with gzip.open(p, "r") as fin:
-                self.validator = pickle.loads(fin.read())
+                self.validator = cloudpickle.loads(fin.read())
 
     def reset_gen_data(self):
         """Reset all objects that accumulate or track synthetic
@@ -141,9 +141,14 @@ def _create_batch_from_dir(batch_dir: str):
         raise ValueError("missing model param file")
     config = json.loads(open(path / CONFIG_FILE).read())
 
-    if not (path / TRAIN_FILE).is_file():  # pragma: no cover
-        raise ValueError("missing training data")
-    train_path = str(path / TRAIN_FILE)
+    # training path can be empty, since we will not need access
+    # to training data simply for read-only data generation
+    train_path = ""
+
+    # overwrite the previously saved config with the location that we are reading
+    # the model data in from. this enables a model to be loaded from a different
+    # location other than the exact location the data was stored during training
+    config["checkpoint_dir"] = batch_dir
 
     batch = Batch(
         checkpoint_dir=batch_dir,
