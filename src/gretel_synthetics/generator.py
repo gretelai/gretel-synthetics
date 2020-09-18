@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Callable, List, Iterable, Optional, Tuple
+from typing import TYPE_CHECKING, Callable, Generator as GeneratorType, List, Iterable, Optional, Tuple
 from dataclasses import dataclass, asdict
 from collections import namedtuple
 
@@ -41,7 +41,7 @@ def _load_model(
     store: LocalConfig,
 ) -> Tuple[spm.SentencePieceProcessor, tf.keras.Sequential]:
     sp = _load_tokenizer(store)
-    model = _prepare_model(sp, 1, store)
+    model = _prepare_model(sp, store.predict_batch_size, store)
     return sp, model
 
 
@@ -125,11 +125,13 @@ class Generator:
     delim: str
     total_invalid: int = 0
     total_generated: int = 0
+    _predictions: GeneratorType[PredString, None, None]
 
     def __init__(self, settings: Settings):
         self.settings = settings
         self.sp, self.model = _load_model(settings.config)
         self.delim = settings.config.field_delimiter
+        self._predictions = self._predict_forever()
 
     def generate_next(self, num_lines: int, hard_limit: Optional[int] = None) -> Iterable[gen_text]:
         """
@@ -148,7 +150,7 @@ class Generator:
         total_lines_generated = 0
 
         while valid_lines_generated < num_lines and (hard_limit is None or total_lines_generated < hard_limit):
-            rec = _predict_chars(self.model, self.sp, self.settings.start_string, self.settings.config).data
+            rec = next(self._predictions).data
             total_lines_generated += 1
             _valid = None
             try:
@@ -178,13 +180,30 @@ class Generator:
             if self.total_invalid > self.settings.max_invalid:
                 raise TooManyInvalidError("Maximum number of invalid lines reached!")
 
+    def _predict_forever(self) -> GeneratorType[PredString, None, None]:
+        """
+        Returns a generator infinitely producing prediction strings.
+
+        Returns:
+            A generator producing an infinite sequence of ``PredString``s.
+        """
+        @tf.function
+        def compiled_predict_and_sample(input_eval):
+            return _predict_and_sample(self.model, input_eval, self.settings.config.gen_temp)
+
+        while True:
+            yield from _predict_chars(
+                self.model, self.sp, self.settings.start_string, self.settings.config,
+                compiled_predict_and_sample)
+
 
 def _predict_chars(
     model: tf.keras.Sequential,
     sp: spm.SentencePieceProcessor,
     start_string: str,
     store: BaseConfig,
-) -> PredString:
+    predict_and_sample: Optional[Callable] = None,
+) -> GeneratorType[PredString, None, None]:
     """
     Evaluation step (generating text using the learned model).
 
@@ -198,36 +217,47 @@ def _predict_chars(
     """
 
     # Converting our start string to numbers (vectorizing)
-    input_eval = sp.EncodeAsIds(start_string)
-    input_eval = tf.expand_dims(input_eval, 0)
+    start_vec = sp.EncodeAsIds(start_string)
+    input_eval = tf.constant([start_vec for _ in range(store.predict_batch_size)])
 
-    # Here batch size == 1
+    if predict_and_sample is None:
+        def predict_and_sample(this_input):
+            return _predict_and_sample(model, this_input, store.gen_temp)
+
+    # Batch prediction
+    batch_sentence_ids = [[] for _ in range(store.predict_batch_size)]
+    not_done = set(i for i in range(store.predict_batch_size))
+
     model.reset_states()
 
-    sentence_ids = []
+    while not_done:
+        input_eval = predict_and_sample(input_eval)
+        for i in not_done:
+            batch_sentence_ids[i].append(int(input_eval[i, 0].numpy()))
 
-    while True:
-        predictions = model(input_eval)
-        # remove the batch dimension
-        predictions = tf.squeeze(predictions, 0)
-
-        # using a categorical distribution to
-        # predict the word returned by the model
-        predictions = predictions / store.gen_temp
-        predicted_id = tf.random.categorical(predictions, num_samples=1)[-1, 0].numpy()
-
-        # We pass the predicted word as the next input to the model
-        # along with the previous hidden state
-        input_eval = tf.expand_dims([predicted_id], 0)
-        sentence_ids.append(int(predicted_id))
-
-        decoded = sp.DecodeIds(sentence_ids)
+        batch_decoded = [(i, sp.DecodeIds(batch_sentence_ids[i])) for i in not_done]
         if store.field_delimiter is not None:
-            decoded = decoded.replace(
+            batch_decoded = [(i, decoded.replace(
                 store.field_delimiter_token, store.field_delimiter
-            )
+            )) for i, decoded in batch_decoded]
 
-        if "<n>" in decoded:
-            return PredString(decoded.replace("<n>", ""))
-        elif 0 < store.gen_chars <= len(decoded):
-            return PredString(decoded)
+        for i, decoded in batch_decoded:
+            end_idx = decoded.find("<n>")
+            if end_idx >= 0:
+                decoded = decoded[:end_idx]
+                yield PredString(decoded)
+                not_done.remove(i)
+            elif 0 < store.gen_chars <= len(decoded):
+                yield PredString(decoded)
+                not_done.remove(i)
+
+
+def _predict_and_sample(model, input_eval, gen_temp):
+    predictions = model(input_eval)[:, -1, :]
+
+    # using a categorical distribution to
+    # predict the word returned by the model
+    predictions = predictions / gen_temp
+    predicted_ids = tf.random.categorical(predictions, num_samples=1)
+
+    return predicted_ids

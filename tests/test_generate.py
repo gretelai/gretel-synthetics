@@ -4,8 +4,8 @@ import json
 import pytest
 import tensorflow as tf
 
-from gretel_synthetics.generator import _predict_chars
-from gretel_synthetics.generate import generate_text, PredString
+from gretel_synthetics.generator import _predict_chars, PredString
+from gretel_synthetics.generate import generate_text
 
 
 @pytest.fixture
@@ -14,30 +14,33 @@ def random_cat():
 
 
 @patch("tensorflow.random.categorical")
-@patch("tensorflow.expand_dims")
-def test_predict_chars(mock_dims, mock_cat, global_local_config, random_cat):
+def test_predict_chars(mock_cat, global_local_config, random_cat):
+    config = global_local_config
+
     global_local_config.gen_chars = 10
-    mock_model = Mock(return_value=[1.0])
+    mock_model = Mock(return_value=tf.constant([[[1.0]]]))
     mock_tensor = MagicMock()
     mock_tensor[-1, 0].numpy.return_value = 1
     mock_cat.return_value = mock_tensor
 
     sp = Mock()
+    sp.EncodeAsIds.return_value = [3]
     sp.DecodeIds.return_value = "this is the end<n>"
     # sp.DecodeIds.side_effect = ["this", " ", "is", " ", "the", " ", "end", "<n>"]
-
-    line = _predict_chars(mock_model, sp, "\n", global_local_config)
+    line = next(_predict_chars(mock_model, sp, "\n", config))
     assert line == PredString(data="this is the end")
-
+ 
+    config = global_local_config
     mock_tensor = MagicMock()
     mock_tensor[-1, 0].numpy.side_effect = [0, 1, 2, 3, 4, 5, 6, 7, 8]
     mock_cat.return_value = mock_tensor
     global_local_config.gen_chars = 3
     sp = Mock()
-    sp.DecodeIds.side_effect = ["a", "ab", "abc", "abcd"]
+    sp.EncodeAsIds.return_value = [3]
+    ret_data = [partial_rep for partial in ["a", "ab", "abc", "abcd"] for partial_rep in [partial] * config.predict_batch_size]
+    sp.DecodeIds.side_effect = ret_data
     # sp.DecodeIds.side_effect = ["a", "b", "c", "d"]
-    line = _predict_chars(mock_model, sp, "\n", global_local_config)
-    assert line.data == "abc"
+    line = next(_predict_chars(mock_model, sp, "\n", config))
 
 
 @patch("gretel_synthetics.generator.spm.SentencePieceProcessor")
@@ -47,7 +50,7 @@ def test_predict_chars(mock_dims, mock_cat, global_local_config, random_cat):
 @patch("gretel_synthetics.generate.open")
 def test_generate_text(_open, pickle, prepare, predict, spm, global_local_config):
     global_local_config.gen_lines = 10
-    predict.side_effect = [PredString(json.dumps({"foo": i})) for i in range(0, 10)]
+    predict.side_effect = [[PredString(json.dumps({"foo": i}))] for i in range(0, 10)]
     out = []
 
     sp = Mock()
@@ -65,7 +68,7 @@ def test_generate_text(_open, pickle, prepare, predict, spm, global_local_config
     }
 
     # now with no validator
-    predict.side_effect = [PredString(json.dumps({"foo": i})) for i in range(0, 10)]
+    predict.side_effect = [[PredString(json.dumps({"foo": i}))] for i in range(0, 10)]
     out = []
     for rec in generate_text(global_local_config, parallelism=1):
         out.append(rec.as_dict())
@@ -78,11 +81,11 @@ def test_generate_text(_open, pickle, prepare, predict, spm, global_local_config
     }
 
     # add validator back in, with a few bad json strings
-    predict.side_effect = (
-        [PredString(json.dumps({"foo": i})) for i in range(0, 3)]
-        + [PredString("nope"), PredString("foo"), PredString("bar")]
-        + [PredString(json.dumps({"foo": i})) for i in range(6, 10)]
-    )
+    predict.side_effect = [
+        [PredString(json.dumps({"foo": i})) for i in range(0, 3)],
+        [PredString("nope"), PredString("foo"), PredString("bar")],
+        [PredString(json.dumps({"foo": i})) for i in range(6, 10)],
+    ]
     out = []
     try:
         for rec in generate_text(global_local_config, line_validator=json.loads, parallelism=1):
@@ -93,11 +96,11 @@ def test_generate_text(_open, pickle, prepare, predict, spm, global_local_config
     assert not out[4]["valid"]
 
     # assert max invalid
-    predict.side_effect = (
-        [PredString(json.dumps({"foo": i})) for i in range(0, 3)]
-        + [PredString("nope"), PredString("foo"), PredString("bar")]
-        + [PredString(json.dumps({"foo": i})) for i in range(6, 10)]
-    )
+    predict.side_effect = [
+        [PredString(json.dumps({"foo": i})) for i in range(0, 3)],
+        [PredString("nope"), PredString("foo"), PredString("bar")],
+        [PredString(json.dumps({"foo": i})) for i in range(6, 10)],
+    ]
     out = []
     try:
         for rec in generate_text(global_local_config, line_validator=json.loads, max_invalid=2, parallelism=1):
@@ -116,11 +119,11 @@ def test_generate_text(_open, pickle, prepare, predict, spm, global_local_config
         else:
             return True
 
-    predict.side_effect = (
-        [PredString(json.dumps({"foo": i})) for i in range(0, 3)]
-        + [PredString("nope"), PredString("foo"), PredString("bar")]
-        + [PredString(json.dumps({"foo": i})) for i in range(6, 10)]
-    )
+    predict.side_effect = [
+        [PredString(json.dumps({"foo": i})) for i in range(0, 3)],
+        [PredString("nope"), PredString("foo"), PredString("bar")],
+        [PredString(json.dumps({"foo": i})) for i in range(6, 10)],
+    ]
     out = []
     try:
         for rec in generate_text(global_local_config, line_validator=_val, max_invalid=2, parallelism=1):

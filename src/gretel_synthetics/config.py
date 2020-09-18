@@ -100,6 +100,8 @@ class BaseConfig:
         gen_lines (optional): Maximum number of text lines to generate. This function is used by
             ``generate_text`` and the optional ``line_validator`` to make sure that all lines created
             by the model pass validation. Default is ``1000``.
+        predict_batch_size (optional): How many words to generate in parallel. Higher values may result in increased
+            throughput. The default of ``64`` should provide reasonable performance for most users.
         save_all_checkpoints (optional). Set to ``True`` to save all model checkpoints as they are created,
             which can be useful for optimal model selection. Set to ``False`` to save only the latest
             checkpoint. Default is ``True``.
@@ -142,6 +144,7 @@ class BaseConfig:
     gen_temp: float = 1.0
     gen_chars: int = 0
     gen_lines: int = 1000
+    predict_batch_size: int = 64
 
     # Checkpoint storage
     save_all_checkpoints: bool = False

@@ -69,7 +69,7 @@ def generate_parallel(settings: Settings, num_lines: int, num_workers: int, chun
     remaining_lines = num_lines
 
     # This set tracks the currently outstanding invocations to _loky_worker_process_chunk.
-    pending_tasks: Set[futures.Future[Tuple[int, List[gen_text], int]]] = set()
+    pending_tasks: Set[futures.Future[Tuple[int, List[gen_text], int]]] = set()  # pylint: disable=unsubscriptable-object  # noqa
 
     # How many tasks can be pending at once. While a lower factor saves memory, it increases the
     # risk that workers sit idle because the main process is blocked on processing data and
