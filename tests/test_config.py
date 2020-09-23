@@ -31,6 +31,9 @@ def test_local_config_settings(mkdir):
     assert check == {
         "max_lines": 0,
         "epochs": 15,
+        "early_stopping": True,
+        "early_stopping_patience": 5,
+        "best_model_metric": "val_loss",
         "batch_size": 64,
         "buffer_size": 10000,
         "seq_length": 100,
@@ -51,6 +54,7 @@ def test_local_config_settings(mkdir):
         "gen_lines": 1000,
         "max_line_len": 2048,
         "save_all_checkpoints": False,
+        "save_best_model": True,
         "checkpoint_dir": "foo",
         "field_delimiter": None,
         "field_delimiter_token": "<d>",

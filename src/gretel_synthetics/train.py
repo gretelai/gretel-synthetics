@@ -101,11 +101,22 @@ def train_rnn(store: BaseConfig):
     checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
         filepath=checkpoint_prefix,
         save_weights_only=True,
-        monitor='accuracy'
+        monitor=store.best_model_metric,
+        save_best_only=store.save_best_model
     )
     history_callback = _LossHistory()
 
-    model.fit(dataset, epochs=store.epochs, callbacks=[checkpoint_callback, history_callback])
+    _callbacks = [checkpoint_callback, history_callback]
+
+    if store.early_stopping:
+        early_stopping_callback = tf.keras.callbacks.EarlyStopping(
+            monitor=store.best_model_metric,
+            patience=store.early_stopping_patience,
+            restore_best_weights=store.save_best_model
+        )
+        _callbacks.append(early_stopping_callback)
+
+    model.fit(dataset, epochs=store.epochs, callbacks=_callbacks)
     _save_history_csv(history_callback, store.checkpoint_dir)
     store.save_model_params()
     logging.info(f"Saving model to {tf.train.latest_checkpoint(store.checkpoint_dir)}")
