@@ -33,7 +33,7 @@ def test_local_config_settings(mkdir):
         "epochs": 15,
         "early_stopping": True,
         "early_stopping_patience": 5,
-        "best_model_metric": "val_loss",
+        "best_model_metric": "loss",
         "batch_size": 64,
         "buffer_size": 10000,
         "seq_length": 100,

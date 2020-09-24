@@ -19,7 +19,7 @@ import tensorflow as tf
 from tqdm import tqdm
 
 from gretel_synthetics.model import _build_sequential_model, _compute_epsilon
-from gretel_synthetics.config import BaseConfig
+from gretel_synthetics.config import BaseConfig, VAL_ACC, VAL_LOSS
 from gretel_synthetics.generator import _load_model
 
 

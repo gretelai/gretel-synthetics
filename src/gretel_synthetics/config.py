@@ -19,8 +19,8 @@ logging.basicConfig(
 
 TOKENIZER_PREFIX = "m"
 MODEL_PARAMS = "model_params.json"
-VAL_LOSS = "val_loss"
-VAL_ACC = "val_acc"
+VAL_LOSS = "loss"
+VAL_ACC = "accuracy"
 
 
 @dataclass
