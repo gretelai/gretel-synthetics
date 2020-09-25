@@ -2,6 +2,7 @@
 Tensorflow - Keras Sequential RNN (GRU)
 """
 import logging
+from typing import Tuple
 
 from tensorflow.keras.optimizers import RMSprop  # pylint: disable=import-error
 import tensorflow as tf
@@ -73,16 +74,21 @@ def _build_sequential_model(
     return model
 
 
-def _compute_epsilon(steps: int, store: BaseConfig):
+def compute_epsilon(steps: int, store: BaseConfig, epoch_number: int = None) -> Tuple[float, float]:
     """
     Calculate epsilon and delta values for differential privacy
+
+    Returns:
+        Tuple of eps, opt_order
     """
     # Note: inverse of number of training samples recommended for minimum
     # delta in differential privacy
+    if epoch_number is None:
+        epoch_number = store.epochs - 1
     return compute_dp_sgd_privacy.compute_dp_sgd_privacy(
         n=steps,
         batch_size=store.batch_size,
         noise_multiplier=store.dp_noise_multiplier,
-        epochs=store.epochs,
+        epochs=epoch_number,
         delta=1.0 / float(steps),
     )

@@ -17,7 +17,7 @@ def test_local_config(mkdir):
     lc = LocalConfig(checkpoint_dir=target, input_data_path=test_data_file.as_posix())
 
     mkdir.assert_called
-    assert lc.epochs == 15
+    assert lc.epochs == 150
     assert lc.input_data_path == test_data_file.as_posix()
     assert lc.tokenizer_prefix == TOKENIZER_PREFIX
     assert lc.training_data == Path(target, "training_data.txt").as_posix()
@@ -30,7 +30,7 @@ def test_local_config_settings(mkdir):
     check = lc.as_dict()
     assert check == {
         "max_lines": 0,
-        "epochs": 15,
+        "epochs": 150,
         "early_stopping": True,
         "early_stopping_patience": 5,
         "best_model_metric": "loss",
