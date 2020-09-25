@@ -65,7 +65,7 @@ def _save_history_csv(
     save_dir: str,
     dp: bool,
     best_col: str,
-    best_val: Optional[float] = None
+    best_val: Optional[float] = None,
 ):
     """
     Save model training history to CSV format
@@ -182,7 +182,13 @@ def train_rnn(store: BaseConfig):
         except AttributeError:
             best_val = None
 
-    _save_history_csv(history_callback, store.checkpoint_dir, store.dp, store.best_model_metric, best_val)
+    _save_history_csv(
+        history_callback,
+        store.checkpoint_dir,
+        store.dp,
+        store.best_model_metric,
+        best_val,
+    )
     store.save_model_params()
     logging.info(f"Saving model to {tf.train.latest_checkpoint(store.checkpoint_dir)}")
 
