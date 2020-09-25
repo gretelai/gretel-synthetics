@@ -43,8 +43,8 @@ class BaseConfig:
             deduce when the model is no longer improving and terminating training.
         early_stopping_patience (optional). Defaults to 5.  Number of epochs to wait for when there is no improvement
             in the model. After this number of epochs, training will terminate.
-        best_model_metric (optional). Defaults to "val_loss". The metric to use to track when a model is no
-            longer improving. Defaults to the loss value. An alternative option is "val_acc."
+        best_model_metric (optional). Defaults to "loss". The metric to use to track when a model is no
+            longer improving. Defaults to the loss value. An alternative option is "accuracy."
             A error will be raised if either of this values are not used.
         batch_size (optional): Number of samples per gradient update. Using larger batch sizes can help
             make more efficient use of CPU/GPU parallelization, at the cost of memory.

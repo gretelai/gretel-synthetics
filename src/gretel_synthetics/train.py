@@ -174,7 +174,9 @@ def train_rnn(store: BaseConfig):
     if store.save_best_model:
         best_val = checkpoint_callback.best
     if store.early_stopping:
-        # NOTE:
+        # NOTE: In this callback, the "best" attr does not get set in the constructor, so we'll
+        # set it to None if for some reason we can't get it. This also covers a test case that doesn't
+        # run any epochs but accesses this attr.
         try:
             best_val = early_stopping_callback.best
         except AttributeError:
