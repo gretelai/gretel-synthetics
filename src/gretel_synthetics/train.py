@@ -16,7 +16,7 @@ from smart_open import open
 import tensorflow as tf
 from tqdm import tqdm
 
-from gretel_synthetics.model import _build_sequential_model, compute_epsilon
+from gretel_synthetics.model import build_sequential_model, compute_epsilon
 from gretel_synthetics.config import BaseConfig, VAL_ACC, VAL_LOSS
 from gretel_synthetics.generator import _load_model
 
@@ -141,7 +141,7 @@ def train_rnn(store: BaseConfig):
     sp = _train_tokenizer(store)
     total_token_count, dataset = _create_dataset(store, text, sp)
     logging.info("Initializing synthetic model")
-    model = _build_sequential_model(
+    model = build_sequential_model(
         vocab_size=len(sp), batch_size=store.batch_size, store=store
     )
 

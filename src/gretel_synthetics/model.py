@@ -14,7 +14,7 @@ from tensorflow_privacy.privacy.analysis import compute_dp_sgd_privacy
 from gretel_synthetics.config import BaseConfig
 
 
-def _build_sequential_model(
+def build_sequential_model(
     vocab_size: int, batch_size: int, store: BaseConfig
 ) -> tf.keras.Sequential:
     """

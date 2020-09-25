@@ -21,7 +21,7 @@ def test_create_vocab(global_local_config):
     assert sp.IdToPiece(2) == "</s>"
 
 
-@patch("gretel_synthetics.train._build_sequential_model")
+@patch("gretel_synthetics.train.build_sequential_model")
 @patch("gretel_synthetics.train._save_history_csv")
 def test_train_rnn(save_history, model, global_local_config):
     mock_model = Mock()
