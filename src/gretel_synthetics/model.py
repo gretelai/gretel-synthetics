@@ -11,6 +11,7 @@ from tensorflow.keras.optimizers import Adam, SGD, Adagrad
 from tensorflow_privacy.privacy.optimizers.dp_optimizer_keras import DPKerasAdamOptimizer
 from tensorflow_privacy.privacy.optimizers.dp_optimizer_keras import DPKerasSGDOptimizer
 from tensorflow_privacy.privacy.optimizers.dp_optimizer_keras import DPKerasAdagradOptimizer
+from tensorflow_privacy.privacy.optimizers.dp_optimizer_keras import make_keras_optimizer_class
 from tensorflow_privacy.privacy.analysis import compute_dp_sgd_privacy
 
 from gretel_synthetics.config import BaseConfig
@@ -19,14 +20,15 @@ optimizers = {
     'Adagrad': {'dp': DPKerasAdagradOptimizer, 'default': Adagrad},
     'Adam': {'dp': DPKerasAdamOptimizer, 'default': Adam},
     'SGD': {'dp': DPKerasSGDOptimizer, 'default': SGD},
-    'default': {'dp': DPKerasAdamOptimizer, 'default': RMSprop},
+    'RMSprop': {'dp': make_keras_optimizer_class(RMSprop), 'default': RMSprop},
+    'default': {'dp': make_keras_optimizer_class(RMSprop), 'default': RMSprop}
 }
 
 
 def select_optimizer(store: BaseConfig):
     """
     Args:
-        optimizer: Select default optimizer. 'Adagrad', 'Adam', 'SGD', 'default' are supported
+        optimizer: Select default optimizer. 'Adagrad', 'Adam', 'SGD', 'RMSprop', 'default' are supported
 
     Returns:
         optimizer class
