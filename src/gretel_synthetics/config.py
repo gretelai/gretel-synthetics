@@ -151,7 +151,6 @@ class BaseConfig:
 
     # Diff privacy configs
     dp: bool = False
-    dp_custom: bool = False
     dp_learning_rate: float = 0.001
     dp_noise_multiplier: float = 1.1
     dp_l2_norm_clip: float = 1.0
