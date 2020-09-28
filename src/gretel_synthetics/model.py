@@ -6,10 +6,39 @@ from typing import Tuple
 
 from tensorflow.keras.optimizers import RMSprop  # pylint: disable=import-error
 import tensorflow as tf
+
+from tensorflow.keras.optimizers import Adam, SGD, Adagrad
 from tensorflow_privacy.privacy.optimizers.dp_optimizer_keras import DPKerasAdamOptimizer
+from tensorflow_privacy.privacy.optimizers.dp_optimizer_keras import DPKerasSGDOptimizer
+from tensorflow_privacy.privacy.optimizers.dp_optimizer_keras import DPKerasAdagradOptimizer
 from tensorflow_privacy.privacy.analysis import compute_dp_sgd_privacy
 
 from gretel_synthetics.config import BaseConfig
+
+optimizers = {
+    'Adagrad': {'dp': DPKerasAdagradOptimizer, 'default': Adagrad},
+    'Adam': {'dp': DPKerasAdamOptimizer, 'default': Adam},
+    'SGD': {'dp': DPKerasSGDOptimizer, 'default': SGD},
+    'default': {'dp': DPKerasAdamOptimizer, 'default': RMSprop},
+}
+
+
+def select_optimizer(optimizer: str, store: BaseConfig):
+    """
+    Args:
+        optimizer: Select default optimizer. 'Adagrad', 'Adam', 'SGD', 'default' are supported
+
+    Returns:
+        optimizer class
+    """
+    if optimizer in optimizers.keys():
+        if store.dp:
+            return optimizers[optimizer]['dp']
+        else:
+            return optimizers[optimizer]['default']
+    else:
+        logging.error("Invalid optimizer selected in configuration")
+        raise NotImplementedError
 
 
 def build_sequential_model(
@@ -39,12 +68,10 @@ def build_sequential_model(
             ),
             tf.keras.layers.Dropout(store.dropout_rate),
             tf.keras.layers.Dense(vocab_size),
-        ]
-    )
+        ] )
 
     if store.dp:
         logging.info("Differentially private training enabled")
-        logging.info("Using DP Keras Adam optimizer")
         optimizer = DPKerasAdamOptimizer(
             l2_norm_clip=store.dp_l2_norm_clip,
             noise_multiplier=store.dp_noise_multiplier,
@@ -62,6 +89,7 @@ def build_sequential_model(
         optimizer = RMSprop(learning_rate=0.01)
         loss = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
 
+    logging.info(f"Using {optimizer._name} optimizer {'in differentially private mode' if store.dp else ''}")
     model.compile(optimizer=optimizer, loss=loss, metrics=["accuracy"])
     return model
 

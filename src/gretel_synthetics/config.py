@@ -65,6 +65,8 @@ class BaseConfig:
             compromise between retaining model accuracy and preventing overfitting. Default is 0.2.
         rnn_initializer (optional): Initializer for the kernal weights matrix, used for the linear
             transformation of the inputs. Default is ``glorot_transform``.
+        optimizer (optional): Optimizer used by the neural network to maximize accuracy and reduce
+            loss. Currently supported optimizers: ``Adam``, ``SGD``, and ``Adagrad``. Default is ``Adam``.
         field_delimiter (optional): Delimiter to use for training on structured data. When specified,
             the delimiter is passed as a user-specified token to the tokenizer, which can improve
             synthetic data quality. For unstructured text, leave as ``None``. For structured text
@@ -138,6 +140,7 @@ class BaseConfig:
     rnn_units: int = 256
     dropout_rate: float = 0.2
     rnn_initializer: str = "glorot_uniform"
+    optimizer: str = "Adam"
 
     # Input data configs
     field_delimiter: Optional[str] = None

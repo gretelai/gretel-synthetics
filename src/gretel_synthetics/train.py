@@ -47,7 +47,9 @@ class _ModelHistory(tf.keras.callbacks.Callback):
     def on_epoch_end(self, epoch, logs: dict):
         self.losses.append(logs.get(VAL_LOSS))
         self.accuracy.append(logs.get(VAL_ACC))
+        # Account for tf-privacy library writing to stdout
         eps, _ = compute_epsilon(self.total_token_count, self.config, epoch)
+        print('\n')
         self.epsilons.append(eps)
 
         # NOTE: this is just a list of the same value, but
