@@ -23,7 +23,7 @@ optimizers = {
 }
 
 
-def select_optimizer(optimizer: str, store: BaseConfig):
+def select_optimizer(store: BaseConfig):
     """
     Args:
         optimizer: Select default optimizer. 'Adagrad', 'Adam', 'SGD', 'default' are supported
@@ -31,11 +31,11 @@ def select_optimizer(optimizer: str, store: BaseConfig):
     Returns:
         optimizer class
     """
-    if optimizer in optimizers.keys():
+    if store.optimizer in optimizers.keys():
         if store.dp:
-            return optimizers[optimizer]['dp']
+            return optimizers[store.optimizer]['dp']
         else:
-            return optimizers[optimizer]['default']
+            return optimizers[store.optimizer]['default']
     else:
         logging.error("Invalid optimizer selected in configuration")
         raise NotImplementedError
@@ -72,7 +72,7 @@ def build_sequential_model(
 
     if store.dp:
         logging.info("Differentially private training enabled")
-        optimizer = DPKerasAdamOptimizer(
+        optimizer = select_optimizer(store)(
             l2_norm_clip=store.dp_l2_norm_clip,
             noise_multiplier=store.dp_noise_multiplier,
             num_microbatches=store.dp_microbatches,
@@ -86,10 +86,11 @@ def build_sequential_model(
         )
     else:
         logging.warning("Differentially private training _not_ enabled")
-        optimizer = RMSprop(learning_rate=0.01)
+        optimizer = select_optimizer(store)(learning_rate=store.dp_learning_rate)
         loss = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
 
-    logging.info(f"Using {optimizer._name} optimizer {'in differentially private mode' if store.dp else ''}")
+    logging.info(f"Using {optimizer._keras_api_names[0]} optimizer "
+                 f"{'in differentially private mode' if store.dp else ''}")
     model.compile(optimizer=optimizer, loss=loss, metrics=["accuracy"])
     return model
 
