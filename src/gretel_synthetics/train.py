@@ -5,6 +5,8 @@ to generate synthetic records.
 In order to use this module you must first create a config and then pass that config
 to the ``train_rnn`` function.
 """
+import io
+from contextlib import redirect_stdout
 import logging
 from pathlib import Path
 import shutil
@@ -48,9 +50,9 @@ class _ModelHistory(tf.keras.callbacks.Callback):
         self.losses.append(logs.get(VAL_LOSS))
         self.accuracy.append(logs.get(VAL_ACC))
         # Account for tf-privacy library writing to stdout
-        eps, _ = compute_epsilon(self.total_token_count, self.config, epoch)
-        print('\n')
-        self.epsilons.append(eps)
+        with redirect_stdout(io.StringIO()):
+            eps, _ = compute_epsilon(self.total_token_count, self.config, epoch)
+            self.epsilons.append(eps)
 
         # NOTE: this is just a list of the same value, but
         # is simpler for creating the history csv
