@@ -11,6 +11,9 @@ from abc import abstractmethod
 from dataclasses import dataclass, asdict, field
 from typing import Optional
 
+from gretel_synthetics.model import OPTIMIZERS
+
+
 logging.basicConfig(
     format="%(asctime)s : %(threadName)s : %(levelname)s : %(message)s",
     level=logging.INFO,
@@ -234,6 +237,8 @@ class LocalConfig(BaseConfig, _PathSettingsMixin):
     def __post_init__(self):
         if self.best_model_metric not in (VAL_LOSS, VAL_ACC):
             raise AttributeError("Invalid value for bset_model_metric")
+        if self.optimizer not in OPTIMIZERS:
+            raise AttributeError("Invalid value for optimizer")
         if not self.checkpoint_dir or not self.input_data_path:
             raise AttributeError(
                 "Must provide checkpoint_dir and input_path_dir params!"

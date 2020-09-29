@@ -2,7 +2,7 @@
 Tensorflow - Keras Sequential RNN (GRU)
 """
 import logging
-from typing import Tuple
+from typing import Tuple, TYPE_CHECKING
 
 from tensorflow.keras.optimizers import RMSprop  # pylint: disable=import-error
 import tensorflow as tf
@@ -14,7 +14,19 @@ from tensorflow_privacy.privacy.optimizers.dp_optimizer_keras import DPKerasAdag
 from tensorflow_privacy.privacy.optimizers.dp_optimizer_keras import make_keras_optimizer_class
 from tensorflow_privacy.privacy.analysis import compute_dp_sgd_privacy
 
-from gretel_synthetics.config import BaseConfig
+if TYPE_CHECKING:       
+    from gretel_synthetics.config import BaseConfig
+else:
+    BaseConfig = None
+
+
+OPTIMIZERS = {
+    'Adagrad': {'dp': DPKerasAdagradOptimizer, 'default': Adagrad},
+    'Adam': {'dp': DPKerasAdamOptimizer, 'default': Adam},
+    'SGD': {'dp': DPKerasSGDOptimizer, 'default': SGD},
+    'RMSprop': {'dp': make_keras_optimizer_class(RMSprop), 'default': RMSprop},
+    'default': {'dp': make_keras_optimizer_class(RMSprop), 'default': RMSprop}
+}
 
 
 class DPSequentialModel(tf.keras.Sequential):
@@ -33,14 +45,12 @@ class DPSequentialModel(tf.keras.Sequential):
                 y, y_pred, sample_weight, regularization_losses=self.losses
             )
         trainable_variables = self.trainable_variables
+        # gradients = tape.gradient(loss, trainable_variables)
 
-        # AW NOTE: works, but does not explicitly call compute_gradients in optimizer
-        #gradients = tape.gradient(loss, trainable_variables)
-
-        # AW NOTE: should work, generates NotImplementedError downstream
-        gradients = self.optimizer._compute_gradients(loss, trainable_variables, tape=tape)
-
-        self.optimizer.apply_gradients(zip(gradients, trainable_variables))
+        # gradients = self.optimizer._compute_gradients(loss, trainable_variables, tape=tape)
+        # self.optimizer.apply_gradients(zip(gradients, trainable_variables))
+        loss_fn = lambda: loss
+        self.optimizer.minimize(loss_fn, trainable_variables)
 
         self.compiled_metrics.update_state(y, y_pred, sample_weight)
         return {m.name: m.result() for m in self.metrics}
@@ -55,22 +65,10 @@ def select_optimizer(store: BaseConfig):
         optimizer class
     """
 
-    optimizers = {
-        'Adagrad': {'dp': DPKerasAdagradOptimizer, 'default': Adagrad},
-        'Adam': {'dp': DPKerasAdamOptimizer, 'default': Adam},
-        'SGD': {'dp': DPKerasSGDOptimizer, 'default': SGD},
-        'RMSprop': {'dp': make_keras_optimizer_class(RMSprop), 'default': RMSprop},
-        'default': {'dp': make_keras_optimizer_class(RMSprop), 'default': RMSprop}
-    }
-
-    if store.optimizer in optimizers.keys():
-        if store.dp:
-            return optimizers[store.optimizer]['dp']
-        else:
-            return optimizers[store.optimizer]['default']
+    if store.dp:
+        return OPTIMIZERS[store.optimizer]['dp']
     else:
-        logging.error("Invalid optimizer selected in configuration")
-        raise NotImplementedError
+        return OPTIMIZERS[store.optimizer]['default']
 
 
 def build_sequential_model(
