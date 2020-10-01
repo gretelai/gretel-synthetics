@@ -6,69 +6,28 @@ from typing import Tuple, TYPE_CHECKING
 
 from tensorflow.keras.optimizers import RMSprop  # pylint: disable=import-error
 import tensorflow as tf
-from tensorflow.keras.optimizers import Adam, SGD, Adagrad
-from tensorflow.python.keras.engine import data_adapter
-from tensorflow_privacy.privacy.optimizers.dp_optimizer_keras import DPKerasAdamOptimizer
-from tensorflow_privacy.privacy.optimizers.dp_optimizer_keras import DPKerasSGDOptimizer
-from tensorflow_privacy.privacy.optimizers.dp_optimizer_keras import DPKerasAdagradOptimizer
 from tensorflow_privacy.privacy.optimizers.dp_optimizer_keras import make_keras_optimizer_class
 from tensorflow_privacy.privacy.analysis import compute_dp_sgd_privacy
 
-if TYPE_CHECKING:       
+if TYPE_CHECKING:
     from gretel_synthetics.config import BaseConfig
 else:
     BaseConfig = None
 
 
+DEFAULT = "default"
+
+
 OPTIMIZERS = {
-    'Adagrad': {'dp': DPKerasAdagradOptimizer, 'default': Adagrad},
-    'Adam': {'dp': DPKerasAdamOptimizer, 'default': Adam},
-    'SGD': {'dp': DPKerasSGDOptimizer, 'default': SGD},
-    'RMSprop': {'dp': make_keras_optimizer_class(RMSprop), 'default': RMSprop},
-    'default': {'dp': make_keras_optimizer_class(RMSprop), 'default': RMSprop}
+    DEFAULT: {'dp': make_keras_optimizer_class(RMSprop), 'default': RMSprop}
 }
 
 
-class DPSequentialModel(tf.keras.Sequential):
-    """
-    Subclass tf.keras.Sequential to override train_step function and compute gradients
-    with a differentially private optimizer
-    """
-
-    def train_step(self, data):
-        data = data_adapter.expand_1d(data)
-        x, y, sample_weight = data_adapter.unpack_x_y_sample_weight(data)
-
-        with tf.GradientTape() as tape:
-            y_pred = self(x, training=True)
-            loss = self.compiled_loss(
-                y, y_pred, sample_weight, regularization_losses=self.losses
-            )
-        trainable_variables = self.trainable_variables
-        # gradients = tape.gradient(loss, trainable_variables)
-
-        # gradients = self.optimizer._compute_gradients(loss, trainable_variables, tape=tape)
-        # self.optimizer.apply_gradients(zip(gradients, trainable_variables))
-        loss_fn = lambda: loss
-        self.optimizer.minimize(loss_fn, trainable_variables)
-
-        self.compiled_metrics.update_state(y, y_pred, sample_weight)
-        return {m.name: m.result() for m in self.metrics}
-
-
 def select_optimizer(store: BaseConfig):
-    """
-    Args:
-        optimizer: Select default optimizer. 'Adagrad', 'Adam', 'SGD', 'RMSprop', 'default' are supported
-
-    Returns:
-        optimizer class
-    """
-
     if store.dp:
-        return OPTIMIZERS[store.optimizer]['dp']
+        return OPTIMIZERS[DEFAULT]["dp"]
     else:
-        return OPTIMIZERS[store.optimizer]['default']
+        return OPTIMIZERS[DEFAULT][DEFAULT]
 
 
 def build_sequential_model(
@@ -78,11 +37,11 @@ def build_sequential_model(
     Utilizing tf.keras.Sequential model (LSTM)
     """
     model_cls = tf.keras.Sequential
+    optimizer_cls = select_optimizer(store)
 
     if store.dp:
         logging.info("Differentially private training enabled")
-        model_cls = DPSequentialModel
-        optimizer = select_optimizer(store)(
+        optimizer = optimizer_cls(
             l2_norm_clip=store.dp_l2_norm_clip,
             noise_multiplier=store.dp_noise_multiplier,
             num_microbatches=store.dp_microbatches,
@@ -94,8 +53,8 @@ def build_sequential_model(
             from_logits=True, reduction=tf.losses.Reduction.NONE
         )
     else:
-        logging.warning("Differentially private training _not_ enabled")
-        optimizer = select_optimizer(store)(learning_rate=store.dp_learning_rate)
+        logging.info("Differentially private training _not_ enabled")
+        optimizer = optimizer_cls(learning_rate=0.01)
         loss = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
 
     model = model_cls(

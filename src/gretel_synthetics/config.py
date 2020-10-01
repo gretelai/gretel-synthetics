@@ -11,8 +11,6 @@ from abc import abstractmethod
 from dataclasses import dataclass, asdict, field
 from typing import Optional
 
-from gretel_synthetics.model import OPTIMIZERS
-
 
 logging.basicConfig(
     format="%(asctime)s : %(threadName)s : %(levelname)s : %(message)s",
@@ -132,7 +130,7 @@ class BaseConfig:
 
     # Training configurations
     max_lines: int = 0
-    epochs: int = 150
+    epochs: int = 250
     early_stopping: bool = True
     early_stopping_patience: int = 5
     best_model_metric: str = VAL_LOSS
@@ -143,7 +141,6 @@ class BaseConfig:
     rnn_units: int = 256
     dropout_rate: float = 0.2
     rnn_initializer: str = "glorot_uniform"
-    optimizer: str = "Adam"
 
     # Input data configs
     field_delimiter: Optional[str] = None
@@ -235,10 +232,14 @@ class LocalConfig(BaseConfig, _PathSettingsMixin):
     input_data_path: str = None
 
     def __post_init__(self):
+        # FIXME: Remove @ 0.15.X when new optimizers are available for DP
+        if self.dp:
+            raise RuntimeError(
+                "DP mode is disabled in v0.14.X. Please remove or set this value to ``False`` to continue with out DP.  DP will be re-enabled in v0.15.X. Please see the README for more details"  # noqa
+            )
+
         if self.best_model_metric not in (VAL_LOSS, VAL_ACC):
             raise AttributeError("Invalid value for bset_model_metric")
-        if self.optimizer not in OPTIMIZERS:
-            raise AttributeError("Invalid value for optimizer")
         if not self.checkpoint_dir or not self.input_data_path:
             raise AttributeError(
                 "Must provide checkpoint_dir and input_path_dir params!"

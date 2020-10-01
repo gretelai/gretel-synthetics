@@ -46,7 +46,7 @@ class _ModelHistory(tf.keras.callbacks.Callback):
         self.deltas = []
         self.best = []
 
-    def on_epoch_end(self, epoch, logs: dict):
+    def on_epoch_end(self, epoch, logs: dict = None):
         self.losses.append(logs.get(VAL_LOSS))
         self.accuracy.append(logs.get(VAL_ACC))
         # Account for tf-privacy library writing to stdout
@@ -138,7 +138,7 @@ def train_rnn(store: BaseConfig):
             pass
         else:
             raise RuntimeError(
-                "A model already exists in the checkpoint location, you must enable overwrite mode or delete the checkpoints first."
+                "A model already exists in the checkpoint location, you must enable overwrite mode or delete the checkpoints first."  # noqa
             )  # noqa
 
     text = _annotate_training_data(store)
