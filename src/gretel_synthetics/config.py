@@ -38,7 +38,7 @@ class BaseConfig:
             this length will be ignored. Default is ``2048``.
         epochs (optional): Number of epochs to train the model. An epoch is an iteration over the entire
             training set provided. For production use cases, 15-50 epochs are recommended.
-            The default is ``150`` and is intentionally set extra high.  By default, ``early_stopping``
+            The default is ``100`` and is intentionally set extra high.  By default, ``early_stopping``
             is also enabled and will stop training epochs once the model is no longer improving.
         early_stopping (optional). Defaults to ``True``.  If enabled, regardless of the number of epochs, automatically
             deduce when the model is no longer improving and terminating training.
@@ -130,7 +130,7 @@ class BaseConfig:
 
     # Training configurations
     max_lines: int = 0
-    epochs: int = 250
+    epochs: int = 100
     early_stopping: bool = True
     early_stopping_patience: int = 5
     best_model_metric: str = VAL_LOSS
