@@ -17,7 +17,7 @@ def test_local_config(mkdir):
     lc = LocalConfig(checkpoint_dir=target, input_data_path=test_data_file.as_posix())
 
     mkdir.assert_called
-    assert lc.epochs == 15
+    assert lc.epochs == 100
     assert lc.input_data_path == test_data_file.as_posix()
     assert lc.tokenizer_prefix == TOKENIZER_PREFIX
     assert lc.training_data == Path(target, "training_data.txt").as_posix()
@@ -30,7 +30,10 @@ def test_local_config_settings(mkdir):
     check = lc.as_dict()
     assert check == {
         "max_lines": 0,
-        "epochs": 15,
+        "epochs": 100,
+        "early_stopping": True,
+        "early_stopping_patience": 5,
+        "best_model_metric": "loss",
         "batch_size": 64,
         "buffer_size": 10000,
         "seq_length": 100,
@@ -42,7 +45,7 @@ def test_local_config_settings(mkdir):
         "character_coverage": 1.0,
         "pretrain_sentence_count": 1000000,
         "dp": False,
-        "dp_learning_rate": 0.015,
+        "dp_learning_rate": 0.001,
         "dp_noise_multiplier": 1.1,
         "dp_l2_norm_clip": 1.0,
         "dp_microbatches": 256,
@@ -51,6 +54,7 @@ def test_local_config_settings(mkdir):
         "gen_lines": 1000,
         "max_line_len": 2048,
         "save_all_checkpoints": False,
+        "save_best_model": True,
         "checkpoint_dir": "foo",
         "field_delimiter": None,
         "field_delimiter_token": "<d>",

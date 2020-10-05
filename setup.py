@@ -24,17 +24,17 @@ setup(
     packages=find_packages('src'),
     python_requires=">=3.6",
     install_requires=[
-        'tensorflow_privacy==0.2.2',
+        'tensorflow_privacy==0.5.1',
         'sentencepiece==0.1.91',
         'smart_open>=2.1.0,<3.0',
         'tqdm<5.0',
-        'pandas>=1.0.0',
+        'pandas>=1.1.0',
         'numpy>=1.18.0',
         'dataclasses==0.7;python_version<"3.7"',
         'loky==2.8.0',
     ],
     extras_require={
-        'tf': ['tensorflow==2.1.0']
+        'tf': ['tensorflow==2.3.1']
     },
     classifiers=[
         "Programming Language :: Python :: 3",

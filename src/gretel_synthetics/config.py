@@ -11,6 +11,7 @@ from abc import abstractmethod
 from dataclasses import dataclass, asdict, field
 from typing import Optional
 
+
 logging.basicConfig(
     format="%(asctime)s : %(threadName)s : %(levelname)s : %(message)s",
     level=logging.INFO,
@@ -19,6 +20,8 @@ logging.basicConfig(
 
 TOKENIZER_PREFIX = "m"
 MODEL_PARAMS = "model_params.json"
+VAL_LOSS = "loss"
+VAL_ACC = "accuracy"
 
 
 @dataclass
@@ -35,7 +38,15 @@ class BaseConfig:
             this length will be ignored. Default is ``2048``.
         epochs (optional): Number of epochs to train the model. An epoch is an iteration over the entire
             training set provided. For production use cases, 15-50 epochs are recommended.
-            Default is ``30``.
+            The default is ``100`` and is intentionally set extra high.  By default, ``early_stopping``
+            is also enabled and will stop training epochs once the model is no longer improving.
+        early_stopping (optional). Defaults to ``True``.  If enabled, regardless of the number of epochs, automatically
+            deduce when the model is no longer improving and terminating training.
+        early_stopping_patience (optional). Defaults to 5.  Number of epochs to wait for when there is no improvement
+            in the model. After this number of epochs, training will terminate.
+        best_model_metric (optional). Defaults to "loss". The metric to use to track when a model is no
+            longer improving. Defaults to the loss value. An alternative option is "accuracy."
+            A error will be raised if either of this values are not used.
         batch_size (optional): Number of samples per gradient update. Using larger batch sizes can help
             make more efficient use of CPU/GPU parallelization, at the cost of memory.
             If unspecified, batch_size will default to ``64``.
@@ -55,6 +66,8 @@ class BaseConfig:
             compromise between retaining model accuracy and preventing overfitting. Default is 0.2.
         rnn_initializer (optional): Initializer for the kernal weights matrix, used for the linear
             transformation of the inputs. Default is ``glorot_transform``.
+        optimizer (optional): Optimizer used by the neural network to maximize accuracy and reduce
+            loss. Currently supported optimizers: ``Adam``, ``SGD``, and ``Adagrad``. Default is ``Adam``.
         field_delimiter (optional): Delimiter to use for training on structured data. When specified,
             the delimiter is passed as a user-specified token to the tokenizer, which can improve
             synthetic data quality. For unstructured text, leave as ``None``. For structured text
@@ -105,6 +118,9 @@ class BaseConfig:
         save_all_checkpoints (optional). Set to ``True`` to save all model checkpoints as they are created,
             which can be useful for optimal model selection. Set to ``False`` to save only the latest
             checkpoint. Default is ``True``.
+        save_best_model (optional). Defaults to ``True``. Track the best version of the model (checkpoint) to be used.
+            If ``save_all_checkpoints`` is disabled, then the saved model will be overwritten by newer ones only if they
+            are better.
         overwrite (optional). Set to ``True`` to automatically overwrite previously saved model checkpoints.
             If ``False``, the trainer will generate an error if checkpoints exist in the model directory.
             Default is ``False``.
@@ -114,7 +130,10 @@ class BaseConfig:
 
     # Training configurations
     max_lines: int = 0
-    epochs: int = 15
+    epochs: int = 100
+    early_stopping: bool = True
+    early_stopping_patience: int = 5
+    best_model_metric: str = VAL_LOSS
     batch_size: int = 64
     buffer_size: int = 10000
     seq_length: int = 100
@@ -135,7 +154,7 @@ class BaseConfig:
 
     # Diff privacy configs
     dp: bool = False
-    dp_learning_rate: float = 0.015
+    dp_learning_rate: float = 0.001
     dp_noise_multiplier: float = 1.1
     dp_l2_norm_clip: float = 1.0
     dp_microbatches: int = 256
@@ -148,6 +167,7 @@ class BaseConfig:
 
     # Checkpoint storage
     save_all_checkpoints: bool = False
+    save_best_model: bool = True
     overwrite: bool = False
 
     @abstractmethod
@@ -212,6 +232,14 @@ class LocalConfig(BaseConfig, _PathSettingsMixin):
     input_data_path: str = None
 
     def __post_init__(self):
+        # FIXME: Remove @ 0.15.X when new optimizers are available for DP
+        if self.dp:
+            raise RuntimeError(
+                "DP mode is disabled in v0.14.X. Please remove or set this value to ``False`` to continue with out DP.  DP will be re-enabled in v0.15.X. Please see the README for more details"  # noqa
+            )
+
+        if self.best_model_metric not in (VAL_LOSS, VAL_ACC):
+            raise AttributeError("Invalid value for bset_model_metric")
         if not self.checkpoint_dir or not self.input_data_path:
             raise AttributeError(
                 "Must provide checkpoint_dir and input_path_dir params!"
