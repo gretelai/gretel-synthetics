@@ -241,6 +241,7 @@ def test_generate_all_batch_lines_raise_on_failed(test_data):
         "raise_on_exceed_invalid": False,
         "num_lines": None,
         "parallelism": 0,
+        "seed_fields": None
     }
 
     batches.generate_batch_lines = Mock()
@@ -252,6 +253,7 @@ def test_generate_all_batch_lines_raise_on_failed(test_data):
         "raise_on_exceed_invalid": True,
         "num_lines": 5,
         "parallelism": 0,
+        "seed_fields": None
     }
 
 
@@ -285,3 +287,74 @@ def test_read_mode(test_data):
     assert write_batch.headers == read_batch.headers
     assert asdict(write_batch.config) == asdict(read_batch.config)
     assert reader.master_header_list == writer.master_header_list
+
+
+def test_validate_seed_lines_too_many_fields(test_data):
+    batches = DataFrameBatch(df=test_data, config=config_template, batch_size=3)
+    
+    with pytest.raises(RuntimeError) as err:
+        batches._validate_batch_seed_values(
+            batches.batches[0],
+            {
+                "ID_Code": "foo",
+                "target": 0,
+                "var_0": 33,
+                "var_1": 33
+            }
+        )
+    assert "number of seed fields" in str(err.value)
+
+
+
+def test_validate_seed_lines_field_not_present(test_data):
+    batches = DataFrameBatch(df=test_data, config=config_template, batch_size=3)
+
+    with pytest.raises(RuntimeError) as err:
+        batches._validate_batch_seed_values(
+            batches.batches[0],
+            {
+                "ID_code": "foo",
+                "target": 0,
+                "var_1": 33,
+            }
+        )
+    assert "The header: var_0 is not in the seed" in str(err.value)
+
+
+def test_validate_seed_lines_ok_full_size(test_data):
+    batches = DataFrameBatch(df=test_data, config=config_template, batch_size=3)
+
+    check = batches._validate_batch_seed_values(
+        batches.batches[0],
+        {
+            "ID_code": "foo",
+            "target": 0,
+            "var_0": 33,
+        }
+    )
+    assert check == "foo|0|33|"
+
+
+def test_validate_seed_lines_ok_one_field(test_data):
+    batches = DataFrameBatch(df=test_data, config=config_template, batch_size=3)
+
+    check = batches._validate_batch_seed_values(
+        batches.batches[0],
+        {
+            "ID_code": "foo",
+        }
+    )
+    assert check == "foo|"
+
+
+def test_validate_seed_lines_ok_two_field(test_data):
+    batches = DataFrameBatch(df=test_data, config=config_template, batch_size=3)
+
+    check = batches._validate_batch_seed_values(
+        batches.batches[0],
+        {
+            "ID_code": "foo",
+            "target": 1
+        }
+    )
+    assert check == "foo|1|"
