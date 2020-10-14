@@ -4,7 +4,7 @@ import json
 import pytest
 import tensorflow as tf
 
-from gretel_synthetics.generator import _predict_chars, PredString
+from gretel_synthetics.generator import _predict_chars, PredString, NEWLINE
 from gretel_synthetics.generate import generate_text
 
 
@@ -25,9 +25,9 @@ def test_predict_chars(mock_cat, global_local_config, random_cat):
 
     sp = Mock()
     sp.EncodeAsIds.return_value = [3]
-    sp.DecodeIds.return_value = "this is the end<n>"
+    sp.DecodeIds.return_value = f"this is the end{NEWLINE}"
     # sp.DecodeIds.side_effect = ["this", " ", "is", " ", "the", " ", "end", "<n>"]
-    line = next(_predict_chars(mock_model, sp, "\n", config))
+    line = next(_predict_chars(mock_model, sp, NEWLINE, config))
     assert line == PredString(data="this is the end")
  
     config = global_local_config
@@ -40,7 +40,7 @@ def test_predict_chars(mock_cat, global_local_config, random_cat):
     ret_data = [partial_rep for partial in ["a", "ab", "abc", "abcd"] for partial_rep in [partial] * config.predict_batch_size]
     sp.DecodeIds.side_effect = ret_data
     # sp.DecodeIds.side_effect = ["a", "b", "c", "d"]
-    line = next(_predict_chars(mock_model, sp, "\n", config))
+    line = next(_predict_chars(mock_model, sp, NEWLINE, config))
 
 
 @patch("gretel_synthetics.generator.spm.SentencePieceProcessor")

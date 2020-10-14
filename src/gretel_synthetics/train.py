@@ -20,7 +20,7 @@ from tqdm import tqdm
 
 from gretel_synthetics.model import build_sequential_model, compute_epsilon
 from gretel_synthetics.config import BaseConfig, VAL_ACC, VAL_LOSS
-from gretel_synthetics.generator import _load_model
+from gretel_synthetics.generator import _load_model, NEWLINE
 
 
 spm_logger = logging.getLogger("sentencepiece")
@@ -219,7 +219,7 @@ def _annotate_training_data(store: BaseConfig):
     labeled_text = ""
     with open(store.training_data, "w") as f:
         for sample in training_text:
-            chunk = f"{sample}<n>\n"
+            chunk = f"{sample}{NEWLINE}\n"
             f.write(chunk)
             labeled_text += chunk
     logging.info(
@@ -246,7 +246,7 @@ def _train_tokenizer(store: BaseConfig) -> spm.SentencePieceProcessor:
     spm.SentencePieceTrainer.Train(
         input=store.training_data,
         model_prefix=store.tokenizer_prefix,
-        user_defined_symbols=["<n>", store.field_delimiter_token],
+        user_defined_symbols=[NEWLINE, store.field_delimiter_token],
         vocab_size=store.vocab_size,
         hard_vocab_limit=False,
         max_sentence_length=store.max_line_len,
