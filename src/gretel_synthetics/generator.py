@@ -296,10 +296,6 @@ def _predict_chars(
 
         batch_decoded = [(i, sp.DecodeIds(batch_sentence_ids[i])) for i in not_done]
         batch_decoded = _replace_decoded_tokens(batch_decoded, store, prediction_prefix)
-        if store.field_delimiter is not None:
-            batch_decoded = [(i, decoded.replace(
-                store.field_delimiter_token, store.field_delimiter
-            )) for i, decoded in batch_decoded]
 
         for i, decoded in batch_decoded:
             end_idx = decoded.find(NEWLINE)
