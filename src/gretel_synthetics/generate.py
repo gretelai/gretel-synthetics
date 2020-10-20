@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Callable
 
 import tensorflow as tf
 
-from gretel_synthetics.generator import Generator, Settings
+from gretel_synthetics.generator import Generator, Settings, NEWLINE
 from gretel_synthetics.generator import gen_text, PredString  # noqa # pylint: disable=unused-import
 from gretel_synthetics.generate_parallel import get_num_workers, generate_parallel
 
@@ -29,7 +29,7 @@ logging.basicConfig(
 
 def generate_text(
     config: LocalConfig,
-    start_string: str = "<n>",
+    start_string: str = NEWLINE,
     line_validator: Callable = None,
     max_invalid: int = 1000,
     num_lines: int = None,
@@ -41,7 +41,11 @@ def generate_text(
         config: A configuration object, which you must have created previously
         start_string:  A prefix string that is used to seed the record generation.
             By default we use a newline, but you may substitue any initial value here
-            which will influence how the generator predicts what to generate.
+            which will influence how the generator predicts what to generate. If you
+            are working with a field delimiter, and you want to seed more than one column
+            value, then you MUST utilize the field delimiter specified in your config. 
+            An example would be "foo,bar,baz,". Also, if using a field delimiter, the string
+            MUST end with the delimiter value.
         line_validator: An optional callback validator function that will take
             the raw string value from the generator as a single argument. This validator
             can executue arbitrary code with the raw string value. The validator function

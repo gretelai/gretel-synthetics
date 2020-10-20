@@ -24,7 +24,7 @@ from tqdm.auto import tqdm
 import cloudpickle
 
 from gretel_synthetics.config import LocalConfig
-from gretel_synthetics.generate import gen_text, generate_text
+from gretel_synthetics.generate import gen_text, generate_text, NEWLINE
 from gretel_synthetics.generator import TooManyInvalidError
 from gretel_synthetics.train import train_rnn
 
@@ -389,12 +389,30 @@ class DataFrameBatch:
         except KeyError:
             raise ValueError("invalid batch number!")
 
+    def _validate_batch_seed_values(self, batch: Batch, seed_values: dict) -> str:
+        """Validate that seed values line up with the first N columns in a batch. Also construct
+        an appropiate seed string based on the values in the batch
+        """
+        if len(seed_values) > len(batch.headers):
+            raise RuntimeError("The number of seed fields is greater than the number of columns in the first batch")
+
+        headers_to_seed = batch.headers[:len(seed_values)]
+        tmp = []
+        for header in headers_to_seed:
+            value = seed_values.get(header)
+            if value is None:
+                raise RuntimeError(f"The header: {header} is not in the seed values mapping")  # noqa
+            tmp.append(str(value))
+
+        return batch.config.field_delimiter.join(tmp) + batch.config.field_delimiter
+        
     def generate_batch_lines(
         self,
         batch_idx: int,
         max_invalid=MAX_INVALID,
         raise_on_exceed_invalid: bool = False,
         num_lines: int = None,
+        seed_fields: dict = None,
         parallelism: int = 0,
     ) -> bool:
         """Generate lines for a single batch. Lines generated are added
@@ -411,6 +429,9 @@ class DataFrameBatch:
                 indicating that the batch failed to generate all lines.
             num_lines: The number of lines to generate, if ``None``, then we use the number from the
                 batch's config
+            seed_fields: A dictionary that maps field/column names to initial seed values for those columns. This seed
+                will only apply to the first batch that gets trained and generated. Additionally, the fields provided
+                in the mapping MUST exist at the front of the first batch.
             parallelism: The number of concurrent workers to use. ``1`` (the default) disables parallelization,
                 while a non-positive value means "number of CPUs + x" (i.e., use ``0`` for using as many workers
                 as there are CPUs). A floating-point value is interpreted as a fraction of the available CPUs,
@@ -420,6 +441,14 @@ class DataFrameBatch:
             batch = self.batches[batch_idx]
         except KeyError:  # pragma: no cover
             raise ValueError("invalid batch index")
+        
+        seed_string = NEWLINE
+
+        # If we are on batch 0 and we have seed values, we want to validate that
+        # the seed values line up properly with the first N columns.
+        if batch_idx == 0 and seed_fields is not None:
+            seed_string = self._validate_batch_seed_values(batch, seed_fields)
+
         batch: Batch
         batch.reset_gen_data()
         validator = batch.get_validator()
@@ -430,7 +459,11 @@ class DataFrameBatch:
         line: gen_text
         try:
             for line in generate_text(
-                batch.config, line_validator=validator, max_invalid=max_invalid, num_lines=num_lines,
+                batch.config,
+                line_validator=validator,
+                max_invalid=max_invalid,
+                num_lines=num_lines,
+                start_string=seed_string,
                 parallelism=parallelism,
             ):
                 if line.valid is None or line.valid is True:
@@ -449,7 +482,11 @@ class DataFrameBatch:
         return batch.gen_data_count >= num_lines
 
     def generate_all_batch_lines(
-        self, max_invalid=MAX_INVALID, raise_on_failed_batch: bool = False, num_lines: int = None,
+        self,
+        max_invalid=MAX_INVALID,
+        raise_on_failed_batch: bool = False,
+        num_lines: int = None,
+        seed_fields: dict = None,
         parallelism: int = 0,
     ) -> dict:
         """Generate synthetic lines for all batches. Lines for each batch
@@ -470,6 +507,9 @@ class DataFrameBatch:
                 will be set to ``False`` in the result dictionary from this method.
             num_lines: The number of lines to create from each batch.  If ``None`` then the value
                 from the config template will be used.
+            seed_fields: A dictionary that maps field/column names to initial seed values for those columns. This seed
+                will only apply to the first batch that gets trained and generated. Additionally, the fields provided
+                in the mapping MUST exist at the front of the first batch.
             parallelism: The number of concurrent workers to use. ``1`` (the default) disables parallelization,
                 while a non-positive value means "number of CPUs + x" (i.e., use ``0`` for using as many workers
                 as there are CPUs). A floating-point value is interpreted as a fraction of the available CPUs,
@@ -491,6 +531,7 @@ class DataFrameBatch:
                 max_invalid=max_invalid,
                 raise_on_exceed_invalid=raise_on_failed_batch,
                 num_lines=num_lines,
+                seed_fields=seed_fields,
                 parallelism=parallelism,
             )
         return batch_status

@@ -13,6 +13,12 @@ else:
     BaseConfig = None
     LocalConfig = None
 
+NEWLINE = "<n>"
+
+
+class GenerationError(Exception):
+    pass
+
 
 def _load_tokenizer(store: LocalConfig) -> spm.SentencePieceProcessor:
     sp = spm.SentencePieceProcessor()
@@ -55,12 +61,33 @@ class Settings:
 
     This class contains basic settings for a generation process. It is separated from the Generator class
     for ensuring reliable serializability without an excess amount of code tied to it.
+
+    This class also will take a provided start string and validate that it can be utilized for text
+    generation. If the ``start_string`` is something other than the default, we have to do a couple things:
+        - If the config utilizes a field delimiter, the ``start_string`` MUST end with that delimiter
+        - Convert the user-facing delim char into the special delim token specified in the config
     """
 
     config: LocalConfig
-    start_string: str = "<n>"
+    start_string: str = NEWLINE
     line_validator: Optional[Callable] = None
     max_invalid: int = 1000
+
+    def __post_init__(self):
+        if self.start_string != NEWLINE:
+            self._process_start_string()
+
+    def _process_start_string(self):
+        if not isinstance(self.start_string, str):
+            raise GenerationError("Seed start_string must be a str!")
+        if self.config.field_delimiter is not None:
+            # the start_string must end with the delim
+            if not self.start_string.endswith(self.config.field_delimiter):
+                raise GenerationError(f"start_string must end with the specified field delimiter: {self.config.field_delimiter}")  # noqa
+            self.start_string = self.start_string.replace(
+                self.config.field_delimiter,
+                self.config.field_delimiter_token
+            )
 
 
 @dataclass
@@ -118,6 +145,11 @@ class Generator:
 
     Args:
             settings: the generator settings to use.
+
+    NOTE:
+        If the ``settings`` object has a non-default ``start_string`` set, then that ``start_string`` MUST have
+        already had special tokens inserted. This should generally be handled during the construction of the Settings
+        object.
     """
     settings: Settings
     model: tf.keras.Sequential
@@ -197,6 +229,23 @@ class Generator:
                 compiled_predict_and_sample)
 
 
+def _replace_decoded_tokens(batch_decoded, store: BaseConfig, prefix: str = None) -> List[Tuple[int, str]]:
+    """Given a decoded predicted string, that contains special tokens for things like field
+    delimiters, we restore those tokens back to the original char they were previously.
+
+    Additionally, if a ``start_string`` was provided to seed the generation, we need to restore
+    the delim tokens in that start string and preprend it to the predicted string.
+    """
+    out = []
+    for i, decoded in batch_decoded:
+        if store.field_delimiter is not None:
+            decoded = decoded.replace(store.field_delimiter_token, store.field_delimiter)
+        if prefix is not None:
+            decoded = "".join([prefix, decoded])
+        out.append((i, decoded))
+    return out
+
+
 def _predict_chars(
     model: tf.keras.Sequential,
     sp: spm.SentencePieceProcessor,
@@ -210,7 +259,8 @@ def _predict_chars(
     Args:
         model: tf.keras.Sequential model
         sp: SentencePiece tokenizer
-        start_string: string to bootstrap model
+        start_string: string to bootstrap model. NOTE: this string MUST already have had special tokens
+            inserted (i.e. <d>)
         store: our config object
     Returns:
         Yields line of text per iteration
@@ -230,19 +280,25 @@ def _predict_chars(
 
     model.reset_states()
 
+    # if the start string is not the default newline, then we create a prefix string
+    # that we will append to each decoded prediction
+    prediction_prefix = None
+    if start_string != NEWLINE:
+        if store.field_delimiter is not None:
+            prediction_prefix = start_string.replace(store.field_delimiter_token, store.field_delimiter)
+        else:
+            prediction_prefix = start_string
+
     while not_done:
         input_eval = predict_and_sample(input_eval)
         for i in not_done:
             batch_sentence_ids[i].append(int(input_eval[i, 0].numpy()))
 
         batch_decoded = [(i, sp.DecodeIds(batch_sentence_ids[i])) for i in not_done]
-        if store.field_delimiter is not None:
-            batch_decoded = [(i, decoded.replace(
-                store.field_delimiter_token, store.field_delimiter
-            )) for i, decoded in batch_decoded]
+        batch_decoded = _replace_decoded_tokens(batch_decoded, store, prediction_prefix)
 
         for i, decoded in batch_decoded:
-            end_idx = decoded.find("<n>")
+            end_idx = decoded.find(NEWLINE)
             if end_idx >= 0:
                 decoded = decoded[:end_idx]
                 yield PredString(decoded)
