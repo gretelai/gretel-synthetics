@@ -6,6 +6,7 @@ For example usage please see our Jupyter Notebooks.
 """
 import json
 import logging
+import tensorflow as tf
 from pathlib import Path
 from abc import abstractmethod
 from dataclasses import dataclass, asdict, field
@@ -232,14 +233,16 @@ class LocalConfig(BaseConfig, _PathSettingsMixin):
     input_data_path: str = None
 
     def __post_init__(self):
-        # FIXME: Remove @ 0.15.X when new optimizers are available for DP
         if self.dp:
-            raise RuntimeError(
-                "DP mode is disabled in v0.14.X. Please remove or set this value to ``False`` to continue with out DP.  DP will be re-enabled in v0.15.X. Please see the README for more details"  # noqa
-            )
+            major, minor, micro = tf.__version__.split(".")
+            if int(minor) < 4 and int(major) >= 2:
+                raise RuntimeError(
+                    "Running in differential privacy mode requires TensorFlow 2.4.x or greater. "
+                    "Please see the README for details"
+                )
 
         if self.best_model_metric not in (VAL_LOSS, VAL_ACC):
-            raise AttributeError("Invalid value for bset_model_metric")
+            raise AttributeError("Invalid value for best_model_metric")
         if not self.checkpoint_dir or not self.input_data_path:
             raise AttributeError(
                 "Must provide checkpoint_dir and input_path_dir params!"
