@@ -9,19 +9,19 @@ import io
 from contextlib import redirect_stdout
 import logging
 from pathlib import Path
-import shutil
 from typing import Tuple, Optional, TYPE_CHECKING
 
 import pandas as pd
-import sentencepiece as spm
-from smart_open import open
 import tensorflow as tf
 from tqdm import tqdm
 
 from gretel_synthetics.tensorflow.model import build_sequential_model, load_model
 from gretel_synthetics.tensorflow.model_dp import compute_epsilon
 from gretel_synthetics.base_config import BaseConfig
-from gretel_synthetics.const import NEWLINE, VAL_ACC, VAL_LOSS
+from gretel_synthetics.const import VAL_ACC, VAL_LOSS
+from gretel_synthetics.tokenizers.base import BaseTokenizer
+from gretel_synthetics.tokenizers.sentencepiece import SentencepieceTokenizerTrainer, SentencePieceTokenizer
+
 
 if TYPE_CHECKING:
     from gretel_synthetics.tensorflow.config import TensorFlowConfig
@@ -121,6 +121,19 @@ def _save_history_csv(
     df.to_csv(save_path.as_posix(), index=False)
 
 
+def create_tokenizer(store: TensorFlowConfig) -> Tuple[str, SentencePieceTokenizer]:
+    trainer = SentencepieceTokenizerTrainer(
+        vocab_size=store.vocab_size,
+        character_coverage=store.character_coverage,
+        pretrain_sentence_count=store.pretrain_sentence_count,
+        max_line_len=store.max_line_len,
+        config=store
+    )
+    text = trainer.create_annotated_training_data()
+    trainer.train()
+    return text, SentencePieceTokenizer.load(store)
+
+
 def train_rnn(store: TensorFlowConfig):
     """
     Fit synthetic data model on training data.
@@ -147,12 +160,11 @@ def train_rnn(store: TensorFlowConfig):
                 "A model already exists in the checkpoint location, you must enable overwrite mode or delete the checkpoints first."  # noqa
             )  # noqa
 
-    text = _annotate_training_data(store)
-    sp = _train_tokenizer(store)
-    total_token_count, dataset = _create_dataset(store, text, sp)
+    text, tokenizer = create_tokenizer(store)
+    total_token_count, dataset = _create_dataset(store, text, tokenizer)
     logging.info("Initializing synthetic model")
     model = build_sequential_model(
-        vocab_size=len(sp), batch_size=store.batch_size, store=store
+        vocab_size=tokenizer.total_vocab_size, batch_size=store.batch_size, store=store
     )
 
     # Save checkpoints during training
@@ -203,91 +215,10 @@ def train_rnn(store: TensorFlowConfig):
     logging.info(f"Saving model to {tf.train.latest_checkpoint(store.checkpoint_dir)}")
 
 
-def _annotate_training_data(store: TensorFlowConfig):
-    """
-    Prepare training data for tokenization with SentencePiece model.
-    Including: use reserved tokens <n> to indicate end of sentences in training data.
-    """
-    # required for SentencePiece to tokenize newline characters
-    logging.info(f"Loading training data from {store.input_data_path}")
-    training_text = []
-    with open(store.input_data_path, "r", encoding="utf-8", errors="replace") as infile:
-        for line in infile:
-            if store.max_lines and len(training_text) >= store.max_lines:
-                break
-            if store.field_delimiter is not None:
-                line = line.strip().replace(
-                    store.field_delimiter, store.field_delimiter_token
-                )
-            training_text.append(line)
-
-    logging.info(f"Storing annotations to {Path(store.training_data).name}")
-    labeled_text = ""
-    with open(store.training_data, "w") as f:
-        for sample in training_text:
-            chunk = f"{sample}{NEWLINE}\n"
-            f.write(chunk)
-            labeled_text += chunk
-    logging.info(
-        f"Dataset size: {len(training_text)} lines, {len(labeled_text)} characters"
-    )
-    return labeled_text
-
-
-def _move_tokenizer_model(store: BaseConfig):
-    """
-    Move SentencePiece tokenizer to model storage directory
-    """
-    for model in ["model", "vocab"]:
-        src = Path.cwd() / f"{store.tokenizer_prefix}.{model}"
-        dst = Path(store.checkpoint_dir) / f"{store.tokenizer_prefix}.{model}"
-        shutil.move(src.as_posix(), dst.as_posix())
-
-
-def _train_tokenizer(store: BaseConfig) -> spm.SentencePieceProcessor:
-    """
-    Trains SentencePiece tokenizer on training data
-    """
-    logging.info("Training SentencePiece tokenizer")
-    spm.SentencePieceTrainer.Train(
-        input=store.training_data,
-        model_prefix=store.tokenizer_prefix,
-        user_defined_symbols=[NEWLINE, store.field_delimiter_token],
-        vocab_size=store.vocab_size,
-        hard_vocab_limit=False,
-        max_sentence_length=store.max_line_len,
-        input_sentence_size=store.pretrain_sentence_count,
-        shuffle_input_sentence=True,
-        character_coverage=store.character_coverage,
-    )
-    _move_tokenizer_model(store)
-
-    sp = spm.SentencePieceProcessor()
-    logging.info(f"Loading tokenizer from: {Path(store.tokenizer_model).name}")
-    sp.Load(store.tokenizer_model)
-
-    # print sample output
-    with open(store.training_data) as f:
-        sample = f.readline().strip()
-    logging.info(f"Tokenizer model vocabulary size: {len(sp)} tokens")
-    logging.info(
-        "Mapping first line of training data\n\n{}\n ---- sample tokens mapped to pieces ---- > \n{}\n".format(
-            repr(sample), ", ".join(sp.SampleEncodeAsPieces(sample, -1, 0.1))
-        )
-    )
-    logging.info(
-        "Mapping first line of training data\n\n{}\n ---- sample tokens mapped to int ---- > \n{}\n".format(
-            repr(sample), ", ".join([str(idx) for idx in sp.EncodeAsIds(sample)])
-        )
-    )
-    logging.info(
-        f"Saving SentencePiece model to {store.tokenizer_prefix}.model and {store.tokenizer_prefix}.vocab"
-    )
-    return sp
-
-
 def _create_dataset(
-    store: BaseConfig, text: str, sp: spm.SentencePieceProcessor
+    store: BaseConfig,
+    text: str,
+    tokenizer: BaseTokenizer
 ) -> Tuple[int, tf.data.Dataset]:
     """
     Before training, we need to map strings to a numerical representation.
@@ -298,7 +229,7 @@ def _create_dataset(
     ids = []
     total_token_count = 0
     for line in tqdm(text.split("\n")):
-        _tokens = sp.EncodeAsIds(line)
+        _tokens = tokenizer.encode_to_ids(line)
         ids.extend(_tokens)
         total_token_count += len(_tokens)
 

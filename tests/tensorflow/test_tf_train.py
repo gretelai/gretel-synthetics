@@ -6,7 +6,7 @@ import pandas as pd
 
 from gretel_synthetics.tensorflow.train import (
     train_rnn,
-    _train_tokenizer,
+    create_tokenizer,
     _ModelHistory,
     _save_history_csv,
     VAL_LOSS,
@@ -15,10 +15,10 @@ from gretel_synthetics.tensorflow.train import (
 
 
 def test_create_vocab(tf_config):
-    sp = _train_tokenizer(tf_config)
-    assert len(sp) == 71
-    assert sp.PieceToId("</s>") == 2
-    assert sp.IdToPiece(2) == "</s>"
+    _, tokenizer = create_tokenizer(tf_config)
+    assert tokenizer.total_vocab_size == 71
+    assert tokenizer.encode_to_ids("Once upon a midnight dreary") == [40, 53, 7, 5, 10, 35, 9, 13, 15, 12, 16, 15, 21, 19, 14, 5, 12, 24, 30, 6]
+    assert tokenizer.decode_from_ids([40, 53, 7, 5, 10, 35, 9, 13, 15, 12, 16, 15, 21, 19, 14, 5, 12, 24, 30, 6]) == "Once upon a midnight dreary"
 
 
 @patch("gretel_synthetics.tensorflow.train.build_sequential_model")

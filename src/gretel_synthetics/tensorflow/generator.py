@@ -1,22 +1,27 @@
-from typing import TYPE_CHECKING, Callable, Generator as GeneratorType, List, Iterable, Optional, Tuple
+from typing import (
+    TYPE_CHECKING,
+    Callable,
+    Generator as GeneratorType,
+    List,
+    Iterable,
+    Optional,
+    Tuple,
+)
 
 import tensorflow as tf
-import sentencepiece as spm
 
 from gretel_synthetics.tensorflow.model import load_model
-from gretel_synthetics.generate import (
-    PredString,
-    GenText,
-    Settings,
-    BaseGenerator
-)
+from gretel_synthetics.generate import PredString, GenText, Settings, BaseGenerator
 from gretel_synthetics.errors import TooManyInvalidError
 from gretel_synthetics.const import NEWLINE
+from gretel_synthetics.tokenizers.sentencepiece import SentencePieceTokenizer
 
 if TYPE_CHECKING:
     from gretel_synthetics.tensorflow.config import TensorFlowConfig
+    from gretel_synthetics.tokenizers.base import BaseTokenizer
 else:
     TensorFlowConfig = None
+    BaseTokenizer = None
 
 
 class TensorFlowGenerator(BaseGenerator):
@@ -35,9 +40,10 @@ class TensorFlowGenerator(BaseGenerator):
         already had special tokens inserted. This should generally be handled during the construction of the Settings
         object.
     """
+
     settings: Settings
     model: tf.keras.Sequential
-    sp: spm.SentencePieceProcessor
+    tokenizer: BaseTokenizer
     delim: str
     total_invalid: int = 0
     total_generated: int = 0
@@ -45,11 +51,15 @@ class TensorFlowGenerator(BaseGenerator):
 
     def __init__(self, settings: Settings):
         self.settings = settings
-        self.sp, self.model = load_model(settings.config)
+        # FIXME: Use an abstract factory at some point
+        self.tokenizer = SentencePieceTokenizer.load(settings.config)
+        self.model = load_model(settings.config, self.tokenizer)
         self.delim = settings.config.field_delimiter
         self._predictions = self._predict_forever()
 
-    def generate_next(self, num_lines: int, hard_limit: Optional[int] = None) -> Iterable[GenText]:
+    def generate_next(
+        self, num_lines: int, hard_limit: Optional[int] = None
+    ) -> Iterable[GenText]:
         """
         Returns a sequence of lines.
 
@@ -65,13 +75,17 @@ class TensorFlowGenerator(BaseGenerator):
         valid_lines_generated = 0
         total_lines_generated = 0
 
-        while valid_lines_generated < num_lines and (hard_limit is None or total_lines_generated < hard_limit):
+        while valid_lines_generated < num_lines and (
+            hard_limit is None or total_lines_generated < hard_limit
+        ):
             rec = next(self._predictions).data
             total_lines_generated += 1
             _valid = None
             try:
                 if not self.settings.line_validator:
-                    yield GenText(text=rec, valid=None, explain=None, delimiter=self.delim)
+                    yield GenText(
+                        text=rec, valid=None, explain=None, delimiter=self.delim
+                    )
                 else:
                     check = self.settings.line_validator(rec)
                     if check is False:
@@ -79,12 +93,16 @@ class TensorFlowGenerator(BaseGenerator):
                         self.total_invalid += 1
                     else:
                         _valid = True
-                    yield GenText(text=rec, valid=_valid, explain=None, delimiter=self.delim)
+                    yield GenText(
+                        text=rec, valid=_valid, explain=None, delimiter=self.delim
+                    )
             except Exception as err:
                 # NOTE: this catches any exception raised by the line validator, which
                 # also creates an invalid record
                 self.total_invalid += 1
-                yield GenText(text=rec, valid=False, explain=str(err), delimiter=self.delim)
+                yield GenText(
+                    text=rec, valid=False, explain=str(err), delimiter=self.delim
+                )
             else:
                 if self.settings.line_validator and _valid:
                     valid_lines_generated += 1
@@ -103,17 +121,26 @@ class TensorFlowGenerator(BaseGenerator):
         Returns:
             A generator producing an infinite sequence of ``PredString``s.
         """
+
         @tf.function
         def compiled_predict_and_sample(input_eval):
-            return _predict_and_sample(self.model, input_eval, self.settings.config.gen_temp)
+            return _predict_and_sample(
+                self.model, input_eval, self.settings.config.gen_temp
+            )
 
         while True:
             yield from _predict_chars(
-                self.model, self.sp, self.settings.start_string, self.settings.config,
-                compiled_predict_and_sample)
+                self.model,
+                self.tokenizer,
+                self.settings.start_string,
+                self.settings.config,
+                compiled_predict_and_sample,
+            )
 
 
-def _replace_decoded_tokens(batch_decoded, store: TensorFlowConfig, prefix: str = None) -> List[Tuple[int, str]]:
+def _replace_decoded_tokens(
+    batch_decoded, store: TensorFlowConfig, prefix: str = None
+) -> List[Tuple[int, str]]:
     """Given a decoded predicted string, that contains special tokens for things like field
     delimiters, we restore those tokens back to the original char they were previously.
 
@@ -123,7 +150,9 @@ def _replace_decoded_tokens(batch_decoded, store: TensorFlowConfig, prefix: str 
     out = []
     for i, decoded in batch_decoded:
         if store.field_delimiter is not None:
-            decoded = decoded.replace(store.field_delimiter_token, store.field_delimiter)
+            decoded = decoded.replace(
+                store.field_delimiter_token, store.field_delimiter
+            )
         if prefix is not None:
             decoded = "".join([prefix, decoded])
         out.append((i, decoded))
@@ -132,7 +161,7 @@ def _replace_decoded_tokens(batch_decoded, store: TensorFlowConfig, prefix: str 
 
 def _predict_chars(
     model: tf.keras.Sequential,
-    sp: spm.SentencePieceProcessor,
+    tokenizer: BaseTokenizer,
     start_string: str,
     store: TensorFlowConfig,
     predict_and_sample: Optional[Callable] = None,
@@ -142,7 +171,7 @@ def _predict_chars(
 
     Args:
         model: tf.keras.Sequential model
-        sp: SentencePiece tokenizer
+        tokenizer: A subclass of BaseTokenizer
         start_string: string to bootstrap model. NOTE: this string MUST already have had special tokens
             inserted (i.e. <d>)
         store: our config object
@@ -151,10 +180,11 @@ def _predict_chars(
     """
 
     # Converting our start string to numbers (vectorizing)
-    start_vec = sp.EncodeAsIds(start_string)
+    start_vec = tokenizer.encode_to_ids(start_string)
     input_eval = tf.constant([start_vec for _ in range(store.predict_batch_size)])
 
     if predict_and_sample is None:
+
         def predict_and_sample(this_input):
             return _predict_and_sample(model, this_input, store.gen_temp)
 
@@ -169,7 +199,9 @@ def _predict_chars(
     prediction_prefix = None
     if start_string != NEWLINE:
         if store.field_delimiter is not None:
-            prediction_prefix = start_string.replace(store.field_delimiter_token, store.field_delimiter)
+            prediction_prefix = start_string.replace(
+                store.field_delimiter_token, store.field_delimiter
+            )
         else:
             prediction_prefix = start_string
 
@@ -178,7 +210,9 @@ def _predict_chars(
         for i in not_done:
             batch_sentence_ids[i].append(int(input_eval[i, 0].numpy()))
 
-        batch_decoded = [(i, sp.DecodeIds(batch_sentence_ids[i])) for i in not_done]
+        batch_decoded = [
+            (i, tokenizer.decode_from_ids(batch_sentence_ids[i])) for i in not_done
+        ]
         batch_decoded = _replace_decoded_tokens(batch_decoded, store, prediction_prefix)
 
         for i, decoded in batch_decoded:

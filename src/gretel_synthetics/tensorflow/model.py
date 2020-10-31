@@ -1,16 +1,17 @@
 """
 Tensorflow - Keras Sequential RNN (GRU)
 """
-from typing import TYPE_CHECKING, Tuple
+from typing import TYPE_CHECKING
 
 from tensorflow.keras.optimizers import RMSprop  # pylint: disable=import-error
 import tensorflow as tf
-import sentencepiece as spm
 
 if TYPE_CHECKING:
     from gretel_synthetics.base_config import BaseConfig
+    from gretel_synthetics.tokenizers.base import BaseTokenizer
 else:
     BaseConfig = None
+    BaseTokenizer = None
 
 
 DEFAULT = "default"
@@ -54,17 +55,11 @@ def build_sequential_model(
     return model
 
 
-def _load_tokenizer(store: BaseConfig) -> spm.SentencePieceProcessor:
-    sp = spm.SentencePieceProcessor()
-    sp.Load(store.tokenizer_model)
-    return sp
-
-
 def _prepare_model(
-    sp: spm.SentencePieceProcessor, batch_size: int, store: BaseConfig
+    tokenizer: BaseTokenizer, batch_size: int, store: BaseConfig
 ) -> tf.keras.Sequential:  # pragma: no cover
     model = build_sequential_model(
-        vocab_size=len(sp), batch_size=batch_size, store=store
+        vocab_size=tokenizer.total_vocab_size, batch_size=batch_size, store=store
     )
 
     load_dir = store.checkpoint_dir
@@ -79,7 +74,7 @@ def _prepare_model(
 
 def load_model(
     store: BaseConfig,
-) -> Tuple[spm.SentencePieceProcessor, tf.keras.Sequential]:
-    sp = _load_tokenizer(store)
-    model = _prepare_model(sp, store.predict_batch_size, store)
-    return sp, model
+    tokenizer: BaseTokenizer,
+) -> tf.keras.Sequential:
+    model = _prepare_model(tokenizer, store.predict_batch_size, store)
+    return model

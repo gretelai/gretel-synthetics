@@ -3,7 +3,6 @@ from pathlib import Path
 import shutil
 
 from gretel_synthetics.tensorflow.config import TensorFlowConfig
-from gretel_synthetics.tensorflow.train import _annotate_training_data
 
 test_data_dir = Path(__file__).parent
 
@@ -20,6 +19,5 @@ def tf_config():
         field_delimiter=",",
         predict_batch_size=1
     )
-    _annotate_training_data(config)
     yield config
     shutil.rmtree(target)
