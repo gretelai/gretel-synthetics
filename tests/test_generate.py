@@ -1,134 +1,60 @@
-from unittest.mock import MagicMock, patch, Mock
-import json
-
 import pytest
-import tensorflow as tf
 
-from gretel_synthetics.generator import _predict_chars, PredString, NEWLINE
-from gretel_synthetics.generate import generate_text
+from gretel_synthetics.generate import Settings
+from gretel_synthetics.tensorflow.generator import _replace_decoded_tokens
+from gretel_synthetics.const import NEWLINE
+from gretel_synthetics.tensorflow.config import TensorFlowConfig
+from gretel_synthetics.errors import GenerationError
+
+
+def test_default_start_string(tf_config):
+    check = Settings(config=tf_config)
+    assert check.start_string == NEWLINE
+
+
+def test_no_delim_bad_start_string(tmpdir):
+    config = TensorFlowConfig(checkpoint_dir=tmpdir, input_data_path=tmpdir)
+    with pytest.raises(GenerationError):
+        Settings(config=config, start_string=123)
+
+
+def test_delim_missing_trailing_delim(tf_config):
+    with pytest.raises(GenerationError):
+        Settings(config=tf_config, start_string="foo,bar")
+
+
+def test_delim_multi_field(tf_config):
+    check = Settings(config=tf_config, start_string="foo,bar,baz,")
+    assert check.start_string == "foo<d>bar<d>baz<d>"
+
+
+def test_delim_single_field(tf_config):
+    check = Settings(config=tf_config, start_string="onlyonefield,")
+    assert check.start_string == "onlyonefield<d>"
 
 
 @pytest.fixture
-def random_cat():
-    return tf.random.categorical(tf.math.log([[0.5, 0.5]]), 5)
-
-
-@patch("tensorflow.random.categorical")
-def test_predict_chars(mock_cat, global_local_config, random_cat):
-    config = global_local_config
-
-    global_local_config.gen_chars = 10
-    mock_model = Mock(return_value=tf.constant([[[1.0]]]))
-    mock_tensor = MagicMock()
-    mock_tensor[-1, 0].numpy.return_value = 1
-    mock_cat.return_value = mock_tensor
-
-    sp = Mock()
-    sp.EncodeAsIds.return_value = [3]
-    sp.DecodeIds.return_value = f"this is the end{NEWLINE}"
-    # sp.DecodeIds.side_effect = ["this", " ", "is", " ", "the", " ", "end", "<n>"]
-    line = next(_predict_chars(mock_model, sp, NEWLINE, config))
-    assert line == PredString(data="this is the end")
- 
-    config = global_local_config
-    mock_tensor = MagicMock()
-    mock_tensor[-1, 0].numpy.side_effect = [0, 1, 2, 3, 4, 5, 6, 7, 8]
-    mock_cat.return_value = mock_tensor
-    global_local_config.gen_chars = 3
-    sp = Mock()
-    sp.EncodeAsIds.return_value = [3]
-    ret_data = [partial_rep for partial in ["a", "ab", "abc", "abcd"] for partial_rep in [partial] * config.predict_batch_size]
-    sp.DecodeIds.side_effect = ret_data
-    # sp.DecodeIds.side_effect = ["a", "b", "c", "d"]
-    line = next(_predict_chars(mock_model, sp, NEWLINE, config))
-
-
-@patch("gretel_synthetics.generator.spm.SentencePieceProcessor")
-@patch("gretel_synthetics.generator._predict_chars")
-@patch("gretel_synthetics.generator._prepare_model")
-@patch("pickle.load")
-@patch("gretel_synthetics.generate.open")
-def test_generate_text(_open, pickle, prepare, predict, spm, global_local_config):
-    global_local_config.gen_lines = 10
-    predict.side_effect = [[PredString(json.dumps({"foo": i}))] for i in range(0, 10)]
-    out = []
-
-    sp = Mock()
-    spm.return_value = sp
-
-    for rec in generate_text(global_local_config, line_validator=json.loads, parallelism=1):
-        out.append(rec.as_dict())
-
-    assert len(out) == 10
-    assert out[0] == {
-        "valid": True,
-        "text": '{"foo": 0}',
-        "explain": None,
-        "delimiter": ",",
-    }
-
-    # now with no validator
-    predict.side_effect = [[PredString(json.dumps({"foo": i}))] for i in range(0, 10)]
-    out = []
-    for rec in generate_text(global_local_config, parallelism=1):
-        out.append(rec.as_dict())
-    assert len(out) == 10
-    assert out[0] == {
-        "valid": None,
-        "text": '{"foo": 0}',
-        "explain": None,
-        "delimiter": ",",
-    }
-
-    # add validator back in, with a few bad json strings
-    predict.side_effect = [
-        [PredString(json.dumps({"foo": i})) for i in range(0, 3)],
-        [PredString("nope"), PredString("foo"), PredString("bar")],
-        [PredString(json.dumps({"foo": i})) for i in range(6, 10)],
+def batch_decoded():
+    return [
+        (0, "foo<d>bar<d>baz"),
+        (1, "one<d>two<d>three"),
+        (2, "uno<d>dos<d>tres")
     ]
-    out = []
-    try:
-        for rec in generate_text(global_local_config, line_validator=json.loads, parallelism=1):
-            out.append(rec.as_dict())
-    except RuntimeError:
-        pass
-    assert len(out) == 10
-    assert not out[4]["valid"]
 
-    # assert max invalid
-    predict.side_effect = [
-        [PredString(json.dumps({"foo": i})) for i in range(0, 3)],
-        [PredString("nope"), PredString("foo"), PredString("bar")],
-        [PredString(json.dumps({"foo": i})) for i in range(6, 10)],
-    ]
-    out = []
-    try:
-        for rec in generate_text(global_local_config, line_validator=json.loads, max_invalid=2, parallelism=1):
-            out.append(rec.as_dict())
-    except RuntimeError as err:
-        assert "Maximum number" in str(err)
-    assert len(out) == 6
-    assert not out[4]["valid"]
 
-    # max invalid, validator returns a bool
-    def _val(line):
-        try:
-            json.loads(line)
-        except Exception:
-            return False
-        else:
-            return True
+def test_no_prefix_decode_tokens(tmpdir, batch_decoded):
+    config = TensorFlowConfig(checkpoint_dir=tmpdir, input_data_path=tmpdir)
+    check = _replace_decoded_tokens(batch_decoded, config, prefix=None)
+    assert check == [(0, 'foo<d>bar<d>baz'), (1, 'one<d>two<d>three'), (2, 'uno<d>dos<d>tres')]
 
-    predict.side_effect = [
-        [PredString(json.dumps({"foo": i})) for i in range(0, 3)],
-        [PredString("nope"), PredString("foo"), PredString("bar")],
-        [PredString(json.dumps({"foo": i})) for i in range(6, 10)],
-    ]
-    out = []
-    try:
-        for rec in generate_text(global_local_config, line_validator=_val, max_invalid=2, parallelism=1):
-            out.append(rec.as_dict())
-    except RuntimeError as err:
-        assert "Maximum number" in str(err)
-    assert len(out) == 6
-    assert not out[4]["valid"]
+
+def test_no_prefix_delim_decode_tokens(tmpdir, batch_decoded):
+    config = TensorFlowConfig(checkpoint_dir=tmpdir, input_data_path=tmpdir, field_delimiter=":")
+    check = _replace_decoded_tokens(batch_decoded, config, prefix=None)
+    assert check == [(0, 'foo:bar:baz'), (1, 'one:two:three'), (2, 'uno:dos:tres')]
+
+
+def test_prefix_delim_decode_tokens(tmpdir, batch_decoded):
+    config = TensorFlowConfig(checkpoint_dir=tmpdir, input_data_path=tmpdir, field_delimiter=":")
+    check = _replace_decoded_tokens(batch_decoded, config, prefix="hello:world:")
+    assert check == [(0, 'hello:world:foo:bar:baz'), (1, 'hello:world:one:two:three'), (2, 'hello:world:uno:dos:tres')]

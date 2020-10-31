@@ -24,8 +24,9 @@ from tqdm.auto import tqdm
 import cloudpickle
 
 from gretel_synthetics.config import LocalConfig
-from gretel_synthetics.generate import gen_text, generate_text, NEWLINE
-from gretel_synthetics.generator import TooManyInvalidError
+from gretel_synthetics.generate import GenText, generate_text
+from gretel_synthetics.const import NEWLINE
+from gretel_synthetics.tensorflow.generator import TooManyInvalidError
 from gretel_synthetics.train import train_rnn
 
 
@@ -61,7 +62,7 @@ class Batch:
 
     training_df: Type[pd.DataFrame] = field(default_factory=lambda: None, init=False)
     gen_data_stream: io.StringIO = field(default_factory=io.StringIO, init=False)
-    gen_data_invalid: List[gen_text] = field(default_factory=list, init=False)
+    gen_data_invalid: List[GenText] = field(default_factory=list, init=False)
     validator: Callable = field(default_factory=lambda: None, init=False)
 
     def __post_init__(self):
@@ -103,7 +104,7 @@ class Batch:
         )
         self.gen_data_count = 0
 
-    def add_valid_data(self, data: gen_text):
+    def add_valid_data(self, data: GenText):
         """Take a ``gen_text`` object and add the generated
         line to the generated data stream
         """
@@ -456,7 +457,7 @@ class DataFrameBatch:
             num_lines = batch.config.gen_lines
         t = tqdm(total=num_lines, desc="Valid record count ")
         t2 = tqdm(total=max_invalid, desc="Invalid record count ")
-        line: gen_text
+        line: GenText
         try:
             for line in generate_text(
                 batch.config,

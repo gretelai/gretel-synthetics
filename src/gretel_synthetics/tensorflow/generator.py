@@ -1,141 +1,25 @@
 from typing import TYPE_CHECKING, Callable, Generator as GeneratorType, List, Iterable, Optional, Tuple
-from dataclasses import dataclass, asdict
-from collections import namedtuple
 
-import sentencepiece as spm
 import tensorflow as tf
+import sentencepiece as spm
 
-from gretel_synthetics.model import build_sequential_model
+from gretel_synthetics.tensorflow.model import load_model
+from gretel_synthetics.generate import (
+    PredString,
+    GenText,
+    Settings,
+    BaseGenerator
+)
+from gretel_synthetics.errors import TooManyInvalidError
+from gretel_synthetics.const import NEWLINE
 
 if TYPE_CHECKING:
-    from gretel_synthetics.config import BaseConfig, LocalConfig
+    from gretel_synthetics.tensorflow.config import TensorFlowConfig
 else:
-    BaseConfig = None
-    LocalConfig = None
-
-NEWLINE = "<n>"
+    TensorFlowConfig = None
 
 
-class GenerationError(Exception):
-    pass
-
-
-def _load_tokenizer(store: LocalConfig) -> spm.SentencePieceProcessor:
-    sp = spm.SentencePieceProcessor()
-    sp.Load(store.tokenizer_model)
-    return sp
-
-
-def _prepare_model(
-    sp: spm.SentencePieceProcessor, batch_size: int, store: LocalConfig
-) -> tf.keras.Sequential:  # pragma: no cover
-    model = build_sequential_model(
-        vocab_size=len(sp), batch_size=batch_size, store=store
-    )
-
-    load_dir = store.checkpoint_dir
-
-    model.load_weights(tf.train.latest_checkpoint(load_dir)).expect_partial()
-
-    model.build(tf.TensorShape([1, None]))
-    model.summary()
-
-    return model
-
-
-def _load_model(
-    store: LocalConfig,
-) -> Tuple[spm.SentencePieceProcessor, tf.keras.Sequential]:
-    sp = _load_tokenizer(store)
-    model = _prepare_model(sp, store.predict_batch_size, store)
-    return sp, model
-
-
-PredString = namedtuple("pred_string", ["data"])
-
-
-@dataclass
-class Settings:
-    """
-    Arguments for a generator generating lines of text.
-
-    This class contains basic settings for a generation process. It is separated from the Generator class
-    for ensuring reliable serializability without an excess amount of code tied to it.
-
-    This class also will take a provided start string and validate that it can be utilized for text
-    generation. If the ``start_string`` is something other than the default, we have to do a couple things:
-        - If the config utilizes a field delimiter, the ``start_string`` MUST end with that delimiter
-        - Convert the user-facing delim char into the special delim token specified in the config
-    """
-
-    config: LocalConfig
-    start_string: str = NEWLINE
-    line_validator: Optional[Callable] = None
-    max_invalid: int = 1000
-
-    def __post_init__(self):
-        if self.start_string != NEWLINE:
-            self._process_start_string()
-
-    def _process_start_string(self):
-        if not isinstance(self.start_string, str):
-            raise GenerationError("Seed start_string must be a str!")
-        if self.config.field_delimiter is not None:
-            # the start_string must end with the delim
-            if not self.start_string.endswith(self.config.field_delimiter):
-                raise GenerationError(f"start_string must end with the specified field delimiter: {self.config.field_delimiter}")  # noqa
-            self.start_string = self.start_string.replace(
-                self.config.field_delimiter,
-                self.config.field_delimiter_token
-            )
-
-
-@dataclass
-class gen_text:
-    """
-    A record that is yielded from the ``Generator.generate_next`` generator.
-
-    Attributes:
-        valid: True, False, or None. If the line passed a validation function,
-            then this will be ``True``. If the validation function raised an exception
-            then this will be automatically set to ``False``. If no validation function
-            is used, then this value will be ``None.``
-        text: The actual record as a string
-        explain: A string that describes why a record failed validation. This is the
-            string representation of the ``Exception`` that is thrown in a validation
-            function. This will only be set if validation fails, otherwise will be ``None.``
-        delimiter: If the generated text are column/field based records. This will hold the delimiter
-            used to separate the fields from each other.
-    """
-
-    valid: bool = None
-    text: str = None
-    explain: str = None
-    delimiter: str = None
-
-    def as_dict(self) -> dict:
-        """Serialize the generated record to a dictionary
-        """
-        return asdict(self)
-
-    def values_as_list(self) -> Optional[List[str]]:
-        """Attempt to split the generated text on the provided delimiter
-
-        Returns:
-            A list of values that are separated by the object's delimiter or None is there
-            is no delimiter in the text
-        """
-        if self.delimiter is not None:
-            tmp = self.text.rstrip(self.delimiter)
-            return tmp.split(self.delimiter)
-        return None
-
-
-class TooManyInvalidError(RuntimeError):
-    pass
-
-
-class Generator:
+class TensorFlowGenerator(BaseGenerator):
     """
     A class for generating synthetic lines of text.
 
@@ -161,11 +45,11 @@ class Generator:
 
     def __init__(self, settings: Settings):
         self.settings = settings
-        self.sp, self.model = _load_model(settings.config)
+        self.sp, self.model = load_model(settings.config)
         self.delim = settings.config.field_delimiter
         self._predictions = self._predict_forever()
 
-    def generate_next(self, num_lines: int, hard_limit: Optional[int] = None) -> Iterable[gen_text]:
+    def generate_next(self, num_lines: int, hard_limit: Optional[int] = None) -> Iterable[GenText]:
         """
         Returns a sequence of lines.
 
@@ -187,7 +71,7 @@ class Generator:
             _valid = None
             try:
                 if not self.settings.line_validator:
-                    yield gen_text(text=rec, valid=None, explain=None, delimiter=self.delim)
+                    yield GenText(text=rec, valid=None, explain=None, delimiter=self.delim)
                 else:
                     check = self.settings.line_validator(rec)
                     if check is False:
@@ -195,12 +79,12 @@ class Generator:
                         self.total_invalid += 1
                     else:
                         _valid = True
-                    yield gen_text(text=rec, valid=_valid, explain=None, delimiter=self.delim)
+                    yield GenText(text=rec, valid=_valid, explain=None, delimiter=self.delim)
             except Exception as err:
                 # NOTE: this catches any exception raised by the line validator, which
                 # also creates an invalid record
                 self.total_invalid += 1
-                yield gen_text(text=rec, valid=False, explain=str(err), delimiter=self.delim)
+                yield GenText(text=rec, valid=False, explain=str(err), delimiter=self.delim)
             else:
                 if self.settings.line_validator and _valid:
                     valid_lines_generated += 1
@@ -229,7 +113,7 @@ class Generator:
                 compiled_predict_and_sample)
 
 
-def _replace_decoded_tokens(batch_decoded, store: BaseConfig, prefix: str = None) -> List[Tuple[int, str]]:
+def _replace_decoded_tokens(batch_decoded, store: TensorFlowConfig, prefix: str = None) -> List[Tuple[int, str]]:
     """Given a decoded predicted string, that contains special tokens for things like field
     delimiters, we restore those tokens back to the original char they were previously.
 
@@ -250,7 +134,7 @@ def _predict_chars(
     model: tf.keras.Sequential,
     sp: spm.SentencePieceProcessor,
     start_string: str,
-    store: BaseConfig,
+    store: TensorFlowConfig,
     predict_and_sample: Optional[Callable] = None,
 ) -> GeneratorType[PredString, None, None]:
     """
