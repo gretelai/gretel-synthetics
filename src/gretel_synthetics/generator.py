@@ -278,7 +278,8 @@ def _predict_chars(
     batch_sentence_ids = [[] for _ in range(store.predict_batch_size)]
     not_done = set(i for i in range(store.predict_batch_size))
 
-    model.reset_states()
+    if store.predict_batch_size > 1:
+        model.reset_states()
 
     # if the start string is not the default newline, then we create a prefix string
     # that we will append to each decoded prediction
