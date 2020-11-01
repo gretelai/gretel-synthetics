@@ -16,8 +16,6 @@ else:
 
 
 DEFAULT = "default"
-
-
 OPTIMIZERS = {
     DEFAULT: {'dp': make_keras_optimizer_class(RMSprop), 'default': RMSprop}
 }
