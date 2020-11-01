@@ -74,18 +74,16 @@ def _save_history_csv(
     """
     Save model training history to CSV format
     """
-    perplexity = [2 ** x for x in history.losses]
     df = pd.DataFrame(
         zip(
             range(len(history.losses)),
             history.losses,
             history.accuracy,
-            perplexity,
             history.epsilons,
             history.deltas,
             history.best,
         ),
-        columns=["epoch", VAL_LOSS, VAL_ACC, "perplexity", "epsilon", "delta", "best"],
+        columns=["epoch", VAL_LOSS, VAL_ACC, "epsilon", "delta", "best"],
     )
 
     if not dp:
