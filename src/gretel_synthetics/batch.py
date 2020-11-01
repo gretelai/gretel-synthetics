@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 import gzip
 from math import ceil
-from typing import List, Type, Callable, Dict
+from typing import List, Type, Callable, Dict, Union
 from copy import deepcopy
 import logging
 import io
@@ -23,10 +23,12 @@ import numpy as np
 from tqdm.auto import tqdm
 import cloudpickle
 
+# FIXME: remove for abstract config
 from gretel_synthetics.config import LocalConfig
+from gretel_synthetics.base_config import BaseConfig
 from gretel_synthetics.generate import GenText, generate_text
 from gretel_synthetics.const import NEWLINE
-from gretel_synthetics.tensorflow.generator import TooManyInvalidError
+from gretel_synthetics.errors import TooManyInvalidError
 from gretel_synthetics.train import train_rnn
 
 
@@ -151,6 +153,7 @@ def _create_batch_from_dir(batch_dir: str):
     # location other than the exact location the data was stored during training
     config["checkpoint_dir"] = batch_dir
 
+    # FIXME: Will need to use an abstract factory
     batch = Batch(
         checkpoint_dir=batch_dir,
         input_data_path=train_path,
@@ -200,6 +203,8 @@ def _build_batch_dirs(
         new_config.update(
             {"checkpoint_dir": checkpoint_dir, "input_data_path": input_data_path}
         )
+
+        # FIXME: will need to specify specific engine config
         out[i] = Batch(
             checkpoint_dir=checkpoint_dir,
             input_data_path=input_data_path,
@@ -258,6 +263,22 @@ class DataFrameBatch:
     increments from 0..N where N is the number of batches being used.
     """
 
+    batch_size: int
+    """The max number of columns allowed for a single DF batch
+    """
+
+    # NOTE: Allowing a dict is for backwards compat
+    config: Union[dict, BaseConfig]
+    """The template config that will be used for all batches. If a dict
+    is provided we default to a TensorFlowConfig.
+    """
+
+    mode: Union[WRITE, READ]
+
+    # FIXME: Allow the config dict (backwards compat to LocalConfig) or
+    # also allow a sublcass of BaseConfig as well. Default to a TensorFLow
+    # config (LocalConfig) if a dict is provided, otherwise use the config
+    # as is. 
     def __init__(
         self,
         *,

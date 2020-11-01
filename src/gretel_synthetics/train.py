@@ -14,6 +14,7 @@ def train(store: BaseConfig):
     """Train a Synthetic Model.
     """
     train_fn = store.get_training_callable()
+    store.save_model_params()
     train_fn(store)
 
 

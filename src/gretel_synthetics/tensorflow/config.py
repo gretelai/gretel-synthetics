@@ -1,13 +1,11 @@
 """
 Config object for using TensorFlow as the underlying engine
 """
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 import logging
-from pathlib import Path
-import json
 
 from gretel_synthetics.base_config import BaseConfig
-from gretel_synthetics.const import VAL_ACC, VAL_LOSS, MODEL_PARAMS
+from gretel_synthetics.const import VAL_ACC, VAL_LOSS
 from gretel_synthetics.tensorflow.train import train_rnn
 from gretel_synthetics.tensorflow.generator import TensorFlowGenerator
 
@@ -167,17 +165,6 @@ class TensorFlowConfig(BaseConfig):
             raise AttributeError("Invalid value for bset_model_metric")
 
         super().__post_init__()
-
-    def as_dict(self):
-        d = asdict(self)
-        return d
-
-    def save_model_params(self):
-        save_path = Path(self.checkpoint_dir) / MODEL_PARAMS
-        logging.info(f"Saving model history to {save_path.name}")
-        with open(save_path, "w") as f:
-            json.dump(self.as_dict(), f, indent=2)
-        return save_path
 
     def get_generator_class(self):
         return TensorFlowGenerator

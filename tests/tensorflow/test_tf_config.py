@@ -9,7 +9,7 @@ import pytest
 from gretel_synthetics.tensorflow.config import TensorFlowConfig
 
 
-@patch("gretel_synthetics.tensorflow.config.Path.mkdir")
+@patch("gretel_synthetics.base_config.Path.mkdir")
 def test_local_config(mkdir):
     target = uuid.uuid4().hex
     test_data_dir = Path(__file__).parent
@@ -22,7 +22,7 @@ def test_local_config(mkdir):
     assert lc.training_data_path == Path(target, "training_data.txt").as_posix()
 
 
-@patch("gretel_synthetics.tensorflow.config.Path.mkdir")
+@patch("gretel_synthetics.base_config.Path.mkdir")
 def test_local_config_settings(mkdir):
     lc = TensorFlowConfig(checkpoint_dir="foo", input_data_path="bar")
     check = lc.as_dict()
@@ -59,7 +59,8 @@ def test_local_config_settings(mkdir):
         "overwrite": False,
         "input_data_path": "bar",
         "predict_batch_size": 64,
-        "training_data_path": "foo/training_data.txt"
+        "training_data_path": "foo/training_data.txt",
+        "model_type": "TensorFlowConfig"
     }
 
 

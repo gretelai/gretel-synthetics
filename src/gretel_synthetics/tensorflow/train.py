@@ -211,7 +211,6 @@ def train_rnn(store: TensorFlowConfig):
         store.best_model_metric,
         best_val,
     )
-    store.save_model_params()
     logging.info(f"Saving model to {tf.train.latest_checkpoint(store.checkpoint_dir)}")
 
 
