@@ -43,7 +43,7 @@ def generate_text(
             By default we use a newline, but you may substitue any initial value here
             which will influence how the generator predicts what to generate. If you
             are working with a field delimiter, and you want to seed more than one column
-            value, then you MUST utilize the field delimiter specified in your config. 
+            value, then you MUST utilize the field delimiter specified in your config.
             An example would be "foo,bar,baz,". Also, if using a field delimiter, the string
             MUST end with the delimiter value.
         line_validator: An optional callback validator function that will take
@@ -95,6 +95,12 @@ def generate_text(
     logging.info(
         f"Latest checkpoint: {tf.train.latest_checkpoint(config.checkpoint_dir)}"
     )  # noqa
+
+    if config.dp:
+        # Disable batching in DP mode when generating text
+        # as it reduces prediction accuracy
+        config.batch_size = 1
+        config.predict_batch_size = 1
 
     settings = Settings(
         config=config,
