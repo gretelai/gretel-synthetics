@@ -278,7 +278,10 @@ def _predict_chars(
     batch_sentence_ids = [[] for _ in range(store.predict_batch_size)]
     not_done = set(i for i in range(store.predict_batch_size))
 
-    if store.predict_batch_size > 1:
+    if not store.dp:
+        # Reset RNN model states between each record created
+        # guarantees more consistent record creation over time, at the
+        # expense of model accuracy
         model.reset_states()
 
     # if the start string is not the default newline, then we create a prefix string
