@@ -30,13 +30,16 @@ def select_optimizer(store: BaseConfig):
         return OPTIMIZERS[DEFAULT][DEFAULT]
 
 
+def loss(labels, logits):
+    return tf.keras.losses.sparse_categorical_crossentropy(labels, logits, from_logits=True)
+
+
 def build_sequential_model(
     vocab_size: int, batch_size: int, store: BaseConfig
 ) -> tf.keras.Sequential:
     """
     Utilizing tf.keras.Sequential model (LSTM)
     """
-    model_cls = tf.keras.Sequential
     optimizer_cls = select_optimizer(store)
 
     if store.dp:
@@ -47,38 +50,27 @@ def build_sequential_model(
             num_microbatches=store.dp_microbatches,
             learning_rate=store.dp_learning_rate
         )
-        # Compute vector of per-example loss rather than its mean over a minibatch.
-        # To support gradient manipulation over each training point.
-        loss = tf.keras.losses.SparseCategoricalCrossentropy(
-            from_logits=True, reduction=tf.losses.Reduction.NONE
-        )
     else:
         logging.info("Differentially private training _not_ enabled")
-        optimizer = optimizer_cls(learning_rate=0.01)
-        loss = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
+        optimizer = optimizer_cls(learning_rate=store.dp_learning_rate)
 
-    model = model_cls(
-        [
-            tf.keras.layers.Embedding(
-                vocab_size, store.embedding_dim, batch_input_shape=[batch_size, None]
-            ),
-            tf.keras.layers.Dropout(store.dropout_rate),
-            tf.keras.layers.LSTM(
-                store.rnn_units,
-                return_sequences=True,
-                stateful=True,
-                recurrent_initializer=store.rnn_initializer,
-            ),
-            tf.keras.layers.Dropout(store.dropout_rate),
-            tf.keras.layers.LSTM(
-                store.rnn_units,
-                return_sequences=True,
-                stateful=True,
-                recurrent_initializer=store.rnn_initializer,
-            ),
-            tf.keras.layers.Dropout(store.dropout_rate),
-            tf.keras.layers.Dense(vocab_size),
-        ])
+    model = tf.keras.Sequential([
+        tf.keras.layers.Embedding(vocab_size, store.embedding_dim,
+                                  batch_input_shape=[store.batch_size, None]),
+        tf.keras.layers.Dropout(store.dropout_rate),
+        tf.keras.layers.GRU(store.rnn_units,
+                            return_sequences=True,
+                            stateful=True,
+                            recurrent_initializer=store.rnn_initializer),
+        tf.keras.layers.Dropout(store.dropout_rate),
+        tf.keras.layers.GRU(store.rnn_units,
+                            return_sequences=True,
+                            stateful=True,
+                            recurrent_initializer=store.rnn_initializer),
+        tf.keras.layers.Dropout(store.dropout_rate),
+        tf.keras.layers.Dense(vocab_size)
+    ])
+    model.summary()
 
     logging.info(f"Using {optimizer._keras_api_names[0]} optimizer "
                  f"{'in differentially private mode' if store.dp else ''}")
