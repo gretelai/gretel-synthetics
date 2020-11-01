@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 import json
 
-from gretel_synthetics.base_config import BaseConfig, PathSettingsMixin
+from gretel_synthetics.base_config import BaseConfig
 from gretel_synthetics.const import VAL_ACC, VAL_LOSS, MODEL_PARAMS
 from gretel_synthetics.tensorflow.train import train_rnn
 from gretel_synthetics.tensorflow.generator import TensorFlowGenerator
@@ -18,7 +18,7 @@ logging.basicConfig(
 
 
 @dataclass
-class TensorFlowConfig(BaseConfig, PathSettingsMixin):
+class TensorFlowConfig(BaseConfig):
     """TensorFlow config that contains all of the main parameters for
     training a model and generating data.  This base config generally
     should not be used directly. Instead you should use one of the
@@ -132,7 +132,7 @@ class TensorFlowConfig(BaseConfig, PathSettingsMixin):
     dropout_rate: float = 0.2
     rnn_initializer: str = "glorot_uniform"
 
-    # Tokenizer settings
+    # FIXME: Tokenizer settings, retained here for backwards compat
     vocab_size: int = 20000
     character_coverage: float = 1.0
     pretrain_sentence_count: int = 1000000
@@ -168,18 +168,8 @@ class TensorFlowConfig(BaseConfig, PathSettingsMixin):
 
         super().__post_init__()
 
-        self._set_tokenizer()
-
-    def _set_tokenizer(self):
-        self.paths.tokenizer_prefix = "m"
-        self.paths.tokenizer_model = Path(self.checkpoint_dir, "m.model").as_posix()
-        self.paths.training_data = Path(
-            self.checkpoint_dir, "training_data.txt"
-        ).as_posix()
-
     def as_dict(self):
         d = asdict(self)
-        d.pop("paths")
         return d
 
     def save_model_params(self):

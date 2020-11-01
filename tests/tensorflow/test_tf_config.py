@@ -6,7 +6,6 @@ import shutil
 
 import pytest
 
-from gretel_synthetics.base_config import TOKENIZER_PREFIX
 from gretel_synthetics.tensorflow.config import TensorFlowConfig
 
 
@@ -20,9 +19,7 @@ def test_local_config(mkdir):
     mkdir.assert_called
     assert lc.epochs == 100
     assert lc.input_data_path == test_data_file.as_posix()
-    assert lc.tokenizer_prefix == TOKENIZER_PREFIX
-    assert lc.training_data == Path(target, "training_data.txt").as_posix()
-    assert lc.tokenizer_model == Path(target, "m.model").as_posix()
+    assert lc.training_data_path == Path(target, "training_data.txt").as_posix()
 
 
 @patch("gretel_synthetics.tensorflow.config.Path.mkdir")
