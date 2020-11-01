@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING, Callable
 import tensorflow as tf
 
 from gretel_synthetics.generator import Generator, Settings, NEWLINE
-from gretel_synthetics.generator import gen_text, PredString  # noqa # pylint: disable=unused-import
 from gretel_synthetics.generate_parallel import get_num_workers, generate_parallel
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -94,13 +93,14 @@ def generate_text(
     """
     logging.info(
         f"Latest checkpoint: {tf.train.latest_checkpoint(config.checkpoint_dir)}"
-    )  # noqa
+    )
 
-    if config.dp:
-        # Disable batching in DP mode when generating text
-        # as it reduces prediction accuracy
-        config.batch_size = 1
+    # Disable batching in DP mode when generating text
+    # as it reduces prediction accuracy (but faster)
+    if config.dp and (config.predict_batch_size > 1 or config.batch_size > 1):
+        logging.warning("Batch predictions not supported in DP mode.")
         config.predict_batch_size = 1
+        config.batch_size = 1
 
     settings = Settings(
         config=config,
