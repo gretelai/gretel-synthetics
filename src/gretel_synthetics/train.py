@@ -86,9 +86,6 @@ def _save_history_csv(
         columns=["epoch", VAL_LOSS, VAL_ACC, "epsilon", "delta", "best"],
     )
 
-    if not dp:
-        df.drop(["epsilon", "delta"], axis=1, inplace=True)
-
     # Grab that last idx in case we need to use it in lieu of finding
     # a better one
     last_idx = df.iloc[[-1]].index.values.astype(int)[0]
@@ -107,6 +104,15 @@ def _save_history_csv(
             best_idx = last_idx
 
     df.at[best_idx, "best"] = 1
+
+    if dp:
+        # Log differential privacy settings from best training checkpoint
+        epsilon = df.at[best_idx, 'epsilon']
+        delta = df.at[best_idx, 'delta']
+        logging.info(f"Model satisfies differential privacy with epsilon ε={epsilon:.2f} "
+                     f"and delta δ={delta:.6f}")
+    else:
+        df.drop(["epsilon", "delta"], axis=1, inplace=True)
 
     save_path = Path(save_dir) / "model_history.csv"
     logging.info(f"Saving model history to {save_path.name}")
@@ -136,8 +142,9 @@ def train_rnn(store: BaseConfig):
             pass
         else:
             raise RuntimeError(
-                "A model already exists in the checkpoint location, you must enable overwrite mode or delete the checkpoints first."  # noqa
-            )  # noqa
+                "A model already exists in the checkpoint location, you must enable "
+                "overwrite mode or delete the checkpoints first."
+            )
 
     text = _annotate_training_data(store)
     sp = _train_tokenizer(store)
@@ -316,3 +323,4 @@ def _split_input_target(chunk: str) -> Tuple[str, str]:
     input_text = chunk[:-1]
     target_text = chunk[1:]
     return input_text, target_text
+
