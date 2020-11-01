@@ -6,3 +6,4 @@ pandas>=1.1.0
 numpy>=1.18.0
 tqdm<5.0
 loky==2.8.0
+gast==0.3.3
