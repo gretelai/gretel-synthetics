@@ -131,7 +131,7 @@ def create_tokenizer(store: TensorFlowConfig) -> Tuple[str, SentencePieceTokeniz
     )
     text = trainer.create_annotated_training_data()
     trainer.train()
-    return text, SentencePieceTokenizer.load(store)
+    return text, SentencePieceTokenizer.load(store.checkpoint_dir)
 
 
 def train_rnn(store: TensorFlowConfig):
@@ -150,9 +150,10 @@ def train_rnn(store: TensorFlowConfig):
     Returns:
         None
     """
+    text, tokenizer = create_tokenizer(store)
     if not store.overwrite:  # pragma: no cover
         try:
-            load_model(store)
+            load_model(store, tokenizer)
         except Exception:
             pass
         else:
@@ -160,7 +161,6 @@ def train_rnn(store: TensorFlowConfig):
                 "A model already exists in the checkpoint location, you must enable overwrite mode or delete the checkpoints first."  # noqa
             )  # noqa
 
-    text, tokenizer = create_tokenizer(store)
     total_token_count, dataset = _create_dataset(store, text, tokenizer)
     logging.info("Initializing synthetic model")
     model = build_sequential_model(

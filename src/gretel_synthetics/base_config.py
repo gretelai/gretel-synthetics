@@ -10,14 +10,12 @@ from typing import Callable, TYPE_CHECKING, Optional
 from pathlib import Path
 import json
 
-from gretel_synthetics.const import MODEL_PARAMS
+from gretel_synthetics.const import MODEL_PARAMS, TRAINING_DATA
 
 if TYPE_CHECKING:
     from gretel_synthetics.generate import BaseGenerator
 else:
     BaseGenerator = None
-
-TOKENIZER_PREFIX = "m"
 
 
 @dataclass
@@ -86,7 +84,7 @@ class BaseConfig:
         if not Path(self.checkpoint_dir).exists():
             Path(self.checkpoint_dir).resolve().mkdir()
         self.training_data_path = Path(
-            self.checkpoint_dir, "training_data.txt"
+            self.checkpoint_dir, TRAINING_DATA
         ).as_posix()
 
         # assign the model type for serialization

@@ -4,14 +4,12 @@ Google Sentencepiece Tokenizer
 import logging
 from pathlib import Path
 import shutil
-import json
 from typing import List
 
 import sentencepiece as spm
 
 from gretel_synthetics.tokenizers.base import BaseTokenizerTrainer, BaseTokenizer
-from gretel_synthetics.const import NEWLINE
-from gretel_synthetics.base_config import BaseConfig
+from gretel_synthetics.const import NEWLINE, TRAINING_DATA
 
 spm_logger = logging.getLogger("sentencepiece")
 spm_logger.setLevel(logging.INFO)
@@ -81,25 +79,22 @@ class SentencepieceTokenizerTrainer(BaseTokenizerTrainer):
             dst = Path(self.config.checkpoint_dir) / f"{MODEL_PREFIX}.{part}"
             shutil.move(src.as_posix(), dst.as_posix())
 
-    def _save_settings(self):
-        with open(Path(self.config.checkpoint_dir) / self._settings_fname, "w") as fout:
-            fout.write(
-                json.dumps({
-                    "vocab_size": self.vocab_size,
-                    "character_coverage": self.character_coverage,
-                    "pretrain_sentence_count": self.pretrain_sentence_count,
-                    "max_line_len": self.max_line_line
-                })
-            )
+    def _get_save_settings(self):
+        return {
+            "vocab_size": self.vocab_size,
+            "character_coverage": self.character_coverage,
+            "pretrain_sentence_count": self.pretrain_sentence_count,
+            "max_line_len": self.max_line_line
+        }
+            
 
-
-def _log_sample_data(config: BaseConfig, sp: spm.SentencePieceProcessor):
-    training_data = Path(config.training_data_path)
-    if not training_data.is_file():
+def _log_sample_data(model_dir: str, sp: spm.SentencePieceProcessor):
+    training_data_path = Path(model_dir) / TRAINING_DATA
+    if not training_data_path.is_file():
         logging.info("Training data not found for SP sampling")
         return
 
-    with open(config.training_data_path) as fin:
+    with open(training_data_path) as fin:
         sample = fin.readline().strip()
 
     logging.info(f"Tokenizer model vocabulary size: {len(sp)} tokens")
@@ -120,13 +115,13 @@ class SentencePieceTokenizer(BaseTokenizer):
     _model: spm.SentencePieceProcessor
 
     @classmethod
-    def load(cls, config: BaseConfig):
+    def load(cls, model_dir: str):
         sp = spm.SentencePieceProcessor()
         model_fname = f"{MODEL_PREFIX}.model"
         logging.info("Loading tokenizer from: %s", model_fname)
-        model_path = Path(config.checkpoint_dir) / model_fname
+        model_path = Path(model_dir) / model_fname
         sp.Load(str(model_path))
-        _log_sample_data(config, sp)
+        _log_sample_data(model_dir, sp)
         return cls(sp)
 
     @property

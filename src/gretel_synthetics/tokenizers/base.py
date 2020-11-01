@@ -4,6 +4,8 @@ Interface definitions for tokenizers
 from abc import ABC, abstractmethod
 from typing import List, Any
 import logging
+import json
+from pathlib import Path
 
 from gretel_synthetics.base_config import BaseConfig
 
@@ -17,7 +19,8 @@ class BaseTokenizerTrainer(ABC):
 
     vocab_size: int
     config: BaseConfig
-    _settings_fname = "tokenizer_params.json"
+    settings_fname = "tokenizer_params.json"
+    tokenizer_type = "tokenizer_type"
 
     def __init__(self, *, config: BaseConfig, vocab_size: int = 20000):
         self.vocab_size = vocab_size
@@ -52,26 +55,45 @@ class BaseTokenizerTrainer(ABC):
 
     def train(self):
         self._train()
-        self._save_settings()
+        settings = self._get_save_settings()
+        self._save_settings(settings)
+
+    @abstractmethod
+    def _get_save_settings(self) -> dict:
+        """Subclasses must create a dict that holds serialized
+        params for the tokenizer
+        """
+        pass
 
     @abstractmethod
     def _train(self):
+        """Subclasses must implement a method that trains a tokenizer
+        and then writes it to disk in the checkpoint dir specified
+        by the config
+        """
         pass
 
-    @abstractmethod
-    def _save_settings(self):
-        pass
+    def _save_settings(self, settings: dict):
+        settings[self.tokenizer_type] = self.__class__.__name__
+        with open(Path(self.config.checkpoint_dir) / self.settings_fname, "w") as fout:
+            fout.write(json.dumps(settings))
 
 
 class BaseTokenizer(ABC):
 
     _model: Any
+    """This holds the actual model data, which can be any type of object,
+    the interfaces implemented by sublcasses should know how to interact
+    with it in order to satisfy the interface definitions defined
+    here
+    """
 
     def __init__(self, model_data: Any):
         self._model = model_data
 
     @classmethod
-    def load(cls, config: BaseConfig):
+    @abstractmethod
+    def load(cls, model_dir: str):
         pass
 
     @property

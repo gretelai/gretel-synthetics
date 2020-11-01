@@ -1,7 +1,6 @@
 """
 Basic character encoder
 """
-import json
 from pathlib import Path
 from typing import Dict, Any, List
 
@@ -27,13 +26,10 @@ class CharTokenizerTrainer(BaseTokenizerTrainer):
         cloudpickle.dump(char2idx, open(Path(self.config.checkpoint_dir) / "char2idx.p", "wb"))
         cloudpickle.dump(idx2char, open(Path(self.config.checkpoint_dir) / "idx2char.p", "wb"))
 
-    def _save_settings(self):
-        with open(Path(self.config.checkpoint_dir) / self._settings_fname, "w") as fout:
-            fout.write(
-                json.dumps({
-                    "vocab_size": self.vocab_size
-                })
-            )
+    def _get_save_settings(self):
+        return {
+            "vocab_size": self.vocab_size
+        }
 
 
 class CharTokenizer(BaseTokenizer):
