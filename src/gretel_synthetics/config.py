@@ -93,16 +93,17 @@ class BaseConfig:
             the protections offered for sensitive data and content, at a small loss in model
             accuracy and synthetic data quality. The differential privacy epsilon and delta values
             will be printed when training completes. Default is ``False``.
-        dp_learning_rate (optional): The higher the learning rate, the more that each update during
-            training matters. If the updates are noisy (such as when the additive noise is large
+        learning_rate (optional): The higher the learning rate, the more that each update during
+            training matters. Note: When training with differential privacy enabled,
+            if the updates are noisy (such as when the additive noise is large
             compared to the clipping threshold), a low learning rate may help with training.
-            Default is ``0.015``.
+            Default is ``0.001``.
         dp_noise_multiplier (optional): The amount of noise sampled and added to gradients during
             training. Generally, more noise results in better privacy, at the expense of
-            model accuracy. Default is ``1.1``.
+            model accuracy. Default is ``0.1``.
         dp_l2_norm_clip (optional): The maximum Euclidean (L2) norm of each gradient is applied to
             update model parameters. This hyperparameter bounds the optimizer's sensitivity to
-            individual training points. Default is ``1.0``.
+            individual training points. Default is ``3.0``.
         dp_microbatches (optional): Each batch of data is split into smaller units called micro-batches.
             Computational overhead can be reduced by increasing the size of micro-batches to include
             more than one training example. The number of micro-batches should divide evenly into
@@ -140,6 +141,7 @@ class BaseConfig:
     seq_length: int = 100
     embedding_dim: int = 256
     rnn_units: int = 256
+    learning_rate: float = 0.001
     dropout_rate: float = 0.2
     rnn_initializer: str = "glorot_uniform"
 
@@ -155,10 +157,9 @@ class BaseConfig:
 
     # Diff privacy configs
     dp: bool = False
-    dp_learning_rate: float = 0.001
-    dp_noise_multiplier: float = 1.1
-    dp_l2_norm_clip: float = 1.0
-    dp_microbatches: int = 256
+    dp_noise_multiplier: float = 0.1
+    dp_l2_norm_clip: float = 3.0
+    dp_microbatches: int = 64
 
     # Generation settings
     gen_temp: float = 1.0

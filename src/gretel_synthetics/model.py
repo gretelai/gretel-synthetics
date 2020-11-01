@@ -48,11 +48,11 @@ def build_sequential_model(
             l2_norm_clip=store.dp_l2_norm_clip,
             noise_multiplier=store.dp_noise_multiplier,
             num_microbatches=store.dp_microbatches,
-            learning_rate=store.dp_learning_rate
+            learning_rate=store.learning_rate
         )
     else:
         logging.info("Differentially private training _not_ enabled")
-        optimizer = optimizer_cls(learning_rate=store.dp_learning_rate)
+        optimizer = optimizer_cls(learning_rate=store.learning_rate)
 
     model = tf.keras.Sequential([
         tf.keras.layers.Embedding(vocab_size, store.embedding_dim,
