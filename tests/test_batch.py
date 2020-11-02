@@ -8,7 +8,7 @@ from dataclasses import asdict
 import pytest
 import pandas as pd
 
-from gretel_synthetics.batch import DataFrameBatch, MAX_INVALID, READ, WRITE
+from gretel_synthetics.batch import DataFrameBatch, MAX_INVALID, READ
 from gretel_synthetics.generate import GenText
 from gretel_synthetics.errors import TooManyInvalidError
 

@@ -3,7 +3,7 @@ from typing import Tuple, TYPE_CHECKING
 from tensorflow_privacy.privacy.analysis import compute_dp_sgd_privacy
 
 if TYPE_CHECKING:
-    from gretel_synthetics.tensorflow.config import TensorFlowConfig
+    from gretel_synthetics.config import TensorFlowConfig
 else:
     TensorFlowConfig = None
 

@@ -8,3 +8,5 @@ VAL_LOSS = "loss"
 VAL_ACC = "accuracy"
 MODEL_TYPE = "model_type"
 TRAINING_DATA = "training_data.txt"
+MODEL_PREFIX = "m"
+

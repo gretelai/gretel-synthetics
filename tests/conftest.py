@@ -2,7 +2,7 @@ import pytest
 from pathlib import Path
 import shutil
 
-from gretel_synthetics.tensorflow.config import TensorFlowConfig
+from gretel_synthetics.config import TensorFlowConfig
 
 test_data_dir = Path(__file__).parent
 

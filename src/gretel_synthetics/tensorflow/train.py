@@ -17,17 +17,19 @@ from tqdm import tqdm
 
 from gretel_synthetics.tensorflow.model import build_sequential_model, load_model
 from gretel_synthetics.tensorflow.model_dp import compute_epsilon
-from gretel_synthetics.base_config import BaseConfig
 from gretel_synthetics.const import VAL_ACC, VAL_LOSS
-from gretel_synthetics.tokenizers.base import BaseTokenizer
-from gretel_synthetics.tokenizers.sentencepiece import SentencepieceTokenizerTrainer, SentencePieceTokenizer
-
+from gretel_synthetics.tokenizers import (
+    BaseTokenizer,
+    SentencepieceTokenizerTrainer,
+    SentencePieceTokenizer,
+)
 
 if TYPE_CHECKING:
-    from gretel_synthetics.tensorflow.config import TensorFlowConfig
+    from gretel_synthetics.config import TensorFlowConfig
+    from gretel_synthetics.config import BaseConfig
 else:
     TensorFlowConfig = None
-
+    BaseConfig = None
 
 spm_logger = logging.getLogger("sentencepiece")
 spm_logger.setLevel(logging.INFO)
@@ -127,7 +129,7 @@ def create_tokenizer(store: TensorFlowConfig) -> Tuple[str, SentencePieceTokeniz
         character_coverage=store.character_coverage,
         pretrain_sentence_count=store.pretrain_sentence_count,
         max_line_len=store.max_line_len,
-        config=store
+        config=store,
     )
     text = trainer.create_annotated_training_data()
     trainer.train()
@@ -215,9 +217,7 @@ def train_rnn(store: TensorFlowConfig):
 
 
 def _create_dataset(
-    store: BaseConfig,
-    text: str,
-    tokenizer: BaseTokenizer
+    store: BaseConfig, text: str, tokenizer: BaseTokenizer
 ) -> Tuple[int, tf.data.Dataset]:
     """
     Before training, we need to map strings to a numerical representation.

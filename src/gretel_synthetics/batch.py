@@ -24,9 +24,7 @@ from tqdm.auto import tqdm
 import cloudpickle
 
 # FIXME: remove for abstract config
-from gretel_synthetics.config import LocalConfig
-from gretel_synthetics.base_config import BaseConfig
-from gretel_synthetics.factories import config_from_model_dir
+from gretel_synthetics.config import LocalConfig, BaseConfig, config_from_model_dir
 from gretel_synthetics.generate import GenText, generate_text
 from gretel_synthetics.const import NEWLINE
 from gretel_synthetics.errors import TooManyInvalidError
@@ -144,11 +142,7 @@ def _create_batch_from_dir(batch_dir: str):
     if not (path / CONFIG_FILE).is_file():  # pragma: no cover
         raise ValueError("missing model param file")
 
-    config = config_from_model_dir(path)
-    # overwrite the previously saved config with the location that we are reading
-    # the model data in from. this enables a model to be loaded from a different
-    # location other than the exact location the data was stored during training
-    config.checkpoint_dir = batch_dir
+    config = config_from_model_dir(batch_dir)
 
     # training path can be empty, since we will not need access
     # to training data simply for read-only data generation

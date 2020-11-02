@@ -3,7 +3,7 @@ import pytest
 from gretel_synthetics.generate import Settings
 from gretel_synthetics.tensorflow.generator import _replace_decoded_tokens
 from gretel_synthetics.const import NEWLINE
-from gretel_synthetics.tensorflow.config import TensorFlowConfig
+from gretel_synthetics.config import TensorFlowConfig
 from gretel_synthetics.errors import GenerationError
 
 

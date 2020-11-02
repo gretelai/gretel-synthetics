@@ -14,11 +14,10 @@ from gretel_synthetics.tensorflow.model import load_model
 from gretel_synthetics.generate import PredString, GenText, Settings, BaseGenerator
 from gretel_synthetics.errors import TooManyInvalidError
 from gretel_synthetics.const import NEWLINE
-from gretel_synthetics.tokenizers.sentencepiece import SentencePieceTokenizer
 
 if TYPE_CHECKING:
-    from gretel_synthetics.tensorflow.config import TensorFlowConfig
-    from gretel_synthetics.tokenizers.base import BaseTokenizer
+    from gretel_synthetics.config import TensorFlowConfig
+    from gretel_synthetics.tokenizers import BaseTokenizer
 else:
     TensorFlowConfig = None
     BaseTokenizer = None
@@ -43,7 +42,6 @@ class TensorFlowGenerator(BaseGenerator):
 
     settings: Settings
     model: tf.keras.Sequential
-    tokenizer: BaseTokenizer
     delim: str
     total_invalid: int = 0
     total_generated: int = 0
@@ -51,9 +49,7 @@ class TensorFlowGenerator(BaseGenerator):
 
     def __init__(self, settings: Settings):
         self.settings = settings
-        # FIXME: Use an abstract factory at some point
-        self.tokenizer = SentencePieceTokenizer.load(settings.config)
-        self.model = load_model(settings.config, self.tokenizer)
+        self.model = load_model(settings.config, self.settings.tokenizer)
         self.delim = settings.config.field_delimiter
         self._predictions = self._predict_forever()
 
@@ -131,7 +127,7 @@ class TensorFlowGenerator(BaseGenerator):
         while True:
             yield from _predict_chars(
                 self.model,
-                self.tokenizer,
+                self.settings.tokenizer,
                 self.settings.start_string,
                 self.settings.config,
                 compiled_predict_and_sample,

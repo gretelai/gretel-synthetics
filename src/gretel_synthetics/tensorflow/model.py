@@ -7,8 +7,8 @@ from tensorflow.keras.optimizers import RMSprop  # pylint: disable=import-error
 import tensorflow as tf
 
 if TYPE_CHECKING:
-    from gretel_synthetics.base_config import BaseConfig
-    from gretel_synthetics.tokenizers.base import BaseTokenizer
+    from gretel_synthetics.config import BaseConfig
+    from gretel_synthetics.tokenizers import BaseTokenizer
 else:
     BaseConfig = None
     BaseTokenizer = None

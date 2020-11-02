@@ -8,9 +8,10 @@ from abc import ABC, abstractmethod
 
 from gretel_synthetics.generate_parallel import get_num_workers, generate_parallel
 from gretel_synthetics.errors import GenerationError
+from gretel_synthetics.tokenizers import BaseTokenizer, tokenizer_from_model_dir
 
 if TYPE_CHECKING:
-    from gretel_synthetics.base_config import BaseConfig
+    from gretel_synthetics.config import BaseConfig
 else:
     BaseConfig = None
 
@@ -97,6 +98,7 @@ class Settings:
     line_validator: Optional[Callable] = None
     max_invalid: int = 1000
     generator: BaseGenerator = None
+    tokenizer: BaseTokenizer = None
 
     def __post_init__(self):
         if self.start_string != NEWLINE:
@@ -180,14 +182,17 @@ def generate_text(
         A  ``RunTimeError`` if the ``max_invalid`` number of lines is generated
 
     """
+    
     generator_class = config.get_generator_class()
+    tokenizer = tokenizer_from_model_dir(config.checkpoint_dir)
 
     settings = Settings(
         config=config,
         start_string=start_string,
         line_validator=line_validator,
         max_invalid=max_invalid,
-        generator=generator_class
+        generator=generator_class,
+        tokenizer=tokenizer
     )
 
     if num_lines is not None:

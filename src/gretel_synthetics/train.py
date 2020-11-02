@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 
 if TYPE_CHECKING:
-    from gretel_synthetics.base_config import BaseConfig
+    from gretel_synthetics.config import BaseConfig
 else:
     BaseConfig = None
 
