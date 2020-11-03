@@ -15,8 +15,6 @@ if TYPE_CHECKING:
 else:
     BaseConfig = None
 
-NEWLINE = "<n>"
-
 PredString = namedtuple("pred_string", ["data"])
 
 
@@ -94,15 +92,17 @@ class Settings:
     """
 
     config: BaseConfig
-    start_string: str = NEWLINE
+    start_string: Optional[str] = None
     line_validator: Optional[Callable] = None
     max_invalid: int = 1000
     generator: BaseGenerator = None
     tokenizer: BaseTokenizer = None
 
     def __post_init__(self):
-        if self.start_string != NEWLINE:
+        if self.start_string is not None:
             self._process_start_string()
+        else:
+            self.start_string = self.tokenizer.newline_str
 
     def _process_start_string(self):
         if not isinstance(self.start_string, str):
@@ -119,7 +119,7 @@ class Settings:
 
 def generate_text(
     config: BaseConfig,
-    start_string: str = NEWLINE,
+    start_string: Optional[str] = None,
     line_validator: Optional[Callable] = None,
     max_invalid: int = 1000,
     num_lines: Optional[int] = None,
@@ -182,7 +182,7 @@ def generate_text(
         A  ``RunTimeError`` if the ``max_invalid`` number of lines is generated
 
     """
-    
+
     generator_class = config.get_generator_class()
     tokenizer = tokenizer_from_model_dir(config.checkpoint_dir)
 

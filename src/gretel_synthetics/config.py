@@ -57,6 +57,12 @@ class BaseConfig:
     """The maximum number of lines to utilize from the
     raw input data"""
 
+    # Defaulst SP tokenizer settings
+    vocab_size: int = 20000
+    character_coverage: float = 1.0
+    pretrain_sentence_count: int = 1000000
+    max_line_len: int = 2048
+
     def as_dict(self):
         d = asdict(self)
         return d
@@ -215,12 +221,6 @@ class TensorFlowConfig(BaseConfig):
     rnn_units: int = 256
     dropout_rate: float = 0.2
     rnn_initializer: str = "glorot_uniform"
-
-    # FIXME: Tokenizer settings, retained here for backwards compat
-    vocab_size: int = 20000
-    character_coverage: float = 1.0
-    pretrain_sentence_count: int = 1000000
-    max_line_len: int = 2048
 
     # Diff privacy configs
     dp: bool = False

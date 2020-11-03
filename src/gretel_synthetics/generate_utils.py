@@ -66,7 +66,7 @@ class DataFileGenerator:
 
     def generate(self, count: int, file_name: str):
         if self.model_path.is_dir():
-            self._generate(self.model_path, count, file_name)
+            return self._generate(self.model_path, count, file_name)
 
         if self.model_path.suffixes == [".tar", ".gz"]:
             with TemporaryDirectory() as tmpdir:
@@ -76,13 +76,15 @@ class DataFileGenerator:
                             logging.info("Extracting archive to temp dir...")
                             tar_in.extractall(tmpdir)
                 
-                self._generate(Path(tmpdir), count, file_name)
+                return self._generate(Path(tmpdir), count, file_name)
 
-    def _generate(self, model_dir: Path, count: int, file_name: str):
+    def _generate(self, model_dir: Path, count: int, file_name: str) -> str:
         batch_mode = is_model_dir_batch_mode(model_dir)
 
         if batch_mode:
+            out_fname = f"{file_name}.csv"
             batcher = DataFrameBatch(mode="read", checkpoint_dir=str(model_dir))
             batcher.generate_all_batch_lines(num_lines=count, max_invalid=max(count, MAX_INVALID), parallelism=1)
             out_df = batcher.batches_to_df()
-            out_df.to_csv(f"{file_name}.csv", index=False)
+            out_df.to_csv(out_fname, index=False)
+            return out_fname

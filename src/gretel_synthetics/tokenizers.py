@@ -2,7 +2,7 @@
 Interface definitions for tokenizers
 """
 from abc import ABC, abstractmethod
-from typing import List, Any, Dict, TYPE_CHECKING
+from typing import List, Any, Dict, TYPE_CHECKING, Iterator, Optional
 import logging
 import json
 from pathlib import Path
@@ -30,23 +30,43 @@ spm_logger = logging.getLogger("sentencepiece")
 spm_logger.setLevel(logging.INFO)
 
 
+FIELD_DELIM = "field_delimiter"
+FIELD_DELIM_TOKEN = "field_delimiter_token"
+
+
+class TokenizerError(Exception):
+    pass
+
+
 #########
 # ABC
 #########
 
 
-class BaseTokenizerTrainer(ABC):
+class Base(ABC):
+
+    settings_fname: str = "tokenizer_params.json"
+    newline_str: str = None
+
+    def __init__(self):
+        if self.newline_str is None:
+            raise AttributeError("Sublasses should define newline_str as a class attr")
+
+
+class BaseTokenizerTrainer(Base):
 
     vocab_size: int
     config: BaseConfig
-    settings_fname = "tokenizer_params.json"
-    tokenizer_type = "tokenizer_type"
+    num_lines: int = 0
+    tokenizer_type: str = "tokenizer_type"
 
-    def __init__(self, *, config: BaseConfig, vocab_size: int = 20000):
+    def __init__(self, *, config: BaseConfig, vocab_size: Optional[int] = None):
         self.vocab_size = vocab_size
         self.config = config
 
-    def create_annotated_training_data(self) -> str:
+        super().__init__()
+
+    def create_annotated_training_data(self) -> Iterator[str]:
         """Read in the configurations raw input data path, and
         create a file I/O pipeline where each line of the input
         data path can optionally route through an annotation
@@ -54,21 +74,26 @@ class BaseTokenizerTrainer(ABC):
         a training data file as specified by the config.
         """
         logging.info(f"Loading training data from {self.config.input_data_path}")
-        num_lines = 0
-        annotated_lines = []
+        self.num_lines = 0
         with smart_open(self.config.input_data_path, "r", encoding="utf-8", errors="replace") as infile:
             with open(self.config.training_data_path, "w") as fout:
                 for line in infile:
-                    num_lines += 1
-                    if self.config.max_lines and num_lines >= self.config.max_lines:
+                    self.num_lines += 1
+                    if self.config.max_lines and self.num_lines >= self.config.max_lines:
                         break
               
                     # Tokenizer specific line processing
                     annotated_line = self._annotate_training_line(line)
-
-                    annotated_lines.append(annotated_line)
                     fout.write(annotated_line)
-        return "".join(annotated_lines)
+        return self.training_data_iter()
+
+    def training_data_iter(self) -> Iterator[str]:
+        """Create a generator that will iterate each line of the training
+        data that was created during the annotation step.
+        """
+        with open(self.config.training_data_path, "r") as fin:
+            for line in fin:
+                yield line
 
     def _annotate_training_line(self, line: str):
         return line
@@ -95,11 +120,18 @@ class BaseTokenizerTrainer(ABC):
 
     def _save_settings(self, settings: dict):
         settings[self.tokenizer_type] = self.__class__.__name__
+
+        # We save off the field delimiter and field delimiter token
+        # to the settings so that they can be loaded back in later
+        # for use in decoding
+        settings[FIELD_DELIM] = self.config.field_delimiter
+        settings[FIELD_DELIM_TOKEN] = self.config.field_delimiter_token
+
         with open(Path(self.config.checkpoint_dir) / self.settings_fname, "w") as fout:
             fout.write(json.dumps(settings))
 
 
-class BaseTokenizer(ABC):
+class BaseTokenizer(Base):
 
     _model: Any
     """This holds the actual model data, which can be any type of object,
@@ -108,26 +140,69 @@ class BaseTokenizer(ABC):
     here
     """
 
-    def __init__(self, model_data: Any):
+    field_delimiter: Optional[str] = None
+    field_delimiter_token: Optional[str] = None
+
+    def __init__(self, model_data: Any, model_dir: str):
         self._model = model_data
+        self._model_dir = model_dir
+
+        self._load_delimiter_data()
+        super().__init__()
+
+    def _load_delimiter_data(self):
+        params_file = Path(self._model_dir) / self.settings_fname
+
+        if not params_file.is_file():
+            model_params_dict = json.loads(
+                open(Path(self._model_dir) / const.MODEL_PARAMS).read()
+            )
+            self.field_delimiter = model_params_dict[FIELD_DELIM]
+            self.field_delimiter_token = model_params_dict[FIELD_DELIM_TOKEN]
+        else:
+            params_dict = json.loads(open(params_file).read())
+            self.field_delimiter = params_dict.get(FIELD_DELIM, None)
+            self.field_delimiter_token = params_dict.get(FIELD_DELIM_TOKEN, None)
 
     @classmethod
     @abstractmethod
     def load(cls, model_dir: str):
+        """Given a directory to a model, load the specific tokenizer
+        model into an instance. Subclasses should implement this logic
+        specific to how they need to load a model back in
+        """
         pass
 
     @property
     @abstractmethod
     def total_vocab_size(self):
+        """Return the total count of unique tokens in the vocab, specific
+        to the underlying tokenizer to be used.
+        """
         pass
 
-    @abstractmethod
     def encode_to_ids(self, data: str) -> List[int]:
-        pass
+        return self._encode_to_ids(data)
 
     @abstractmethod
-    def decode_from_ids(self, ids: List[int]) -> str:
+    def _encode_to_ids(self, data: str) -> List[int]:
         pass
+
+    def decode_from_ids(self, ids: List[int]) -> str:
+        decoded_str = self._decode_from_ids(ids)
+        return self._replace_decoded_tokens(decoded_str)
+
+    @abstractmethod
+    def _decode_from_ids(self, ids: List[int]) -> str:
+        pass
+
+    def _replace_decoded_tokens(self, decoded_line: str) -> str:
+        """This function will implicitly be called after decoding
+        IDs. If there is specific token replacement that needs
+        to be done, then subclasses should overload and implement
+        otherwise we just pass the decoded line through
+        """
+        return decoded_line
 
 
 ##################
@@ -136,11 +211,15 @@ class BaseTokenizer(ABC):
 
 class CharTokenizerTrainer(BaseTokenizerTrainer):
 
+    newline_str: str = "\n"
+
     def _train(self):
         text = open(
             self.config.training_data_path, "rb"
         ).read().decode()
-        vocab = sorted(set(text))[:self.vocab_size]
+        vocab = sorted(set(text))
+        if self.vocab_size is not None:
+            vocab = vocab[:self.vocab_size]
         char2idx = {u: i for i, u in enumerate(vocab)}
         idx2char = np.array(vocab)
         self._save_model(char2idx, idx2char)
@@ -158,41 +237,49 @@ class CharTokenizerTrainer(BaseTokenizerTrainer):
 class CharTokenizer(BaseTokenizer):
 
     _model: Dict[str, dict]
+    newline_str: str = "\n"
 
     @classmethod
-    def load(cls, config: BaseConfig):
+    def load(cls, model_dir: str):
         model = {
             "char2idx": cloudpickle.load(
-                open(Path(config.checkpoint_dir) / "char2idx.p", "rb")
+                open(Path(model_dir) / "char2idx.p", "rb")
             ),
             "idx2char": cloudpickle.load(
-                open(Path(config.checkpoint_dir) / "idx2char.p", "rb")
+                open(Path(model_dir) / "idx2char.p", "rb")
             )
         }
-        return cls(model)
+        return cls(model, model_dir)
 
     @property
     def total_vocab_size(self):
         return len(self._model["idx2char"])
 
-    def encode_to_ids(self, data: str) -> List[int]:
-        return [self._model["char2idx"][char] for char in data]
+    def _encode_to_ids(self, data: str) -> List[int]:
+        try:
+            return [self._model["char2idx"][char] for char in data]
+        except KeyError as err:
+            raise TokenizerError("Some characters in the input string are not part of the vocab") from err
 
-    def decode_from_ids(self, ids: List[int]) -> str:
-        chars = [self._model["idx2char"][id] for id in ids]
-        return "".join(chars)
+    def _decode_from_ids(self, ids: List[int]) -> str:
+        try:
+            chars = [self._model["idx2char"][id] for id in ids]
+            return "".join(chars)
+        except IndexError as err:
+            raise TokenizerError("Some IDs do not have mappings to chars in the vocab") from err
 
 #################
 # Sentence Piece
 #################
 
 
-class SentencepieceTokenizerTrainer(BaseTokenizerTrainer):
+class SentencePieceTokenizerTrainer(BaseTokenizerTrainer):
 
     vocab_size: int
     character_coverage: float
     pretrain_sentence_count: int
     max_line_line: int
+    newline_str: str = "<n>"
 
     def __init__(
         self,
@@ -206,6 +293,11 @@ class SentencepieceTokenizerTrainer(BaseTokenizerTrainer):
         self.pretrain_sentence_count = pretrain_sentence_count
         self.max_line_line = max_line_len
 
+        # SP Needs a vocab size int, so we set a default one if
+        # not already provided in the kwargs
+        if "vocab_size" not in kwargs:
+            kwargs["vocab_size"] = 20000
+
         super().__init__(**kwargs)
 
     def _annotate_training_line(self, line: str):
@@ -213,9 +305,9 @@ class SentencepieceTokenizerTrainer(BaseTokenizerTrainer):
             line = line.strip().replace(
                 self.config.field_delimiter, self.config.field_delimiter_token
             )
-            line += f"{const.NEWLINE}\n"
+            line += f"{self.newline_str}\n"
         else:
-            line = line.strip() + const.NEWLINE + "\n"
+            line = line.strip() + self.newline_str + "\n"
 
         return line
 
@@ -224,7 +316,7 @@ class SentencepieceTokenizerTrainer(BaseTokenizerTrainer):
         spm.SentencePieceTrainer.Train(
             input=self.config.training_data_path,
             model_prefix=const.MODEL_PREFIX,
-            user_defined_symbols=[const.NEWLINE, self.config.field_delimiter_token],
+            user_defined_symbols=[self.newline_str, self.config.field_delimiter_token],
             vocab_size=self.vocab_size,
             hard_vocab_limit=False,
             max_sentence_length=self.max_line_line,
@@ -278,6 +370,7 @@ def _log_sample_data(model_dir: str, sp: spm.SentencePieceProcessor):
 class SentencePieceTokenizer(BaseTokenizer):
 
     _model: spm.SentencePieceProcessor
+    newline_str: str = "<n>"
 
     @classmethod
     def load(cls, model_dir: str):
@@ -287,17 +380,25 @@ class SentencePieceTokenizer(BaseTokenizer):
         model_path = Path(model_dir) / model_fname
         sp.Load(str(model_path))
         _log_sample_data(model_dir, sp)
-        return cls(sp)
+        return cls(sp, model_dir)
 
     @property
     def total_vocab_size(self):
         return len(self._model)
 
-    def encode_to_ids(self, data: str) -> List[int]:
+    def _encode_to_ids(self, data: str) -> List[int]:
         return self._model.EncodeAsIds(data)
 
-    def decode_from_ids(self, ids: List[int]) -> str:
+    def _decode_from_ids(self, ids: List[int]) -> str:
         return self._model.DecodeIds(ids)
+
+    def _replace_decoded_tokens(self, decoded_line: str) -> str:
+        if self.field_delimiter is not None:
+            decoded_line = decoded_line.replace(
+                self.field_delimiter_token,
+                self.field_delimiter
+            )
+        return decoded_line
 
 
 ##########
@@ -305,7 +406,7 @@ class SentencePieceTokenizer(BaseTokenizer):
 ##########
 
 TOK_MAP = {
-    SentencepieceTokenizerTrainer.__name__: SentencePieceTokenizer,
+    SentencePieceTokenizerTrainer.__name__: SentencePieceTokenizer,
     CharTokenizerTrainer.__name__: CharTokenizer,
 }
 

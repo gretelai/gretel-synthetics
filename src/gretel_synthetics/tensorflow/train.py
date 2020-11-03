@@ -9,7 +9,7 @@ import io
 from contextlib import redirect_stdout
 import logging
 from pathlib import Path
-from typing import Tuple, Optional, TYPE_CHECKING
+from typing import Tuple, Optional, TYPE_CHECKING, Iterator
 
 import pandas as pd
 import tensorflow as tf
@@ -18,18 +18,14 @@ from tqdm import tqdm
 from gretel_synthetics.tensorflow.model import build_sequential_model, load_model
 from gretel_synthetics.tensorflow.model_dp import compute_epsilon
 from gretel_synthetics.const import VAL_ACC, VAL_LOSS
-from gretel_synthetics.tokenizers import (
-    BaseTokenizer,
-    SentencepieceTokenizerTrainer,
-    SentencePieceTokenizer,
-)
+from gretel_synthetics.tokenizers import BaseTokenizer
 
 if TYPE_CHECKING:
-    from gretel_synthetics.config import TensorFlowConfig
     from gretel_synthetics.config import BaseConfig
+    from gretel_synthetics.train import TrainingParams
 else:
-    TensorFlowConfig = None
     BaseConfig = None
+    TrainingParams = None
 
 spm_logger = logging.getLogger("sentencepiece")
 spm_logger.setLevel(logging.INFO)
@@ -123,20 +119,7 @@ def _save_history_csv(
     df.to_csv(save_path.as_posix(), index=False)
 
 
-def create_tokenizer(store: TensorFlowConfig) -> Tuple[str, SentencePieceTokenizer]:
-    trainer = SentencepieceTokenizerTrainer(
-        vocab_size=store.vocab_size,
-        character_coverage=store.character_coverage,
-        pretrain_sentence_count=store.pretrain_sentence_count,
-        max_line_len=store.max_line_len,
-        config=store,
-    )
-    text = trainer.create_annotated_training_data()
-    trainer.train()
-    return text, SentencePieceTokenizer.load(store.checkpoint_dir)
-
-
-def train_rnn(store: TensorFlowConfig):
+def train_rnn(params: TrainingParams):
     """
     Fit synthetic data model on training data.
 
@@ -152,7 +135,11 @@ def train_rnn(store: TensorFlowConfig):
     Returns:
         None
     """
-    text, tokenizer = create_tokenizer(store)
+    store = params.config
+    tokenizer = params.tokenizer
+    num_lines = params.tokenizer_trainer.num_lines
+    text_iter = params.tokenizer_trainer.training_data_iter()
+
     if not store.overwrite:  # pragma: no cover
         try:
             load_model(store, tokenizer)
@@ -163,7 +150,7 @@ def train_rnn(store: TensorFlowConfig):
                 "A model already exists in the checkpoint location, you must enable overwrite mode or delete the checkpoints first."  # noqa
             )  # noqa
 
-    total_token_count, dataset = _create_dataset(store, text, tokenizer)
+    total_token_count, dataset = _create_dataset(store, text_iter, num_lines, tokenizer)
     logging.info("Initializing synthetic model")
     model = build_sequential_model(
         vocab_size=tokenizer.total_vocab_size, batch_size=store.batch_size, store=store
@@ -217,7 +204,7 @@ def train_rnn(store: TensorFlowConfig):
 
 
 def _create_dataset(
-    store: BaseConfig, text: str, tokenizer: BaseTokenizer
+    store: BaseConfig, text_iter: Iterator[str], num_lines: int, tokenizer: BaseTokenizer
 ) -> Tuple[int, tf.data.Dataset]:
     """
     Before training, we need to map strings to a numerical representation.
@@ -227,7 +214,7 @@ def _create_dataset(
     logging.info("Tokenizing training data")
     ids = []
     total_token_count = 0
-    for line in tqdm(text.split("\n")):
+    for line in tqdm(text_iter, total=num_lines):
         _tokens = tokenizer.encode_to_ids(line)
         ids.extend(_tokens)
         total_token_count += len(_tokens)

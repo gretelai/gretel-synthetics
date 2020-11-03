@@ -13,7 +13,6 @@ import tensorflow as tf
 from gretel_synthetics.tensorflow.model import load_model
 from gretel_synthetics.generate import PredString, GenText, Settings, BaseGenerator
 from gretel_synthetics.errors import TooManyInvalidError
-from gretel_synthetics.const import NEWLINE
 
 if TYPE_CHECKING:
     from gretel_synthetics.config import TensorFlowConfig
@@ -134,8 +133,8 @@ class TensorFlowGenerator(BaseGenerator):
             )
 
 
-def _replace_decoded_tokens(
-    batch_decoded, store: TensorFlowConfig, prefix: str = None
+def _replace_prefix(
+    batch_decoded, prefix: str = None
 ) -> List[Tuple[int, str]]:
     """Given a decoded predicted string, that contains special tokens for things like field
     delimiters, we restore those tokens back to the original char they were previously.
@@ -145,10 +144,6 @@ def _replace_decoded_tokens(
     """
     out = []
     for i, decoded in batch_decoded:
-        if store.field_delimiter is not None:
-            decoded = decoded.replace(
-                store.field_delimiter_token, store.field_delimiter
-            )
         if prefix is not None:
             decoded = "".join([prefix, decoded])
         out.append((i, decoded))
@@ -193,7 +188,7 @@ def _predict_chars(
     # if the start string is not the default newline, then we create a prefix string
     # that we will append to each decoded prediction
     prediction_prefix = None
-    if start_string != NEWLINE:
+    if start_string != tokenizer.newline_str:
         if store.field_delimiter is not None:
             prediction_prefix = start_string.replace(
                 store.field_delimiter_token, store.field_delimiter
@@ -209,10 +204,10 @@ def _predict_chars(
         batch_decoded = [
             (i, tokenizer.decode_from_ids(batch_sentence_ids[i])) for i in not_done
         ]
-        batch_decoded = _replace_decoded_tokens(batch_decoded, store, prediction_prefix)
+        batch_decoded = _replace_prefix(batch_decoded, prediction_prefix)
 
         for i, decoded in batch_decoded:
-            end_idx = decoded.find(NEWLINE)
+            end_idx = decoded.find(tokenizer.newline_str)
             if end_idx >= 0:
                 decoded = decoded[:end_idx]
                 yield PredString(decoded)

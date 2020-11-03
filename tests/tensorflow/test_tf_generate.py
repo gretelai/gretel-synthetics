@@ -5,8 +5,10 @@ import pytest
 import tensorflow as tf
 
 from gretel_synthetics.tensorflow.generator import _predict_chars
-from gretel_synthetics.generate import generate_text, PredString, NEWLINE
+from gretel_synthetics.generate import generate_text, PredString
 
+
+NEWLINE = "<n>"
 
 @pytest.fixture
 def random_cat():
@@ -24,6 +26,7 @@ def test_predict_chars(mock_cat, tf_config, random_cat):
     mock_cat.return_value = mock_tensor
 
     tokenizer = Mock()
+    tokenizer.newline_str = NEWLINE
     tokenizer.encode_to_ids.return_value = [3]
     tokenizer.decode_from_ids.return_value = f"this is the end{NEWLINE}"
     # sp.DecodeIds.side_effect = ["this", " ", "is", " ", "the", " ", "end", "<n>"]
@@ -36,6 +39,7 @@ def test_predict_chars(mock_cat, tf_config, random_cat):
     mock_cat.return_value = mock_tensor
     tf_config.gen_chars = 3
     tokenizer = Mock()
+    tokenizer.newline_str = NEWLINE
     tokenizer.encode_to_ids.return_value = [3]
     ret_data = [partial_rep for partial in ["a", "ab", "abc", "abcd"] for partial_rep in [partial] * config.predict_batch_size]
     tokenizer.decode_from_ids.side_effect = ret_data

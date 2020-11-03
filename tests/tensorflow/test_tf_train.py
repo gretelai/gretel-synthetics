@@ -5,20 +5,12 @@ from unittest.mock import patch, Mock, MagicMock
 import pandas as pd
 
 from gretel_synthetics.tensorflow.train import (
-    train_rnn,
-    create_tokenizer,
     _ModelHistory,
     _save_history_csv,
     VAL_LOSS,
     VAL_ACC,
 )
-
-
-def test_create_vocab(tf_config):
-    _, tokenizer = create_tokenizer(tf_config)
-    assert tokenizer.total_vocab_size == 71
-    assert tokenizer.encode_to_ids("Once upon a midnight dreary") == [40, 53, 7, 5, 10, 35, 9, 13, 15, 12, 16, 15, 21, 19, 14, 5, 12, 24, 30, 6]
-    assert tokenizer.decode_from_ids([40, 53, 7, 5, 10, 35, 9, 13, 15, 12, 16, 15, 21, 19, 14, 5, 12, 24, 30, 6]) == "Once upon a midnight dreary"
+from gretel_synthetics.train import train
 
 
 @patch("gretel_synthetics.tensorflow.train.build_sequential_model")
@@ -27,7 +19,7 @@ def test_train_rnn(save_history, model, tf_config):
     mock_model = Mock()
     model.return_value = mock_model
 
-    train_rnn(tf_config)
+    train(tf_config)
 
     model.assert_called_with(
         vocab_size=71,

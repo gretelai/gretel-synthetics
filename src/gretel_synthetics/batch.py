@@ -26,7 +26,6 @@ import cloudpickle
 # FIXME: remove for abstract config
 from gretel_synthetics.config import LocalConfig, BaseConfig, config_from_model_dir
 from gretel_synthetics.generate import GenText, generate_text
-from gretel_synthetics.const import NEWLINE
 from gretel_synthetics.errors import TooManyInvalidError
 from gretel_synthetics.train import train_rnn
 
@@ -459,7 +458,7 @@ class DataFrameBatch:
         except KeyError:  # pragma: no cover
             raise ValueError("invalid batch index")
         
-        seed_string = NEWLINE
+        seed_string = None
 
         # If we are on batch 0 and we have seed values, we want to validate that
         # the seed values line up properly with the first N columns.
