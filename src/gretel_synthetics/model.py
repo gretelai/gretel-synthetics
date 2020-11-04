@@ -32,29 +32,33 @@ def loss(labels, logits):
     return tf.keras.losses.sparse_categorical_crossentropy(labels, logits, from_logits=True)
 
 
-def build_sequential_model(
-    vocab_size: int, batch_size: int, store: BaseConfig
-) -> tf.keras.Sequential:
+def build_model(vocab_size: int, batch_size: int, store: BaseConfig) -> tf.keras.Sequential:
     """
-    Utilizing tf.keras.Sequential model (LSTM)
+    Utilizing tf.keras.Sequential model
     """
     optimizer_cls = select_optimizer(store)
+    model = None
 
     if store.dp:
-        logging.info("Differentially private training enabled")
-        optimizer = optimizer_cls(
-            l2_norm_clip=store.dp_l2_norm_clip,
-            noise_multiplier=store.dp_noise_multiplier,
-            num_microbatches=store.dp_microbatches,
-            learning_rate=store.learning_rate
-        )
+        model = build_dp_model(optimizer_cls, store, batch_size, vocab_size)
     else:
-        logging.info("Differentially private training _not_ enabled")
-        optimizer = optimizer_cls(learning_rate=store.learning_rate)
+        model = build_default_model(optimizer_cls, store, batch_size, vocab_size)
 
+    print(model.summary())
+    return model
+
+
+def build_dp_model(optimizer_cls, store, batch_size, vocab_size) -> tf.keras.Sequential:
+    logging.warning("Experimental: Differentially private training enabled")
+    optimizer = optimizer_cls(
+        l2_norm_clip=store.dp_l2_norm_clip,
+        noise_multiplier=store.dp_noise_multiplier,
+        num_microbatches=store.dp_microbatches,
+        learning_rate=store.learning_rate
+    )
     model = tf.keras.Sequential([
         tf.keras.layers.Embedding(vocab_size, store.embedding_dim,
-                                  batch_input_shape=[store.batch_size, None]),
+                                  batch_input_shape=[batch_size, None]),
         tf.keras.layers.Dropout(store.dropout_rate),
         tf.keras.layers.GRU(store.rnn_units,
                             return_sequences=True,
@@ -68,11 +72,33 @@ def build_sequential_model(
         tf.keras.layers.Dropout(store.dropout_rate),
         tf.keras.layers.Dense(vocab_size)
     ])
-    model.summary()
 
-    logging.info(f"Using {optimizer._keras_api_names[0]} optimizer "
-                 f"{'in differentially private mode' if store.dp else ''}")
-    model.compile(optimizer=optimizer, loss=loss, metrics=["accuracy"])
+    logging.info(f"Using {optimizer._keras_api_names[0]} optimizer in differentially private mode")
+    return model
+
+
+def build_default_model(optimizer_cls, store, batch_size, vocab_size) -> tf.keras.Sequential:
+    optimizer = optimizer_cls(
+        learning_rate=store.learning_rate
+    )
+    model = tf.keras.Sequential([
+        tf.keras.layers.Embedding(vocab_size, store.embedding_dim,
+                                  batch_input_shape=[batch_size, None]),
+        tf.keras.layers.Dropout(store.dropout_rate),
+        tf.keras.layers.GRU(store.rnn_units,
+                            return_sequences=True,
+                            stateful=True,
+                            recurrent_initializer=store.rnn_initializer),
+        tf.keras.layers.Dropout(store.dropout_rate),
+        tf.keras.layers.GRU(store.rnn_units,
+                            return_sequences=True,
+                            stateful=True,
+                            recurrent_initializer=store.rnn_initializer),
+        tf.keras.layers.Dropout(store.dropout_rate),
+        tf.keras.layers.Dense(vocab_size)
+    ])
+
+    logging.info(f"Using {optimizer._keras_api_names[0]} optimizer")
     return model
 
 
