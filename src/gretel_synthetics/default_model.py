@@ -13,7 +13,6 @@ def build_default_model(store, batch_size, vocab_size) -> tf.keras.Sequential:
     Build a RNN-based sequential model
 
     Args:
-        optimizer_cls: tf.keras.optimizer class
         store: LocalConfig
         batch_size: Batch size for training and prediction
         vocab_size: Size of training vocabulary
