@@ -117,6 +117,8 @@ class BaseConfig:
             by the model pass validation. Default is ``1000``.
         predict_batch_size (optional): How many words to generate in parallel. Higher values may result in increased
             throughput. The default of ``64`` should provide reasonable performance for most users.
+        reset_states (optional): Reset RNN model states between each record created guarantees more
+            consistent record creation over time, at the expense of model accuracy. Default is ``True``.
         save_all_checkpoints (optional). Set to ``True`` to save all model checkpoints as they are created,
             which can be useful for optimal model selection. Set to ``False`` to save only the latest
             checkpoint. Default is ``True``.
@@ -166,6 +168,7 @@ class BaseConfig:
     gen_chars: int = 0
     gen_lines: int = 1000
     predict_batch_size: int = 64
+    reset_states: True
 
     # Checkpoint storage
     save_all_checkpoints: bool = False
