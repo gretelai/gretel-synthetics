@@ -2,10 +2,7 @@
 Tensorflow - Keras Sequential RNN (GRU)
 """
 from typing import Tuple, TYPE_CHECKING
-
 import tensorflow as tf
-from tensorflow.keras.optimizers import RMSprop  # pylint: disable=import-error
-from tensorflow_privacy.privacy.optimizers.dp_optimizer_keras import make_keras_optimizer_class
 from tensorflow_privacy.privacy.analysis import compute_dp_sgd_privacy
 
 from gretel_synthetics.default_model import build_default_model
@@ -16,34 +13,17 @@ if TYPE_CHECKING:
 else:
     BaseConfig = None
 
-DEFAULT = "default"
-OPTIMIZERS = {
-    DEFAULT: {'dp': make_keras_optimizer_class(RMSprop), 'default': RMSprop}
-}
-
-
-def select_optimizer(store: BaseConfig):
-    if store.dp:
-        return OPTIMIZERS[DEFAULT]["dp"]
-    else:
-        return OPTIMIZERS[DEFAULT][DEFAULT]
-
-
-def loss(labels, logits):
-    return tf.keras.losses.sparse_categorical_crossentropy(labels, logits, from_logits=True)
-
 
 def build_model(vocab_size: int, batch_size: int, store: BaseConfig) -> tf.keras.Sequential:
     """
     Utilizing tf.keras.Sequential model
     """
-    optimizer_cls = select_optimizer(store)
     model = None
 
     if store.dp:
-        model = build_dp_model(optimizer_cls, store, batch_size, vocab_size)
+        model = build_dp_model(store, batch_size, vocab_size)
     else:
-        model = build_default_model(optimizer_cls, store, batch_size, vocab_size)
+        model = build_default_model(store, batch_size, vocab_size)
 
     print(model.summary())
     return model

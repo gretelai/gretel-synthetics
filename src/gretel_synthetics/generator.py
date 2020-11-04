@@ -5,7 +5,7 @@ from collections import namedtuple
 import sentencepiece as spm
 import tensorflow as tf
 
-from gretel_synthetics.model import build_sequential_model
+from gretel_synthetics.model import build_model
 
 if TYPE_CHECKING:
     from gretel_synthetics.config import BaseConfig, LocalConfig
@@ -29,7 +29,7 @@ def _load_tokenizer(store: LocalConfig) -> spm.SentencePieceProcessor:
 def _prepare_model(
     sp: spm.SentencePieceProcessor, batch_size: int, store: LocalConfig
 ) -> tf.keras.Sequential:  # pragma: no cover
-    model = build_sequential_model(
+    model = build_model(
         vocab_size=len(sp), batch_size=batch_size, store=store
     )
 

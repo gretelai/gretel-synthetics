@@ -1,13 +1,18 @@
 import logging
 import tensorflow as tf
+from tensorflow.keras.optimizers import RMSprop
+from tensorflow_privacy.privacy.optimizers.dp_optimizer_keras import make_keras_optimizer_class
 
 
-def build_dp_model(optimizer_cls, store, batch_size, vocab_size) -> tf.keras.Sequential:
+def loss(labels, logits):
+    return tf.keras.losses.sparse_categorical_crossentropy(labels, logits, from_logits=True)
+
+
+def build_dp_model(store, batch_size, vocab_size) -> tf.keras.Sequential:
     """
     Build a RNN-based sequential model with differentially private training (Experimental)
 
     Args:
-        optimizer_cls: Differentially private optimizer class
         store: LocalConfig
         batch_size: Batch size for training and prediction
         vocab_size: Size of training vocabulary
@@ -16,12 +21,14 @@ def build_dp_model(optimizer_cls, store, batch_size, vocab_size) -> tf.keras.Seq
         tf.keras.Sequential model
     """
     logging.warning("Experimental: Differentially private training enabled")
-    optimizer = optimizer_cls(
+
+    optimizer = make_keras_optimizer_class(RMSprop)(
         l2_norm_clip=store.dp_l2_norm_clip,
         noise_multiplier=store.dp_noise_multiplier,
         num_microbatches=store.dp_microbatches,
         learning_rate=store.learning_rate
     )
+
     model = tf.keras.Sequential([
         tf.keras.layers.Embedding(vocab_size, store.embedding_dim,
                                   batch_input_shape=[batch_size, None]),
@@ -37,4 +44,5 @@ def build_dp_model(optimizer_cls, store, batch_size, vocab_size) -> tf.keras.Seq
     ])
 
     logging.info(f"Using {optimizer._keras_api_names[0]} optimizer in differentially private mode")
+    model.compile(optimizer=optimizer, loss=loss, metrics=["accuracy"])
     return model
