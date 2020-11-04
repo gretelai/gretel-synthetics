@@ -97,7 +97,10 @@ def _save_history_csv(
 
     # Grab that last idx in case we need to use it in lieu of finding
     # a better one
-    last_idx = df.iloc[[-1]].index.values.astype(int)[0]
+    try:
+        last_idx = df.iloc[[-1]].index.values.astype(int)[0]
+    except IndexError as err:
+        raise RuntimeError("An error occurred when saving model history, this could be because training was stopped before the first epoch could finish") from err  # noqa
 
     # Here we want to find the row that contains the value "best_val" within
     # the specified row by "best_col". We are looking for the first occurance
@@ -179,28 +182,30 @@ def train_rnn(params: TrainingParams):
         )
         _callbacks.append(early_stopping_callback)
 
-    model.fit(dataset, epochs=store.epochs, callbacks=_callbacks)
-
     best_val = None
-    if store.save_best_model:
-        best_val = checkpoint_callback.best
-    if store.early_stopping:
-        # NOTE: In this callback, the "best" attr does not get set in the constructor, so we'll
-        # set it to None if for some reason we can't get it. This also covers a test case that doesn't
-        # run any epochs but accesses this attr.
-        try:
-            best_val = early_stopping_callback.best
-        except AttributeError:
-            best_val = None
-
-    _save_history_csv(
-        history_callback,
-        store.checkpoint_dir,
-        store.dp,
-        store.best_model_metric,
-        best_val,
-    )
-    logging.info(f"Saving model to {tf.train.latest_checkpoint(store.checkpoint_dir)}")
+    try:
+        model.fit(dataset, epochs=store.epochs, callbacks=_callbacks)
+        if store.save_best_model:
+            best_val = checkpoint_callback.best
+        if store.early_stopping:
+            # NOTE: In this callback, the "best" attr does not get set in the constructor, so we'll
+            # set it to None if for some reason we can't get it. This also covers a test case that doesn't
+            # run any epochs but accesses this attr.
+            try:
+                best_val = early_stopping_callback.best
+            except AttributeError:
+                best_val = None
+    except KeyboardInterrupt:
+        ...
+    finally:
+        _save_history_csv(
+            history_callback,
+            store.checkpoint_dir,
+            store.dp,
+            store.best_model_metric,
+            best_val,
+        )
+        logging.info(f"Saving model to {tf.train.latest_checkpoint(store.checkpoint_dir)}")
 
 
 def _create_dataset(

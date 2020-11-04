@@ -5,12 +5,20 @@ if we are using a simple model or a DF Batch model.
 
 When adding a new model to test, the model filename should conform to:
 
-description-batch|simple-major-minor.tar.gz
+description-MODE-TOK-major-minor.tar.gz
 
 So for example:
 
-    safecast-batch-0-14.tar.gz -- would be a model built on Safecast data in DF batch mode
-    using version 0.14.x of synthetics.
+    safecast-batch-sp-0-14.tar.gz -- would be a model built on Safecast data in DF batch mode
+        using version 0.14.x of synthetics with a SentencePiece tokenizer
+
+MODES:
+    - simple
+    - batch
+
+TOK:
+    - char
+    - sp
 """
 import pytest
 
@@ -18,7 +26,7 @@ from gretel_synthetics.generate_utils import DataFileGenerator
 
 
 BATCH_MODELS = [
-    "https://gretel-public-website.s3-us-west-2.amazonaws.com/tests/synthetics/models/safecast-batch-0-14.tar.gz"
+    "https://gretel-public-website.s3-us-west-2.amazonaws.com/tests/synthetics/models/safecast-batch-sp-0-14.tar.gz"
 ]
 
 
@@ -33,4 +41,41 @@ def test_generate_batch(model_path, tmp_path):
     with open(fname) as fin:
         for _ in fin:
             count += 1
+    # account for the header
     assert count-1 == 100
+
+
+def scooter_val(line):
+    rec = line.split(", ")
+    if len(rec) == 6:
+        float(rec[5])
+        float(rec[4])
+        float(rec[3])
+        float(rec[2])
+        int(rec[0])
+    else:
+        raise Exception('record not 6 parts')
+
+
+SIMPLE_MODELS = [
+    ("https://gretel-public-website.s3-us-west-2.amazonaws.com/tests/synthetics/models/scooter-simple-sp-0-14.tar.gz", scooter_val),  # noqa
+    ("https://gretel-public-website.s3-us-west-2.amazonaws.com/tests/synthetics/models/scooter-simple-char-0-15.tar.gz", scooter_val)  # noqa
+]
+
+
+@pytest.mark.parametrize(
+    "model_path,validator_fn", SIMPLE_MODELS
+)
+def test_generate_simple(model_path, validator_fn, tmp_path):
+    gen = DataFileGenerator(model_path)
+    out_file = str(tmp_path / "outdata")
+    fname = gen.generate(100, out_file, validator=validator_fn)
+    count = 0
+    with open(fname) as fin:
+        for _ in fin:
+            count += 1
+    assert count == 100
+
+
+def test_generate_batch_smart_seed():
+    ...

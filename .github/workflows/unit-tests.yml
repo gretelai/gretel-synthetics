@@ -1,0 +1,33 @@
+name: Unit Tests
+
+on: [push]
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v1
+    - name: Setup Python
+      uses: actions/setup-python@v1
+      with:
+        python-version: 3.6
+    - name: Install
+      run:
+        pip install -e .
+        pip install -r test-requirements.txt
+    - name: Lint
+      run: |
+        # stop the build if there are Python syntax errors or undefined names
+        flake8 --count --select=E9,F63,F7,F82 --show-source --statistics src/
+        # exit-zero treats all errors as warnings.
+        flake8 --count --exit-zero --max-complexity=30 --max-line-length=120 --statistics src/
+    - name: Test
+      run: pytest -s -vv --cov src --cov-report term-missing tests/
+    - uses: 8398a7/action-slack@v2
+      with:
+        status: ${{ job.status }}
+        author_name: Unit Test
+        only_mention_fail: here
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      if: always()

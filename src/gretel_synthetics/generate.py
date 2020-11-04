@@ -3,7 +3,7 @@ Abstract module for generating data.
 """
 from collections import namedtuple
 from dataclasses import dataclass, asdict
-from typing import TYPE_CHECKING, Optional, Callable, List, Iterable
+from typing import TYPE_CHECKING, Optional, Callable, List, Iterable, Iterator
 from abc import ABC, abstractmethod
 
 from gretel_synthetics.generate_parallel import get_num_workers, generate_parallel
@@ -124,7 +124,7 @@ def generate_text(
     max_invalid: int = 1000,
     num_lines: Optional[int] = None,
     parallelism: int = 0
-):
+) -> Iterator[GenText]:
     """A generator that will load a model and start creating records.
 
     Args:
@@ -175,7 +175,7 @@ def generate_text(
         a newline is observed.
 
     Yields:
-        A ``gen_text`` object for each record that is generated. The generator
+        A ``GenText`` object for each record that is generated. The generator
         will stop after the max number of lines is reached (based on your config).
 
     Raises:
