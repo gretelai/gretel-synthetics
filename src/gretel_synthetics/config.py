@@ -168,7 +168,7 @@ class BaseConfig:
     gen_chars: int = 0
     gen_lines: int = 1000
     predict_batch_size: int = 64
-    reset_states: True
+    reset_states: bool = True
 
     # Checkpoint storage
     save_all_checkpoints: bool = False
