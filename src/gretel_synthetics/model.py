@@ -1,19 +1,20 @@
 """
 Tensorflow - Keras Sequential RNN (GRU)
 """
-import logging
 from typing import Tuple, TYPE_CHECKING
 
-from tensorflow.keras.optimizers import RMSprop  # pylint: disable=import-error
 import tensorflow as tf
+from tensorflow.keras.optimizers import RMSprop  # pylint: disable=import-error
 from tensorflow_privacy.privacy.optimizers.dp_optimizer_keras import make_keras_optimizer_class
 from tensorflow_privacy.privacy.analysis import compute_dp_sgd_privacy
+
+from gretel_synthetics.default_model import build_default_model
+from gretel_synthetics.dp_model import build_dp_model
 
 if TYPE_CHECKING:
     from gretel_synthetics.config import BaseConfig
 else:
     BaseConfig = None
-
 
 DEFAULT = "default"
 OPTIMIZERS = {
@@ -45,60 +46,6 @@ def build_model(vocab_size: int, batch_size: int, store: BaseConfig) -> tf.keras
         model = build_default_model(optimizer_cls, store, batch_size, vocab_size)
 
     print(model.summary())
-    return model
-
-
-def build_dp_model(optimizer_cls, store, batch_size, vocab_size) -> tf.keras.Sequential:
-    logging.warning("Experimental: Differentially private training enabled")
-    optimizer = optimizer_cls(
-        l2_norm_clip=store.dp_l2_norm_clip,
-        noise_multiplier=store.dp_noise_multiplier,
-        num_microbatches=store.dp_microbatches,
-        learning_rate=store.learning_rate
-    )
-    model = tf.keras.Sequential([
-        tf.keras.layers.Embedding(vocab_size, store.embedding_dim,
-                                  batch_input_shape=[batch_size, None]),
-        tf.keras.layers.Dropout(store.dropout_rate),
-        tf.keras.layers.GRU(store.rnn_units,
-                            return_sequences=True,
-                            stateful=True,
-                            recurrent_initializer=store.rnn_initializer),
-        tf.keras.layers.Dropout(store.dropout_rate),
-        tf.keras.layers.GRU(store.rnn_units,
-                            return_sequences=True,
-                            stateful=True,
-                            recurrent_initializer=store.rnn_initializer),
-        tf.keras.layers.Dropout(store.dropout_rate),
-        tf.keras.layers.Dense(vocab_size)
-    ])
-
-    logging.info(f"Using {optimizer._keras_api_names[0]} optimizer in differentially private mode")
-    return model
-
-
-def build_default_model(optimizer_cls, store, batch_size, vocab_size) -> tf.keras.Sequential:
-    optimizer = optimizer_cls(
-        learning_rate=store.learning_rate
-    )
-    model = tf.keras.Sequential([
-        tf.keras.layers.Embedding(vocab_size, store.embedding_dim,
-                                  batch_input_shape=[batch_size, None]),
-        tf.keras.layers.Dropout(store.dropout_rate),
-        tf.keras.layers.GRU(store.rnn_units,
-                            return_sequences=True,
-                            stateful=True,
-                            recurrent_initializer=store.rnn_initializer),
-        tf.keras.layers.Dropout(store.dropout_rate),
-        tf.keras.layers.GRU(store.rnn_units,
-                            return_sequences=True,
-                            stateful=True,
-                            recurrent_initializer=store.rnn_initializer),
-        tf.keras.layers.Dropout(store.dropout_rate),
-        tf.keras.layers.Dense(vocab_size)
-    ])
-
-    logging.info(f"Using {optimizer._keras_api_names[0]} optimizer")
     return model
 
 
