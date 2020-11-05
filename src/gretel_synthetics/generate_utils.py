@@ -99,7 +99,10 @@ class DataFileGenerator:
             out_fname = f"{file_name}.csv"
             batcher = DataFrameBatch(mode="read", checkpoint_dir=str(model_dir))
             batcher.generate_all_batch_lines(
-                num_lines=count, max_invalid=max(count, MAX_INVALID), parallelism=1
+                num_lines=count,
+                max_invalid=max(count, MAX_INVALID),
+                parallelism=1,
+                seed_fields=seed
             )
             out_df = batcher.batches_to_df()
             out_df.to_csv(out_fname, index=False)
@@ -110,12 +113,15 @@ class DataFileGenerator:
             # was archived correctly, there should only be a single directory inside the archive
             actual_dir = next(model_dir.glob("*"))
             config = config_from_model_dir(actual_dir)
+            if seed is not None and not isinstance(seed, str):
+                raise TypeError("seed must be a string")
             for data in generate_text(
                 config,
                 num_lines=count,
                 line_validator=validator,
                 max_invalid=max(count, MAX_INVALID),
-                parallelism=1
+                parallelism=1,
+                start_string=seed
             ):
                 if data.valid or data.valid is None:
                     out.append(data.text)

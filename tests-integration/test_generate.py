@@ -21,6 +21,7 @@ TOK:
     - sp
 """
 import pytest
+import pandas as pd
 
 from gretel_synthetics.generate_utils import DataFileGenerator
 
@@ -77,5 +78,17 @@ def test_generate_simple(model_path, validator_fn, tmp_path):
     assert count == 100
 
 
-def test_generate_batch_smart_seed():
-    ...
+@pytest.mark.parametrize(
+    "model_path,seed", [
+        ("https://gretel-public-website.s3-us-west-2.amazonaws.com/tests/synthetics/models/safecast-batch-sp-0-14.tar.gz", {"payload.service_handler": "i-051a2a353509414f0"})  # noqa
+    ]
+)
+def test_generate_batch_smart_seed(model_path, seed, tmp_path):
+    gen = DataFileGenerator(model_path)
+    out_file = str(tmp_path / "outdata")
+    fname = gen.generate(100, out_file, seed=seed)
+    df = pd.read_csv(fname)
+    for _, row in df.iterrows():
+        row = dict(row)
+        for k, v in seed.items():
+            assert row[k] == v
