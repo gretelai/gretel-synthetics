@@ -118,12 +118,12 @@ def test_init(test_data):
     with pytest.raises(ValueError):
         batches.train_batch(99)
 
-    with patch("gretel_synthetics.batch.train_rnn") as mock_train:
+    with patch("gretel_synthetics.batch.train") as mock_train:
         batches.train_batch(5)
         arg = batches.batches[5].config
-        mock_train.assert_called_with(arg)
+        mock_train.assert_called_with(arg, None)
 
-    with patch("gretel_synthetics.batch.train_rnn") as mock_train:
+    with patch("gretel_synthetics.batch.train") as mock_train:
         batches.train_all_batches()
         args = [b.config for b in batches.batches.values()]
         called_args = []
