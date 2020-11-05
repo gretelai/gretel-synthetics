@@ -1,4 +1,5 @@
 from pathlib import Path
+from copy import deepcopy
 
 import pytest
 
@@ -31,6 +32,10 @@ def test_single_char(input_data_path, tmpdir):
     # NOTE: Here the line delim should not matter for this char tokenizer
     config = SimpleConfig(input_data_path=input_data_path, checkpoint_dir=tmpdir, field_delimiter=",")
     trainer = tok.CharTokenizerTrainer(config=config)
+
+    # We need this for batch mode, so verify it can be copied
+    deepcopy(trainer)
+
     line_iter = trainer.create_annotated_training_data()
 
     # Assert that we didn't do any annotation
@@ -79,6 +84,7 @@ def test_single_char_small_vocab(input_data_path, tmpdir):
 def test_sp(input_data_path, tmpdir):
     config = SimpleConfig(input_data_path=input_data_path, checkpoint_dir=tmpdir)
     trainer = tok.SentencePieceTokenizerTrainer(config=config)
+    deepcopy(trainer)
     line_iter = trainer.create_annotated_training_data()
 
     line_one = next(line_iter)

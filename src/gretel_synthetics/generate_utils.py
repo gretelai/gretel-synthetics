@@ -93,8 +93,6 @@ class DataFileGenerator:
         self, model_dir: Path, count: int, file_name: str, seed, validator
     ) -> str:
         batch_mode = is_model_dir_batch_mode(model_dir)
-        print("********************")
-        print(file_name)
         if batch_mode:
             if seed is not None and not isinstance(seed, dict):
                 raise TypeError("Seed must be a dict in batch mode")

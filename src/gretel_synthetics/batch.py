@@ -23,11 +23,12 @@ import numpy as np
 from tqdm.auto import tqdm
 import cloudpickle
 
-# FIXME: remove for abstract config
-from gretel_synthetics.config import LocalConfig, BaseConfig, config_from_model_dir
+from gretel_synthetics.config import LocalConfig, BaseConfig, config_from_model_dir, CONFIG_MAP
+import gretel_synthetics.const as const
 from gretel_synthetics.generate import GenText, generate_text
 from gretel_synthetics.errors import TooManyInvalidError
-from gretel_synthetics.train import train_rnn
+from gretel_synthetics.train import train
+from gretel_synthetics.tokenizers import BaseTokenizerTrainer
 
 
 logging.basicConfig()
@@ -44,6 +45,7 @@ WRITE = "write"
 HEADER_FILE = "headers.json"
 CONFIG_FILE = "model_params.json"
 TRAIN_FILE = "train.csv"
+PATH_HOLDER = "___path_holder___"
 
 
 @dataclass
@@ -147,7 +149,6 @@ def _create_batch_from_dir(batch_dir: str):
     # to training data simply for read-only data generation
     train_path = ""
 
-    # FIXME: Will need to use an abstract factory
     batch = Batch(
         checkpoint_dir=batch_dir,
         input_data_path=train_path,
@@ -198,12 +199,20 @@ def _build_batch_dirs(
             {"checkpoint_dir": checkpoint_dir, "input_data_path": input_data_path}
         )
 
-        # FIXME: will need to specify specific engine config
+        # Determine what BaseConfig subclass to use, if the config template does
+        # not have a model type then we'll default to using a LocalConfig which gives
+        # us backwards compat to 0.14.0
+        config_class_str = new_config.get(const.MODEL_TYPE, None)
+        if config_class_str is None:
+            config_class = LocalConfig
+        else:
+            config_class = CONFIG_MAP[config_class_str]
+
         out[i] = Batch(
             checkpoint_dir=checkpoint_dir,
             input_data_path=input_data_path,
             headers=headers,
-            config=LocalConfig(**new_config),
+            config=config_class(**new_config),
         )
         # try and load any previously saved validators
         out[i].load_validator_from_file()
@@ -244,7 +253,11 @@ class DataFrameBatch:
             the number of batches. The number of inner lists is the number of batches, and each
             inner list represents the columns that belong to that batch
         config: A template training config to use, this will be used as kwargs for each Batch's
-            synthetic configuration.
+            synthetic configuration. This may also be a sucblass of ``BaseConfig``. If this is used,
+            you can set the ``input_data_path`` param to the constant ``PATH_HOLDER`` as it does not
+            really matter
+        tokenizer_class:  An optional ``BaseTokenizerTrainer`` subclass. If not provided the default
+            tokenizer will be used for the underlying ML engine.
 
     NOTE:
         When providing a config, the source of training data is not necessary, only the
@@ -269,17 +282,14 @@ class DataFrameBatch:
 
     mode: Union[WRITE, READ]
 
-    # FIXME: Allow the config dict (backwards compat to LocalConfig) or
-    # also allow a sublcass of BaseConfig as well. Default to a TensorFLow
-    # config (LocalConfig) if a dict is provided, otherwise use the config
-    # as is. 
     def __init__(
         self,
         *,
         df: pd.DataFrame = None,
         batch_size: int = BATCH_SIZE,
         batch_headers: List[List[str]] = None,
-        config: dict = None,
+        config: Union[dict, BaseConfig] = None,
+        tokenizer: BaseTokenizerTrainer = None,
         mode: str = WRITE,
         checkpoint_dir: str = None,
     ):
@@ -288,6 +298,15 @@ class DataFrameBatch:
             raise ValueError("mode must be read or write")
 
         self.mode = mode
+
+        # If the config was a subclass of BaseConfig, then we convert
+        # it to a dict and utilize that dict as our template. We do this
+        # because when we re-create the batches we want to utilize the
+        # Config constructors to set some attrs for us
+        if isinstance(config, BaseConfig):
+            config = config.as_dict()
+
+        self.tokenizer = tokenizer
 
         if self.mode == READ:
             if isinstance(config, dict):
@@ -370,10 +389,16 @@ class DataFrameBatch:
         Args:
             batch_idx: The index of the batch, from the ``batches`` dictionary
         """
+        if self.tokenizer is not None:
+            _tokenizer = deepcopy(self.tokenizer)
+            _tokenizer.config = self.batches[batch_idx].config
+        else:
+            _tokenizer = None
+
         if self.mode == READ:  # pragma: no cover
             raise RuntimeError("Method cannot be used in read-only mode")
         try:
-            train_rnn(self.batches[batch_idx].config)
+            train(self.batches[batch_idx].config, _tokenizer)
         except KeyError:
             raise ValueError("batch_idx is invalid")
 
