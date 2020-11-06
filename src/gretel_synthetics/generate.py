@@ -95,13 +95,6 @@ def generate_text(
         f"Latest checkpoint: {tf.train.latest_checkpoint(config.checkpoint_dir)}"
     )
 
-    # Disable batching in DP mode when generating text
-    # as it reduces prediction accuracy (but faster)
-    if config.dp and (config.predict_batch_size > 1 or config.batch_size > 1):
-        logging.warning("Batch predictions not supported in DP mode.")
-        config.predict_batch_size = 1
-        config.batch_size = 1
-
     settings = Settings(
         config=config,
         start_string=start_string,

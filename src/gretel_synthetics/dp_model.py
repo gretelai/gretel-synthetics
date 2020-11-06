@@ -32,14 +32,17 @@ def build_dp_model(store, batch_size, vocab_size) -> tf.keras.Sequential:
     model = tf.keras.Sequential([
         tf.keras.layers.Embedding(vocab_size, store.embedding_dim,
                                   batch_input_shape=[batch_size, None]),
-        tf.keras.layers.GRU(store.rnn_units,
-                            return_sequences=True,
-                            stateful=True,
-                            recurrent_initializer=store.rnn_initializer),
-        tf.keras.layers.GRU(store.rnn_units,
-                            return_sequences=True,
-                            stateful=True,
-                            recurrent_initializer=store.rnn_initializer),
+        tf.keras.layers.Dropout(store.dropout_rate),
+        tf.keras.layers.LSTM(store.rnn_units,
+                             return_sequences=True,
+                             stateful=True,
+                             recurrent_initializer=store.rnn_initializer),
+        tf.keras.layers.Dropout(store.dropout_rate),
+        tf.keras.layers.LSTM(store.rnn_units,
+                             return_sequences=True,
+                             stateful=True,
+                             recurrent_initializer=store.rnn_initializer),
+        tf.keras.layers.Dropout(store.dropout_rate),
         tf.keras.layers.Dense(vocab_size)
     ])
 
