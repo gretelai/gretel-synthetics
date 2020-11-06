@@ -1,5 +1,30 @@
 """
-Interface definitions for tokenizers
+Interface definitions for tokenizers.  The classes in the module are segmented into two abstract types:
+Trainers and Tokenizers.  They are kept separate because the parameters used to train a tokenizer
+are not necessarily loaded back in and utilized by a trained tokenizer.  While its more explicit
+to utilize two types of classes, it also removes any ambiguity in which methods are able to be used
+based on training or tokenizing.
+
+Trainers require a specific configuration to be provided. Based on the configuration received, the
+tokenizer trainers will create the actual training data file that will be used by the downstream
+training process. In this respect, utilizing at least one of these tokenizers is required for
+training since it is the tokenizers responsbility to create the final training data to be used.
+
+The general process that is followed when using these tokenizers is:
+
+Create a trainer instance, with desired parameters, including providing the config as a required param.
+
+Call the ``create_annotated_training_data`` for your tokenizer trainer. What is important to note here
+is that this method actually iterates the input data line by line, and does any special processing, then
+writes a new data file that will be used for actual training. This new data file is written to the
+model directory.
+
+Call the ``train`` method, which will create your tokenization model and save it to the model
+directory.
+
+Now you will use the ``load()`` class method from an actual tokenizer class to load that
+trained model in and now you can use it on input data.
+
 """
 from abc import ABC, abstractmethod
 from typing import List, Any, Dict, TYPE_CHECKING, Iterator, Optional
@@ -44,6 +69,9 @@ class TokenizerError(Exception):
 
 
 class Base(ABC):
+    """High level base class for shared class attrs and validation. Should not
+    be used directly.
+    """
 
     settings_fname: str = "tokenizer_params.json"
     newline_str: str = None
@@ -54,10 +82,24 @@ class Base(ABC):
 
 
 class BaseTokenizerTrainer(Base):
+    """Base class for training tokenizers. Should not be used directly.
+    """
 
     vocab_size: int
+    """The max size of the vocab (tokens) to be extracted from
+    the input dataset.
+    """
+
     config: BaseConfig
+    """A subclass instace of ``BaseConfig``.  This will be used to find the input
+    data for tokenization
+    """
+
     num_lines: int = 0
+    """The number of lines that were processed after ``create_annotated_training_data``
+    is called
+    """
+
     tokenizer_type: str = "tokenizer_type"
 
     def __init__(self, *, config: BaseConfig, vocab_size: Optional[int] = None):
@@ -67,11 +109,19 @@ class BaseTokenizerTrainer(Base):
         super().__init__()
 
     def create_annotated_training_data(self) -> Iterator[str]:
-        """Read in the configurations raw input data path, and
+        """
+        This should be called _before_ training as it is required
+        to have the annotated training data created in the model
+        directory.
+
+        Read in the configurations raw input data path, and
         create a file I/O pipeline where each line of the input
         data path can optionally route through an annotation
         function and then we will write each raw line out into
         a training data file as specified by the config.
+
+        Args:
+            None
         """
         logging.info(f"Loading training data from {self.config.input_data_path}")
         self.num_lines = 0
@@ -89,16 +139,25 @@ class BaseTokenizerTrainer(Base):
 
     def training_data_iter(self) -> Iterator[str]:
         """Create a generator that will iterate each line of the training
-        data that was created during the annotation step.
+        data that was created during the annotation step.  Synthetic model trainers
+        will most likely need to iterate this to process each line of the annotated
+        training data.
         """
         with open(self.config.training_data_path, "r") as fin:
             for line in fin:
                 yield line
 
     def _annotate_training_line(self, line: str):
+        """Implicitly gets called during the annotation process. Subclasses
+        can optionally override this to do any actual custom tokenization
+        steps per training line.
+        """
         return line
 
     def train(self):
+        """Train a tokenizer and save the tokenizer settings to a file
+        located in the model directory specified by the ``config`` object
+        """
         self._train()
         settings = self._get_save_settings()
         self._save_settings(settings)
@@ -106,7 +165,7 @@ class BaseTokenizerTrainer(Base):
     @abstractmethod
     def _get_save_settings(self) -> dict:
         """Subclasses must create a dict that holds serialized
-        params for the tokenizer
+        params for the tokenizer.
         """
         pass
 
@@ -132,6 +191,9 @@ class BaseTokenizerTrainer(Base):
 
 
 class BaseTokenizer(Base):
+    """Base class for loading a tokenizer from disk. Should not be
+    used directly.
+    """
 
     _model: Any
     """This holds the actual model data, which can be any type of object,
@@ -182,6 +244,9 @@ class BaseTokenizer(Base):
         pass
 
     def encode_to_ids(self, data: str) -> List[int]:
+        """Given an input string, convert it to a list of
+        token IDs
+        """
         return self._encode_to_ids(data)
 
     @abstractmethod
@@ -189,6 +254,15 @@ class BaseTokenizer(Base):
         pass
 
     def decode_from_ids(self, ids: List[int]) -> str:
+        """Given a list of token IDs, convert it to
+        a single string that would be the original string
+        it was.
+
+        NOTE:
+            We automatically call a method that can optionally
+            restore any special reserved tokens back to their 
+            original values (such as field delimiter values, etc)
+        """
         decoded_str = self._decode_from_ids(ids)
         return self._replace_decoded_tokens(decoded_str)
 
@@ -210,6 +284,14 @@ class BaseTokenizer(Base):
 ##################
 
 class CharTokenizerTrainer(BaseTokenizerTrainer):
+    """Train a simple tokenizer that maps every single character
+    to a unique ID.  If ``vocab_size`` is not specified, the learned
+    vocab size will be the number of unique characters in the training
+    dataset.
+
+    Args:
+        vocab_size: Max number of tokens (chars) to map to tokens.
+    """
 
     newline_str: str = "\n"
 
@@ -235,12 +317,20 @@ class CharTokenizerTrainer(BaseTokenizerTrainer):
 
 
 class CharTokenizer(BaseTokenizer):
+    """Load a simple character tokenizer from disk to conduct
+    encoding an decoding operations
+    """
 
     _model: Dict[str, dict]
     newline_str: str = "\n"
 
     @classmethod
     def load(cls, model_dir: str):
+        """Create an instance of this tokenizer.
+
+        Args:
+            model_dir: The path to the model directory
+        """
         model = {
             "char2idx": cloudpickle.load(
                 open(Path(model_dir) / "char2idx.p", "rb")
@@ -253,6 +343,8 @@ class CharTokenizer(BaseTokenizer):
 
     @property
     def total_vocab_size(self):
+        """Get the number of unique characters (tokens)
+        """
         return len(self._model["idx2char"])
 
     def _encode_to_ids(self, data: str) -> List[int]:
@@ -274,11 +366,35 @@ class CharTokenizer(BaseTokenizer):
 
 
 class SentencePieceTokenizerTrainer(BaseTokenizerTrainer):
+    """Train a tokenizer using Google SentencePiece.
+    """
 
     vocab_size: int
+    """Pre-determined maximum vocabulary size prior to neural model training, based
+    on subword units including byte-pair-encoding (BPE) and unigram language model, 
+    with the extension of direct training from raw sentences.
+    We generally recommend using a large vocabulary size of
+    20,000 to 50,000. Default is ``20000``.
+    """
+
     character_coverage: float
+    """The amount of characters covered by the model. Unknown characters
+    will be replaced with the <unk> tag. Good defaults are ``0.995`` for languages with rich
+    character sets like Japanese or Chinese, and 1.0 for other languages or machine data.
+    Default is ``1.0``.
+    """
+
     pretrain_sentence_count: int
+    """The number of lines spm_train first loads. Remaining lines are simply
+    discarded. Since spm_train loads entire corpus into memory, this size will depend on the memory
+    size of the machine. It also affects training time. Default is ``1000000``.
+    """
+
     max_line_line: int
+    """Maximum line length for input training data. Any lines longer than
+    this length will be ignored. Default is ``2048``.
+    """
+
     newline_str: str = "<n>"
 
     def __init__(
@@ -368,12 +484,20 @@ def _log_sample_data(model_dir: str, sp: spm.SentencePieceProcessor):
 
 
 class SentencePieceTokenizer(BaseTokenizer):
+    """Load a SentencePiece tokenizer from disk so encoding / decoding
+    can be done
+    """
 
     _model: spm.SentencePieceProcessor
     newline_str: str = "<n>"
 
     @classmethod
     def load(cls, model_dir: str):
+        """Load a SentencePiece tokenizer from a model directory.
+
+        Args:
+            model_dir: The model directory.
+        """
         sp = spm.SentencePieceProcessor()
         model_fname = f"{const.MODEL_PREFIX}.model"
         logging.info("Loading tokenizer from: %s", model_fname)
@@ -384,6 +508,8 @@ class SentencePieceTokenizer(BaseTokenizer):
 
     @property
     def total_vocab_size(self):
+        """The number of unique tokens in the model
+        """
         return len(self._model)
 
     def _encode_to_ids(self, data: str) -> List[int]:
@@ -411,7 +537,19 @@ TOK_MAP = {
 }
 
 
-def tokenizer_from_model_dir(model_dir: str):
+def tokenizer_from_model_dir(model_dir: str) -> BaseTokenizer:
+    """A factory function that will return a tokenizer instance that 
+    can be used for encoding / decoding data.  It will try to automatically
+    infer what type of class to use based on the stored tokenizer params
+    in the provided model directory.
+
+    If no specific tokenizer type is found, we assume that we are restoring
+    a SentencePiece tokenizer because the model is from a version <=
+    0.14.x
+
+    Args:
+        model_dir: A directory that holds synthetic model data.
+    """
     params_file = Path(model_dir) / BaseTokenizerTrainer.settings_fname
     
     # Backwards compat with <= 0.14.0

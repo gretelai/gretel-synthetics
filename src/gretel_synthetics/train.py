@@ -1,5 +1,7 @@
 """
-Abstract model training module
+Train models for creating synthetic data.  This module is the primary entrypoint for creating
+a model. It depends on having created a engine specifc configuration and optionally a tokenizer
+to be used.
 """
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
@@ -17,12 +19,16 @@ else:
 
 @dataclass
 class TrainingParams:
+    """A structure that is created and passed into the engine-specific training
+    entrypoint. All engine-specific training entrypoints should expect to receive
+    this object and process accordingly.
+    """
     tokenizer_trainer: BaseTokenizerTrainer
     tokenizer: BaseTokenizer
     config: BaseConfig
 
 
-def create_default_tokenizer(store: BaseConfig) -> SentencePieceTokenizerTrainer:
+def _create_default_tokenizer(store: BaseConfig) -> SentencePieceTokenizerTrainer:
     trainer = SentencePieceTokenizerTrainer(
         vocab_size=store.vocab_size,
         character_coverage=store.character_coverage,
@@ -34,10 +40,19 @@ def create_default_tokenizer(store: BaseConfig) -> SentencePieceTokenizerTrainer
 
 
 def train(store: BaseConfig, tokenizer_trainer: Optional[BaseTokenizerTrainer] = None):
-    """Train a Synthetic Model.
+    """Train a Synthetic Model.  This is a facade entrypoint that implements the engine
+    specific training operation based on the provided configuration.
+
+    Args:
+        store: A subclass instance of ``BaseConfig.`` This config is reponsible for
+        providing the actual training entrypoint for a specific training routine.
+
+        tokenizer_trainer: An optional subclass instance of a ``BaseTokenizerTrainer``.  If provided
+        this tokenizer will be used to pre-process and create an annotated dataset for training.
+        If not provided a default tokenizer will be used.
     """
     if tokenizer_trainer is None:
-        tokenizer_trainer = create_default_tokenizer(store)
+        tokenizer_trainer = _create_default_tokenizer(store)
     tokenizer_trainer.create_annotated_training_data()
     tokenizer_trainer.train()
     tokenizer = tokenizer_from_model_dir(store.checkpoint_dir)
@@ -53,7 +68,6 @@ def train(store: BaseConfig, tokenizer_trainer: Optional[BaseTokenizerTrainer] =
 
 def train_rnn(store: BaseConfig):
     """
-    FIXME: Facade pass through to maintain backwards compat. Just call into
-    the new train interface
+    Facade to support backwards compatibility for <= 0.14.x versions.
     """
     train(store)

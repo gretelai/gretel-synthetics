@@ -14,6 +14,7 @@ Modules
    :maxdepth: 2
 
    api/config.rst
+   api/tokenizers.rst
    api/train.rst
    api/generate.rst
    api/batch.rst

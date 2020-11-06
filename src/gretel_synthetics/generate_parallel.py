@@ -1,3 +1,8 @@
+"""
+Functionality for generating data using multiple CPUs. The functions in this module should
+not have to be used directly. They are used automatically by the ``generate.py`` module based
+on the parallelization settings configured for text generation.
+"""
 from typing import List, Optional, Union, Set, Tuple, TYPE_CHECKING
 import os
 import sys

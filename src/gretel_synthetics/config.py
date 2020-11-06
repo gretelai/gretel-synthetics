@@ -30,40 +30,64 @@ else:
 
 @dataclass
 class BaseConfig:
+    """This class should not be used directly, engine specific
+    classes should derived from this class.
+    """
 
     input_data_path: str = None
-    """Path to raw training data
+    """Path to raw training data, user provided.
     """
 
     checkpoint_dir: str = None
     """Directory where model data will
-    be stored
+    be stored, user provided.
     """
 
     training_data_path: str = None
-    """Where annotated and tokenized training data will be stored
+    """Where annotated and tokenized training data will be stored. This attr
+    will be modified during construction.
     """
 
     field_delimiter: Optional[str] = None
+    """If the input data is structured, you may specify a field delimiter which can
+    be used to split the generated text into a list of strings. For more detail
+    please see the ``GenText`` class in the ``generate.py`` module.
+    """
+
     field_delimiter_token: str = "<d>"
+    """Depending on the tokenizer used, a special token can be used to represent
+    characters. For tokenizers, like SentencePiece that support this, we will replace
+    the field delimiter char with this token to provide better learning and generation.
+    If the tokenizer used does not support custom tokens, this value will be ignored
+    """
 
     model_type: str = None
     """A string version of the model config class. This is used
     to keep track of what underlying engine was used when
-    writing the config to a file.
+    writing the config to a file. This will be automatically updated
+    during construction.
     """
 
     max_lines: int = 0
     """The maximum number of lines to utilize from the
-    raw input data"""
+    raw input data."""
 
-    # Defaulst SP tokenizer settings
+    overwrite: bool = False
+    """Set to ``True`` to automatically overwrite previously saved model checkpoints.
+        If ``False``, the trainer will generate an error if checkpoints exist in the model directory.
+        Default is ``False``.
+    """
+
+    # Default SP tokenizer settings. This are kept here for
+    # backwards compatibility for <= 0.14.x
     vocab_size: int = 20000
     character_coverage: float = 1.0
     pretrain_sentence_count: int = 1000000
     max_line_len: int = 2048
 
     def as_dict(self):
+        """Serialize the config attrs to a dict
+        """
         d = asdict(self)
         return d
 
@@ -79,7 +103,7 @@ class BaseConfig:
     def get_generator_class(self) -> BaseGenerator:
         """This must be implemented by all specific
         configs. It should return the class that should
-        be used as the Generator for creating records
+        be used as the Generator for creating records.
         """
         pass
 
@@ -88,7 +112,7 @@ class BaseConfig:
         """This must be implemented by all specific
         configs. It should return a callable that
         should be used as the entrypoint for
-        training a model
+        training a model.
         """
         pass
 
@@ -110,15 +134,9 @@ class BaseConfig:
 @dataclass
 class TensorFlowConfig(BaseConfig):
     """TensorFlow config that contains all of the main parameters for
-    training a model and generating data.  This base config generally
-    should not be used directly. Instead you should use one of the
-    subclasses which are specific to model and checkpoint storage.
+    training a model and generating data.
 
     Args:
-        max_lines (optional): Number of rows of file to read. Useful for training on a subset of large files.
-            If unspecified, max_lines will default to ``0`` (process all lines).
-        max_line_len (optional): Maximum line length for input training data. Any lines longer than
-            this length will be ignored. Default is ``2048``.
         epochs (optional): Number of epochs to train the model. An epoch is an iteration over the entire
             training set provided. For production use cases, 15-50 epochs are recommended.
             The default is ``100`` and is intentionally set extra high.  By default, ``early_stopping``
@@ -149,26 +167,6 @@ class TensorFlowConfig(BaseConfig):
             compromise between retaining model accuracy and preventing overfitting. Default is 0.2.
         rnn_initializer (optional): Initializer for the kernal weights matrix, used for the linear
             transformation of the inputs. Default is ``glorot_transform``.
-        optimizer (optional): Optimizer used by the neural network to maximize accuracy and reduce
-            loss. Currently supported optimizers: ``Adam``, ``SGD``, and ``Adagrad``. Default is ``Adam``.
-        field_delimiter (optional): Delimiter to use for training on structured data. When specified,
-            the delimiter is passed as a user-specified token to the tokenizer, which can improve
-            synthetic data quality. For unstructured text, leave as ``None``. For structured text
-            such as comma or tab separated values, specify "," or "\t" respectively. Default is ``None``.
-        field_delimiter_token (optional): User specified token to replace ``field_delimiter`` with
-            while annotating data for training the model. Default is ``<d>``.
-        vocab_size (optional): Pre-determined maximum vocabulary size prior to neural model training, based
-            on subword units including byte-pair-encoding (BPE) and unigram language model, with the extension
-            of direct training from raw sentences. We generally recommend using a large vocabulary
-            size of 20,000 to 50,000. Default is ``20000``.
-        character_coverage (optional): The amount of characters covered by the model. Unknown characters
-            will be replaced with the <unk> tag. Good defaults are ``0.995`` for languages with rich
-            character sets like Japanese or Chinese, and 1.0 for other languages or machine data.
-            Default is ``1.0``.
-        pretrain_sentence_count (optional): The number of lines spm_train first loads. Remaining lines are simply
-            discarded. Since spm_train loads entire corpus into memory, this size will depend on the memory
-            size of the machine. It also affects training time.
-            Default is ``1000000``.
         dp (optional): If ``True``, train model with differential privacy enabled. This setting provides
             assurances that the models will encode general patterns in data rather than facts
             about specific training examples. These additional guarantees can usefully strengthen
@@ -204,9 +202,6 @@ class TensorFlowConfig(BaseConfig):
         save_best_model (optional). Defaults to ``True``. Track the best version of the model (checkpoint) to be used.
             If ``save_all_checkpoints`` is disabled, then the saved model will be overwritten by newer ones only if they
             are better.
-        overwrite (optional). Set to ``True`` to automatically overwrite previously saved model checkpoints.
-            If ``False``, the trainer will generate an error if checkpoints exist in the model directory.
-            Default is ``False``.
     """
 
     # Training configurations
@@ -238,7 +233,6 @@ class TensorFlowConfig(BaseConfig):
     # Checkpoint storage
     save_all_checkpoints: bool = False
     save_best_model: bool = True
-    overwrite: bool = False
 
     def __post_init__(self):
         # FIXME: Remove @ 0.15.X when new optimizers are available for DP
@@ -264,9 +258,21 @@ class TensorFlowConfig(BaseConfig):
 #################
 
 CONFIG_MAP = {cls.__name__: cls for cls in BaseConfig.__subclasses__()}
+"""A mapping of configuration subclass string names to their actual classes. This
+can be used to re-instantiate a config from a serialized state.
+"""
 
 
-def config_from_model_dir(model_dir: str):
+def config_from_model_dir(model_dir: str) -> BaseConfig:
+    """Factory that will take a known directory of a model
+    and return a class instance for that config. We automatically
+    try and detect the correct BaseConfig sub-class to use based
+    on the saved model params.
+
+    If there is no ``model_type`` param in the saved config, we
+    assume that the model was saved using an earlier version of the
+    package and will instantiate a TensorFlowConfig
+    """
     params_file = Path(model_dir) / const.MODEL_PARAMS
     params_dict = json.loads(open(params_file).read())
     model_type = params_dict.pop(const.MODEL_TYPE, None)
@@ -285,5 +291,5 @@ def config_from_model_dir(model_dir: str):
     return cls(**params_dict)
 
 
-# FIXME: Backwards compat with <= 0.14.0
+# Backwards compat with <= 0.14.0
 LocalConfig = TensorFlowConfig

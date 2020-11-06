@@ -1,5 +1,6 @@
 """
-Abstract module for generating data.
+Abstract module for generating data.  The ``generate_text`` function is the primary entrypoint for
+creating text.
 """
 from collections import namedtuple
 from dataclasses import dataclass, asdict
@@ -87,8 +88,9 @@ class Settings:
 
     This class also will take a provided start string and validate that it can be utilized for text
     generation. If the ``start_string`` is something other than the default, we have to do a couple things:
-        - If the config utilizes a field delimiter, the ``start_string`` MUST end with that delimiter
-        - Convert the user-facing delim char into the special delim token specified in the config
+
+    1) If the config utilizes a field delimiter, the ``start_string`` MUST end with that delimiter
+    2) Convert the user-facing delim char into the special delim token specified in the config
     """
 
     config: BaseConfig
