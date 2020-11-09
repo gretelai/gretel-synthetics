@@ -4,7 +4,8 @@ from concurrent import futures
 from math import ceil
 import pytest
 
-from gretel_synthetics.generator import gen_text, TooManyInvalidError
+from gretel_synthetics.generate import GenText
+from gretel_synthetics.errors import TooManyInvalidError
 from gretel_synthetics.generate_parallel import generate_parallel, get_num_workers
 
 
@@ -37,7 +38,7 @@ def _mock_submitter(failure_rate):
 
         target_invalid = target_total - target_valid
 
-        lines = [gen_text(text=f'line-{i}', valid=(i >= target_invalid)) for i in range(target_total)]
+        lines = [GenText(text=f'line-{i}', valid=(i >= target_invalid)) for i in range(target_total)]
         mock_future = futures.Future()
         mock_future.set_result((chunk_size, lines, target_invalid))
 

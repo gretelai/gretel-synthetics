@@ -1,10 +1,22 @@
-from typing import List, Optional, Union, Set, Tuple
+"""
+Functionality for generating data using multiple CPUs. The functions in this module should
+not have to be used directly. They are used automatically by the ``generate.py`` module based
+on the parallelization settings configured for text generation.
+"""
+from typing import List, Optional, Union, Set, Tuple, TYPE_CHECKING
 import os
 import sys
 import loky
 from concurrent import futures
 
-from gretel_synthetics.generator import Generator, Settings, gen_text, TooManyInvalidError
+if TYPE_CHECKING:   
+    from gretel_synthetics.generate import Settings, GenText, BaseGenerator
+else:
+    Settings = None
+    GenText = None
+    BaseGenerator = None
+
+from gretel_synthetics.errors import TooManyInvalidError
 
 
 def get_num_workers(parallelism: Union[int, float], total_lines: int, chunk_size: int = 5) -> int:
@@ -41,7 +53,12 @@ def get_num_workers(parallelism: Union[int, float], total_lines: int, chunk_size
     return num_workers
 
 
-def generate_parallel(settings: Settings, num_lines: int, num_workers: int, chunk_size: int = 5):
+def generate_parallel(
+    settings: Settings,
+    num_lines: int,
+    num_workers: int,
+    chunk_size: int = 5
+):
     """
     Runs text generation in parallel mode.
 
@@ -69,7 +86,7 @@ def generate_parallel(settings: Settings, num_lines: int, num_workers: int, chun
     remaining_lines = num_lines
 
     # This set tracks the currently outstanding invocations to _loky_worker_process_chunk.
-    pending_tasks: Set[futures.Future[Tuple[int, List[gen_text], int]]] = set()  # pylint: disable=unsubscriptable-object  # noqa
+    pending_tasks: Set[futures.Future[Tuple[int, List[GenText], int]]] = set()  # pylint: disable=unsubscriptable-object  # noqa
 
     # How many tasks can be pending at once. While a lower factor saves memory, it increases the
     # risk that workers sit idle because the main process is blocked on processing data and
@@ -136,7 +153,7 @@ _loky_worker_init_exception: Optional[BaseException] = None
 # Global variable for the generator used in this process. Since we are not reusing processes across
 # generation tasks, we do not lose any ability of running multiple top-level generation tasks in parallel.
 # Also note that each worker picks up tasks in a strictly sequential fashion and is not multi-threaded.
-_loky_worker_generator: Optional[Generator] = None
+_loky_worker_generator: Optional[BaseGenerator] = None
 
 
 def _loky_init_worker(settings: Settings):
@@ -168,7 +185,7 @@ def _loky_init_worker(settings: Settings):
             pass
 
         global _loky_worker_generator
-        _loky_worker_generator = Generator(settings)
+        _loky_worker_generator = settings.generator(settings)
 
     except BaseException as e:  # pylint: disable=broad-except
         global _loky_worker_init_exception
@@ -176,7 +193,7 @@ def _loky_init_worker(settings: Settings):
         # Simply return without raising, to keep the worker alive.
 
 
-def _loky_worker_process_chunk(chunk_size: int, hard_limit: Optional[int] = None) -> Tuple[int, List[gen_text], int]:
+def _loky_worker_process_chunk(chunk_size: int, hard_limit: Optional[int] = None) -> Tuple[int, List[GenText], int]:
     """
     Processes a single chunk by attempting to generate the given number of lines.
 

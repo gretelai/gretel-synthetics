@@ -6,7 +6,7 @@ import shutil
 
 import pytest
 
-from gretel_synthetics.config import LocalConfig, TOKENIZER_PREFIX
+from gretel_synthetics.config import TensorFlowConfig
 
 
 @patch("gretel_synthetics.config.Path.mkdir")
@@ -14,19 +14,17 @@ def test_local_config(mkdir):
     target = uuid.uuid4().hex
     test_data_dir = Path(__file__).parent
     test_data_file = test_data_dir / "data" / "smol.txt"
-    lc = LocalConfig(checkpoint_dir=target, input_data_path=test_data_file.as_posix())
+    lc = TensorFlowConfig(checkpoint_dir=target, input_data_path=test_data_file.as_posix())
 
     mkdir.assert_called
     assert lc.epochs == 100
     assert lc.input_data_path == test_data_file.as_posix()
-    assert lc.tokenizer_prefix == TOKENIZER_PREFIX
-    assert lc.training_data == Path(target, "training_data.txt").as_posix()
-    assert lc.tokenizer_model == Path(target, "m.model").as_posix()
+    assert lc.training_data_path == Path(target, "training_data.txt").as_posix()
 
 
 @patch("gretel_synthetics.config.Path.mkdir")
 def test_local_config_settings(mkdir):
-    lc = LocalConfig(checkpoint_dir="foo", input_data_path="bar")
+    lc = TensorFlowConfig(checkpoint_dir="foo", input_data_path="bar")
     check = lc.as_dict()
     assert check == {
         "max_lines": 0,
@@ -61,25 +59,27 @@ def test_local_config_settings(mkdir):
         "overwrite": False,
         "input_data_path": "bar",
         "predict_batch_size": 64,
+        "training_data_path": "foo/training_data.txt",
+        "model_type": "TensorFlowConfig"
     }
 
 
 def test_local_config_missing_attrs():
     with pytest.raises(AttributeError):
-        LocalConfig()
+        TensorFlowConfig()
 
     with pytest.raises(AttributeError):
-        LocalConfig(checkpoint_dir="foo")
+        TensorFlowConfig(checkpoint_dir="foo")
 
     with pytest.raises(AttributeError):
-        LocalConfig(input_data_path="foo")
+        TensorFlowConfig(input_data_path="foo")
 
 
 def test_local_config_save_model_params():
     test_data_dir = Path(__file__).parent
     target = test_data_dir / uuid.uuid4().hex
     test_data_file = test_data_dir / "data" / "smol.txt"
-    lc = LocalConfig(
+    lc = TensorFlowConfig(
         checkpoint_dir=target.as_posix(), input_data_path=test_data_file.as_posix()
     )
     check = lc.save_model_params()

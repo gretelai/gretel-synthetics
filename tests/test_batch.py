@@ -8,8 +8,9 @@ from dataclasses import asdict
 import pytest
 import pandas as pd
 
-from gretel_synthetics.batch import DataFrameBatch, MAX_INVALID, READ, WRITE
-from gretel_synthetics.generator import gen_text, TooManyInvalidError
+from gretel_synthetics.batch import DataFrameBatch, MAX_INVALID, READ
+from gretel_synthetics.generate import GenText
+from gretel_synthetics.errors import TooManyInvalidError
 
 
 checkpoint_dir = str(Path(__file__).parent / "checkpoints")
@@ -117,12 +118,12 @@ def test_init(test_data):
     with pytest.raises(ValueError):
         batches.train_batch(99)
 
-    with patch("gretel_synthetics.batch.train_rnn") as mock_train:
+    with patch("gretel_synthetics.batch.train") as mock_train:
         batches.train_batch(5)
         arg = batches.batches[5].config
-        mock_train.assert_called_with(arg)
+        mock_train.assert_called_with(arg, None)
 
-    with patch("gretel_synthetics.batch.train_rnn") as mock_train:
+    with patch("gretel_synthetics.batch.train") as mock_train:
         batches.train_all_batches()
         args = [b.config for b in batches.batches.values()]
         called_args = []
@@ -145,10 +146,10 @@ def test_init(test_data):
     # generate lines, simulating generation the max
     # valid line count
     def good():
-        return gen_text(text="1,2,3,4,5", valid=random.choice([None, True]), delimiter=",")
+        return GenText(text="1,2,3,4,5", valid=random.choice([None, True]), delimiter=",")
     
     def bad():
-        return gen_text(text="1,2,3", valid=False, delimiter=",")
+        return GenText(text="1,2,3", valid=False, delimiter=",")
 
     with patch("gretel_synthetics.batch.generate_text") as mock_gen:
         mock_gen.return_value = [good(), good(), good(), bad(), bad(), good(), good()]
@@ -174,7 +175,7 @@ def test_init(test_data):
        
 
     # get synthetic df
-    line = gen_text(text="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15", valid=True, delimiter=",")
+    line = GenText(text="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15", valid=True, delimiter=",")
     with patch("gretel_synthetics.batch.generate_text") as mock_gen:
         mock_gen.return_value = [line] * len(batches.batches[10].headers)
         batches.generate_batch_lines(10)
@@ -187,10 +188,10 @@ def test_batches_to_df(test_data):
         {"foo": "bar", "foo1": "bar1", "foo2": "bar2", "foo3": 3}]), config=config_template, batch_size=2)
 
     batches.batches[0].add_valid_data(
-        gen_text(text="baz|baz1", valid=True, delimiter="|")
+        GenText(text="baz|baz1", valid=True, delimiter="|")
     )
     batches.batches[1].add_valid_data(
-        gen_text(text="baz2|5", valid=True, delimiter="|")
+        GenText(text="baz2|5", valid=True, delimiter="|")
     )
 
     check = batches.batches_to_df()

@@ -4,35 +4,27 @@ from copy import deepcopy
 from unittest.mock import patch, Mock, MagicMock
 import pandas as pd
 
-from gretel_synthetics.train import (
-    train_rnn,
-    _train_tokenizer,
+from gretel_synthetics.tensorflow.train import (
     _ModelHistory,
     _save_history_csv,
     VAL_LOSS,
     VAL_ACC,
 )
+from gretel_synthetics.train import train
 
 
-def test_create_vocab(global_local_config):
-    sp = _train_tokenizer(global_local_config)
-    assert len(sp) == 71
-    assert sp.PieceToId("</s>") == 2
-    assert sp.IdToPiece(2) == "</s>"
-
-
-@patch("gretel_synthetics.train.build_sequential_model")
-@patch("gretel_synthetics.train._save_history_csv")
-def test_train_rnn(save_history, model, global_local_config):
+@patch("gretel_synthetics.tensorflow.train.build_sequential_model")
+@patch("gretel_synthetics.tensorflow.train._save_history_csv")
+def test_train_rnn(save_history, model, tf_config):
     mock_model = Mock()
     model.return_value = mock_model
 
-    train_rnn(global_local_config)
+    train(tf_config)
 
     model.assert_called_with(
         vocab_size=71,
-        batch_size=global_local_config.batch_size,
-        store=global_local_config,
+        batch_size=tf_config.batch_size,
+        store=tf_config,
     )
 
     mock_model.fit.assert_called
