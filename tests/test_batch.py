@@ -29,7 +29,7 @@ config_template = {
     "buffer_size": 1000,
     "dropout_rate": 0.2,
     "dp": False,
-    "dp_learning_rate": 0.015,
+    "learning_rate": 0.015,
     "dp_noise_multiplier": 1.1,
     "dp_l2_norm_clip": 1.0,
     "dp_microbatches": 256,

@@ -15,16 +15,16 @@ import pandas as pd
 import tensorflow as tf
 from tqdm import tqdm
 
-from gretel_synthetics.tensorflow.model import build_sequential_model, load_model
-from gretel_synthetics.tensorflow.model_dp import compute_epsilon
+from gretel_synthetics.tensorflow.model import build_model, load_model
+from gretel_synthetics.tensorflow.dp_model import compute_epsilon
 from gretel_synthetics.const import VAL_ACC, VAL_LOSS
 from gretel_synthetics.tokenizers import BaseTokenizer
 
 if TYPE_CHECKING:
-    from gretel_synthetics.config import BaseConfig
+    from gretel_synthetics.config import TensorFlowConfig
     from gretel_synthetics.train import TrainingParams
 else:
-    BaseConfig = None
+    TensorFlowConfig = None
     TrainingParams = None
 
 spm_logger = logging.getLogger("sentencepiece")
@@ -41,7 +41,7 @@ class _ModelHistory(tf.keras.callbacks.Callback):
     Callback class to compute loss and accuracy during model training
     """
 
-    def __init__(self, total_token_count: int, config: BaseConfig):
+    def __init__(self, total_token_count: int, config: TensorFlowConfig):
         self.total_token_count = total_token_count
         self.config = config
         self.losses = []
@@ -53,14 +53,21 @@ class _ModelHistory(tf.keras.callbacks.Callback):
     def on_epoch_end(self, epoch, logs: dict = None):
         self.losses.append(logs.get(VAL_LOSS))
         self.accuracy.append(logs.get(VAL_ACC))
-        # Account for tf-privacy library writing to stdout
-        with redirect_stdout(io.StringIO()):
-            eps, _ = compute_epsilon(self.total_token_count, self.config, epoch)
-            self.epsilons.append(eps)
 
-        # NOTE: this is just a list of the same value, but
-        # is simpler for creating the history csv
-        self.deltas.append(1 / float(self.total_token_count))
+        if self.config.dp:
+            # Account for tf-privacy library writing to stdout
+            with redirect_stdout(io.StringIO()):
+                eps, _ = compute_epsilon(self.total_token_count, self.config, epoch)
+                self.epsilons.append(eps)
+
+            # NOTE: this is just a list of the same value, but
+            # is simpler for creating the history csv
+            self.deltas.append(1 / float(self.total_token_count))
+        else:
+            # Append 0,0 for epsilon and delta. These will be dropped afterwards anyway in
+            # non-DP mode.
+            self.epsilons.append(0)
+            self.deltas.append(0)
 
         # NOTE: When we do the final history saving, one of these items
         # will flip to 1 to denote the actual best model that is saved
@@ -132,13 +139,15 @@ def train_rnn(params: TrainingParams):
     by your config.
 
     Args:
-        store: An instance of one of the available configs that you
-            previously created
+        params: The parameters controlling model training.
 
     Returns:
         None
     """
     store = params.config
+    # TODO: We should check that store is an instance of TensorFlowConfig, but that would currently
+    # load to an import cycle.
+
     tokenizer = params.tokenizer
     num_lines = params.tokenizer_trainer.num_lines
     text_iter = params.tokenizer_trainer.training_data_iter()
@@ -150,12 +159,13 @@ def train_rnn(params: TrainingParams):
             pass
         else:
             raise RuntimeError(
-                "A model already exists in the checkpoint location, you must enable overwrite mode or delete the checkpoints first."  # noqa
-            )  # noqa
+                "A model already exists in the checkpoint location, you must enable "
+                "overwrite mode or delete the checkpoints first."
+            )
 
     total_token_count, dataset = _create_dataset(store, text_iter, num_lines, tokenizer)
     logging.info("Initializing synthetic model")
-    model = build_sequential_model(
+    model = build_model(
         vocab_size=tokenizer.total_vocab_size, batch_size=store.batch_size, store=store
     )
 
@@ -209,7 +219,7 @@ def train_rnn(params: TrainingParams):
 
 
 def _create_dataset(
-    store: BaseConfig, text_iter: Iterator[str], num_lines: int, tokenizer: BaseTokenizer
+    store: TensorFlowConfig, text_iter: Iterator[str], num_lines: int, tokenizer: BaseTokenizer
 ) -> Tuple[int, tf.data.Dataset]:
     """
     Before training, we need to map strings to a numerical representation.

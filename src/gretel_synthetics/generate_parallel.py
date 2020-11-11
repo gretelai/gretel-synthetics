@@ -9,7 +9,7 @@ import sys
 import loky
 from concurrent import futures
 
-if TYPE_CHECKING:   
+if TYPE_CHECKING:
     from gretel_synthetics.generate import Settings, GenText, BaseGenerator
 else:
     Settings = None

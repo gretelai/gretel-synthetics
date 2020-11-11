@@ -43,10 +43,10 @@ def test_local_config_settings(mkdir):
         "character_coverage": 1.0,
         "pretrain_sentence_count": 1000000,
         "dp": False,
-        "dp_learning_rate": 0.001,
-        "dp_noise_multiplier": 1.1,
-        "dp_l2_norm_clip": 1.0,
-        "dp_microbatches": 256,
+        "learning_rate": 0.001,
+        "dp_noise_multiplier": 0.1,
+        "dp_l2_norm_clip": 3.0,
+        "dp_microbatches": 64,
         "gen_temp": 1.0,
         "gen_chars": 0,
         "gen_lines": 1000,
@@ -59,6 +59,7 @@ def test_local_config_settings(mkdir):
         "overwrite": False,
         "input_data_path": "bar",
         "predict_batch_size": 64,
+        "reset_states": True,
         "training_data_path": "foo/training_data.txt",
         "model_type": "TensorFlowConfig"
     }
