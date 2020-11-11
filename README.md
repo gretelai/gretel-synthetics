@@ -1,12 +1,17 @@
 # Gretel Synthetics
 
 ![gretel-synthetics workflows](https://github.com/gretelai/gretel-synthetics/workflows/gretel-synthetics%20workflows/badge.svg)
-
 [![Documentation Status](https://readthedocs.org/projects/gretel-synthetics/badge/?version=stable)](https://gretel-synthetics.readthedocs.io/en/stable/?badge=stable)
+[![PyPI](https://badge.fury.io/py/gretel-synthetics.svg)](https://badge.fury.io/py/gretel-synthetics)
+[![Python](https://img.shields.io/pypi/pyversions/tensorflow.svg?style=plastic)](https://badge.fury.io/py/gretel-synthetics)
+[![Downloads](https://pepy.tech/badge/gretel-synthetics)](https://pepy.tech/project/gretel-synthetics)
+[![GitHub stars](https://img.shields.io/github/stars/gretelai/gretel-synthetics?style=social)](https://github.com/gretelai/gretel-synthetics)
 
-This code has been developed and tested on Python 3.6, 3.7, and 3.8.
+**`Documentation`** |
+------------------- |
+[![Documentation](https://img.shields.io/badge/api-reference-blue.svg)](https://gretel-synthetics.readthedocs.io/en/stable/) |
 
-This code is developed for TensorFlow 2.3.X and above.
+# Overview
 
 This package allows developers to quickly get immersed with synthetic data generation through the use of neural networks. The more complex pieces of working with libraries like Tensorflow and differential privacy are bundled into friendly Python classes and functions.
 
@@ -15,7 +20,7 @@ For example usage, please launch the example Jupyter Notebook and step through t
 
 **NOTE**: The settings in our Jupyter Notebook examples are optimized to run on a GPU, which you can experiment with
 for free in Google Colaboratory. If you're running on a CPU, you might want to grab a cup of coffee, 
-or lower `max_lines` and `epochs` to 5000 and 10, respectively.
+or lower `max_lines` and `epochs` to 5000 and 10, respectively. This code is developed for TensorFlow 2.3.X and above.
 
 # Roadmap
  
