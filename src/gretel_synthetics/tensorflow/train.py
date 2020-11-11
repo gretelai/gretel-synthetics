@@ -85,22 +85,17 @@ def _save_history_csv(
     """
     Save model training history to CSV format
     """
-    perplexity = [2 ** x for x in history.losses]
     df = pd.DataFrame(
         zip(
             range(len(history.losses)),
             history.losses,
             history.accuracy,
-            perplexity,
             history.epsilons,
             history.deltas,
             history.best,
         ),
-        columns=["epoch", VAL_LOSS, VAL_ACC, "perplexity", "epsilon", "delta", "best"],
+        columns=["epoch", VAL_LOSS, VAL_ACC, "epsilon", "delta", "best"],
     )
-
-    if not dp:
-        df.drop(["epsilon", "delta"], axis=1, inplace=True)
 
     # Grab that last idx in case we need to use it in lieu of finding
     # a better one
@@ -123,6 +118,15 @@ def _save_history_csv(
             best_idx = last_idx
 
     df.at[best_idx, "best"] = 1
+
+    if dp:
+        # Log differential privacy settings from best training checkpoint
+        epsilon = df.at[best_idx, 'epsilon']
+        delta = df.at[best_idx, 'delta']
+        logging.info(f"Model satisfies differential privacy with epsilon ε={epsilon:.2f} "
+                     f"and delta δ={delta:.6f}")
+    else:
+        df.drop(["epsilon", "delta"], axis=1, inplace=True)
 
     save_path = Path(save_dir) / "model_history.csv"
     logging.info(f"Saving model history to {save_path.name}")
