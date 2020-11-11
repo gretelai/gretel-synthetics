@@ -32,10 +32,10 @@ setup(
         'numpy>=1.18.0',
         'dataclasses==0.7;python_version<"3.7"',
         'loky==2.8.0',
-        'gast==0.3.3'
+        'gast==0.4'
     ],
     extras_require={
-        'tf': ['tensorflow==2.3.1']
+        'tf': ['tensorflow==2.4.0rc1']
     },
     classifiers=[
         "Programming Language :: Python :: 3",
