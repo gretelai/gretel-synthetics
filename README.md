@@ -32,7 +32,7 @@ If you want to quickly discover gretel-synthetics, simply click the button below
 
 [![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/gretelai/gretel-synthetics/blob/master/examples/synthetic_records.ipynb)
 
-For more examples, check out our [Blueprint](https://github.com/gretelai/gretel-blueprints) notebooks.
+Check out additional examples [here](https://github.com/gretelai/gretel-synthetics/tree/master/examples).
 
 # Getting Started
 
