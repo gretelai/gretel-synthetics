@@ -248,6 +248,7 @@ def _create_dataset(
     return total_token_count, dataset
 
 
+@tf.autograph.experimental.do_not_convert
 def _split_input_target(chunk: str) -> Tuple[str, str]:
     """
     For each sequence, duplicate and shift it to form the input and target text
