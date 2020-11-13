@@ -1,7 +1,7 @@
 import pytest
 from copy import deepcopy
 
-from unittest.mock import patch, Mock, MagicMock
+from unittest.mock import patch, Mock
 import pandas as pd
 
 from gretel_synthetics.tensorflow.train import (
@@ -11,7 +11,6 @@ from gretel_synthetics.tensorflow.train import (
     VAL_ACC,
 )
 from gretel_synthetics.train import train
-from gretel_synthetics.tensorflow.model import build_model
 
 
 @patch("gretel_synthetics.tensorflow.train.build_model")
