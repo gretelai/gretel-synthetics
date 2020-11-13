@@ -10,6 +10,7 @@ from typing import Callable, TYPE_CHECKING, Optional
 from pathlib import Path
 import json
 import logging
+import tensorflow as tf
 
 import gretel_synthetics.const as const
 from gretel_synthetics.tensorflow.train import train_rnn
@@ -173,16 +174,17 @@ class TensorFlowConfig(BaseConfig):
             the protections offered for sensitive data and content, at a small loss in model
             accuracy and synthetic data quality. The differential privacy epsilon and delta values
             will be printed when training completes. Default is ``False``.
-        dp_learning_rate (optional): The higher the learning rate, the more that each update during
-            training matters. If the updates are noisy (such as when the additive noise is large
+        learning_rate (optional): The higher the learning rate, the more that each update during
+            training matters. Note: When training with differential privacy enabled,
+            if the updates are noisy (such as when the additive noise is large
             compared to the clipping threshold), a low learning rate may help with training.
-            Default is ``0.015``.
+            Default is ``0.001``.
         dp_noise_multiplier (optional): The amount of noise sampled and added to gradients during
             training. Generally, more noise results in better privacy, at the expense of
-            model accuracy. Default is ``1.1``.
+            model accuracy. Default is ``0.1``.
         dp_l2_norm_clip (optional): The maximum Euclidean (L2) norm of each gradient is applied to
             update model parameters. This hyperparameter bounds the optimizer's sensitivity to
-            individual training points. Default is ``1.0``.
+            individual training points. Default is ``3.0``.
         dp_microbatches (optional): Each batch of data is split into smaller units called micro-batches.
             Computational overhead can be reduced by increasing the size of micro-batches to include
             more than one training example. The number of micro-batches should divide evenly into
@@ -196,6 +198,8 @@ class TensorFlowConfig(BaseConfig):
             by the model pass validation. Default is ``1000``.
         predict_batch_size (optional): How many words to generate in parallel. Higher values may result in increased
             throughput. The default of ``64`` should provide reasonable performance for most users.
+        reset_states (optional): Reset RNN model states between each record created guarantees more
+            consistent record creation over time, at the expense of model accuracy. Default is ``True``.
         save_all_checkpoints (optional). Set to ``True`` to save all model checkpoints as they are created,
             which can be useful for optimal model selection. Set to ``False`` to save only the latest
             checkpoint. Default is ``True``.
@@ -214,35 +218,38 @@ class TensorFlowConfig(BaseConfig):
     seq_length: int = 100
     embedding_dim: int = 256
     rnn_units: int = 256
+    learning_rate: float = 0.001
     dropout_rate: float = 0.2
     rnn_initializer: str = "glorot_uniform"
 
     # Diff privacy configs
     dp: bool = False
-    dp_learning_rate: float = 0.001
-    dp_noise_multiplier: float = 1.1
-    dp_l2_norm_clip: float = 1.0
-    dp_microbatches: int = 256
+    dp_noise_multiplier: float = 0.1
+    dp_l2_norm_clip: float = 3.0
+    dp_microbatches: int = 64
 
     # Generation settings
     gen_temp: float = 1.0
     gen_chars: int = 0
     gen_lines: int = 1000
     predict_batch_size: int = 64
+    reset_states: bool = True
 
     # Checkpoint storage
     save_all_checkpoints: bool = False
     save_best_model: bool = True
 
     def __post_init__(self):
-        # FIXME: Remove @ 0.15.X when new optimizers are available for DP
         if self.dp:
-            raise RuntimeError(
-                "DP mode is disabled in v0.14.X. Please remove or set this value to ``False`` to continue with out DP.  DP will be re-enabled in v0.15.X. Please see the README for more details"  # noqa
-            )
+            major, minor, micro = tf.__version__.split(".")
+            if int(minor) < 4 and int(major) >= 2:
+                raise RuntimeError(
+                    "Running in differential privacy mode requires TensorFlow 2.4.x or greater. "
+                    "Please see the README for details"
+                )
 
         if self.best_model_metric not in (const.VAL_LOSS, const.VAL_ACC):
-            raise AttributeError("Invalid value for bset_model_metric")
+            raise AttributeError("Invalid value for best_model_metric")
 
         super().__post_init__()
 

@@ -17,7 +17,8 @@ def tf_config():
         checkpoint_dir=target.as_posix(),
         input_data_path=input_data.as_posix(),
         field_delimiter=",",
-        predict_batch_size=1
+        predict_batch_size=1,
+        overwrite=True,
     )
     yield config
     shutil.rmtree(target)

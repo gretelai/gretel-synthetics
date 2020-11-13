@@ -11,9 +11,10 @@ from gretel_synthetics.tensorflow.train import (
     VAL_ACC,
 )
 from gretel_synthetics.train import train
+from gretel_synthetics.tensorflow.model import build_model
 
 
-@patch("gretel_synthetics.tensorflow.train.build_sequential_model")
+@patch("gretel_synthetics.tensorflow.train.build_model")
 @patch("gretel_synthetics.tensorflow.train._save_history_csv")
 def test_train_rnn(save_history, model, tf_config):
     mock_model = Mock()
@@ -27,7 +28,7 @@ def test_train_rnn(save_history, model, tf_config):
         store=tf_config,
     )
 
-    mock_model.fit.assert_called
+    mock_model.fit.assert_called()
 
 
 @pytest.fixture(scope="module")

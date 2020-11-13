@@ -3,8 +3,10 @@ Tensorflow - Keras Sequential RNN (GRU)
 """
 from typing import TYPE_CHECKING
 
-from tensorflow.keras.optimizers import RMSprop  # pylint: disable=import-error
 import tensorflow as tf
+
+from gretel_synthetics.tensorflow.default_model import build_default_model
+from gretel_synthetics.tensorflow.dp_model import build_dp_model
 
 if TYPE_CHECKING:
     from gretel_synthetics.config import BaseConfig
@@ -14,51 +16,25 @@ else:
     BaseTokenizer = None
 
 
-DEFAULT = "default"
-
-
-def build_sequential_model(
-    vocab_size: int,
-    batch_size: int,
-    store: BaseConfig
-) -> tf.keras.Sequential:
+def build_model(vocab_size: int, batch_size: int, store: BaseConfig) -> tf.keras.Sequential:
     """
-    Utilizing tf.keras.Sequential model (LSTM)
+    Utilizing tf.keras.Sequential model
     """
-    optimizer = RMSprop(learning_rate=0.01)
-    loss = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
+    model = None
 
-    model = tf.keras.Sequential(
-        [
-            tf.keras.layers.Embedding(
-                vocab_size, store.embedding_dim, batch_input_shape=[batch_size, None]
-            ),
-            tf.keras.layers.Dropout(store.dropout_rate),
-            tf.keras.layers.LSTM(
-                store.rnn_units,
-                return_sequences=True,
-                stateful=True,
-                recurrent_initializer=store.rnn_initializer,
-            ),
-            tf.keras.layers.Dropout(store.dropout_rate),
-            tf.keras.layers.LSTM(
-                store.rnn_units,
-                return_sequences=True,
-                stateful=True,
-                recurrent_initializer=store.rnn_initializer,
-            ),
-            tf.keras.layers.Dropout(store.dropout_rate),
-            tf.keras.layers.Dense(vocab_size),
-        ])
+    if store.dp:
+        model = build_dp_model(store, batch_size, vocab_size)
+    else:
+        model = build_default_model(store, batch_size, vocab_size)
 
-    model.compile(optimizer=optimizer, loss=loss, metrics=["accuracy"])
+    print(model.summary())
     return model
 
 
 def _prepare_model(
     tokenizer: BaseTokenizer, batch_size: int, store: BaseConfig
 ) -> tf.keras.Sequential:  # pragma: no cover
-    model = build_sequential_model(
+    model = build_model(
         vocab_size=tokenizer.total_vocab_size, batch_size=batch_size, store=store
     )
 

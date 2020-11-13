@@ -131,7 +131,7 @@ class BaseTokenizerTrainer(Base):
                     self.num_lines += 1
                     if self.config.max_lines and self.num_lines >= self.config.max_lines:
                         break
-              
+
                     # Tokenizer specific line processing
                     annotated_line = self._annotate_training_line(line)
                     fout.write(annotated_line)
@@ -260,7 +260,7 @@ class BaseTokenizer(Base):
 
         NOTE:
             We automatically call a method that can optionally
-            restore any special reserved tokens back to their 
+            restore any special reserved tokens back to their
             original values (such as field delimiter values, etc)
         """
         decoded_str = self._decode_from_ids(ids)
@@ -371,7 +371,7 @@ class SentencePieceTokenizerTrainer(BaseTokenizerTrainer):
 
     vocab_size: int
     """Pre-determined maximum vocabulary size prior to neural model training, based
-    on subword units including byte-pair-encoding (BPE) and unigram language model, 
+    on subword units including byte-pair-encoding (BPE) and unigram language model,
     with the extension of direct training from raw sentences.
     We generally recommend using a large vocabulary size of
     20,000 to 50,000. Default is ``20000``.
@@ -459,7 +459,7 @@ class SentencePieceTokenizerTrainer(BaseTokenizerTrainer):
             "pretrain_sentence_count": self.pretrain_sentence_count,
             "max_line_len": self.max_line_line
         }
-            
+
 
 def _log_sample_data(model_dir: str, sp: spm.SentencePieceProcessor):
     training_data_path = Path(model_dir) / const.TRAINING_DATA
@@ -538,7 +538,7 @@ TOK_MAP = {
 
 
 def tokenizer_from_model_dir(model_dir: str) -> BaseTokenizer:
-    """A factory function that will return a tokenizer instance that 
+    """A factory function that will return a tokenizer instance that
     can be used for encoding / decoding data.  It will try to automatically
     infer what type of class to use based on the stored tokenizer params
     in the provided model directory.
@@ -551,7 +551,7 @@ def tokenizer_from_model_dir(model_dir: str) -> BaseTokenizer:
         model_dir: A directory that holds synthetic model data.
     """
     params_file = Path(model_dir) / BaseTokenizerTrainer.settings_fname
-    
+
     # Backwards compat with <= 0.14.0
     if not params_file.is_file():
         tok_cls = SentencePieceTokenizer

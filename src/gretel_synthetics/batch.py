@@ -446,7 +446,7 @@ class DataFrameBatch:
             tmp.append(str(value))
 
         return batch.config.field_delimiter.join(tmp) + batch.config.field_delimiter
-        
+
     def generate_batch_lines(
         self,
         batch_idx: int,
@@ -482,7 +482,7 @@ class DataFrameBatch:
             batch = self.batches[batch_idx]
         except KeyError:  # pragma: no cover
             raise ValueError("invalid batch index")
-        
+
         seed_string = None
 
         # If we are on batch 0 and we have seed values, we want to validate that
