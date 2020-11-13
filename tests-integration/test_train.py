@@ -75,7 +75,7 @@ def test_train_batch_sp(train_df, tmp_path):
 
 def test_train_batch_char_tok(train_df, tmp_path):
     config = TensorFlowConfig(
-        epochs=5,
+        epochs=8,
         field_delimiter=",",
         checkpoint_dir=tmp_path,
         input_data_path=PATH_HOLDER
@@ -98,7 +98,7 @@ def test_train_batch_char_tok(train_df, tmp_path):
 
 def test_train_batch_sp_tok(train_df, tmp_path):
     config = TensorFlowConfig(
-        epochs=5,
+        epochs=8,
         field_delimiter=",",
         checkpoint_dir=tmp_path,
         input_data_path=PATH_HOLDER
