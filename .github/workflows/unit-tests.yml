@@ -1,4 +1,4 @@
-name: gretel-synthetics workflows
+name: Unit Tests
 
 on: [push]
 
@@ -23,3 +23,11 @@ jobs:
         flake8 --count --exit-zero --max-complexity=30 --max-line-length=120 --statistics src/
     - name: Test
       run: pytest -s -vv --cov src --cov-report term-missing tests/
+    - uses: 8398a7/action-slack@v2
+      with:
+        status: ${{ job.status }}
+        author_name: Unit Test
+        only_mention_fail: here
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      if: always()
