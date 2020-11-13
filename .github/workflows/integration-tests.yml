@@ -19,7 +19,7 @@ jobs:
         python-version: 3.6
     - name: Install
       run:
-        pip install -e .
+        pip install -e '.[tf]'
         pip install -r test-requirements.txt
     - name: Test
       run: pytest -s -vv --cov src --cov-report term-missing tests-integration/
