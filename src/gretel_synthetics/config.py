@@ -242,7 +242,7 @@ class TensorFlowConfig(BaseConfig):
     def __post_init__(self):
         if self.dp:
             major, minor, micro = tf.__version__.split(".")
-            if int(minor) < 4 and int(major) >= 2:
+            if (int(major), int(minor)) < (2, 4):
                 raise RuntimeError(
                     "Running in differential privacy mode requires TensorFlow 2.4.x or greater. "
                     "Please see the README for details"
