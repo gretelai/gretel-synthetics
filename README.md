@@ -78,3 +78,18 @@ There are four primary components to be aware of when using this library.
 
 4) Generation. Once a model is trained, any number of new lines or records can be generated. Optionally, a record validator can be provided to ensure that the generated data meets any constraints that are necessary.  See our notebooks for examples on validators.
 
+## Differential Privacy
+
+Differential privacy support for our TensorFlow mode is built on the great work being done by the Google TF team and their [TensorFlow Privacy library](https://github.com/tensorflow/privacy).
+
+When utilizing DP, we currently recommend using the character tokenizer as it will only create a vocabulary of single tokens and removes the risk of sensitive data being memorized as actual tokens that can be replayed during generation.
+
+There are also a few configuration options that are notable such as:
+
+- `predict_batch_size` should be set to 1
+- `dp` should be enabled
+- `learning_rate`, `dp_noise_multiplier`, `dp_l2_norm_clip`, and `dp_microbatches` can be adjusted to achieve various epsilon values.
+- `reset_states` should be disabled
+
+Please see our [example Notebook](https://github.com/gretelai/gretel-synthetics/blob/master/examples/tensorflow/diff_privacy.ipynb) for training a DP model based on the [Netflix Prize](https://en.wikipedia.org/wiki/Netflix_Prize) dataset.
+
