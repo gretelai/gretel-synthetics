@@ -75,10 +75,11 @@ def test_train_batch_sp(train_df, tmp_path):
 
 def test_train_batch_char_tok(train_df, tmp_path):
     config = TensorFlowConfig(
-        epochs=8,
+        epochs=5,
         field_delimiter=",",
         checkpoint_dir=tmp_path,
-        input_data_path=PATH_HOLDER
+        input_data_path=PATH_HOLDER,
+        learning_rate=.01
     )
     batcher = DataFrameBatch(
         df=train_df,
@@ -98,10 +99,11 @@ def test_train_batch_char_tok(train_df, tmp_path):
 
 def test_train_batch_sp_tok(train_df, tmp_path):
     config = TensorFlowConfig(
-        epochs=8,
+        epochs=5,
         field_delimiter=",",
         checkpoint_dir=tmp_path,
-        input_data_path=PATH_HOLDER
+        input_data_path=PATH_HOLDER,
+        learning_rate=.01
     )
     tokenizer = SentencePieceTokenizerTrainer(
         vocab_size=10000,
