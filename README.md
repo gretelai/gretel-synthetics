@@ -18,15 +18,6 @@
 * [Train your model](https://gretel-synthetics.readthedocs.io/en/stable/api/train.html)
 * [Generate synthetic recoreds](https://gretel-synthetics.readthedocs.io/en/stable/api/generate.html)
 
-## Overview
-
-This package allows developers to quickly get immersed with synthetic data generation through the use of neural networks. The more complex pieces of working with libraries like Tensorflow and differential privacy are bundled into friendly Python classes and functions.
-
-
-**NOTE**: The settings in our Jupyter Notebook examples are optimized to run on a GPU, which you can experiment with
-for free in Google Colaboratory. If you're running on a CPU, you might want to grab a cup of coffee, 
-or lower `max_lines` and `epochs` to 5000 and 10, respectively. This code is developed for TensorFlow 2.3.X and above.
-
 
 ## Try it out now!
 If you want to quickly discover gretel-synthetics, simply click the button below and follow the tutorials!
@@ -61,4 +52,29 @@ $ jupyter notebook
 ```
 
 When the UI launches in your browser, navigate to `examples/synthetic_records.ipynb` and get generating!
+
+
+## Overview
+
+This package allows developers to quickly get immersed with synthetic data generation through the use of neural networks. The more complex pieces of working with libraries like Tensorflow and differential privacy are bundled into friendly Python classes and functions.  There are two high level modes that can be utilized.  
+
+### Simple Mode
+
+The simple mode will train line-per-line on an input file of text.  When generating data, the generator will yield a custom object that can be used a variety of different ways based on your use case.  [This notebook](https://github.com/gretelai/gretel-synthetics/blob/master/examples/tensorflow/simple-character-model.ipynb) demonstrates this mode.
+
+### DataFrame Mode
+
+This library supports CSV / DataFrames natively using the DataFrame "batch" mode. This module provided a wrapper around our simple mode that is geared for working with tabular data.  Additionally, it is capabable of handling a high number of columns by breaking the input DataFrame up into "batches" of columns and training a model on each batch.  [This notebook](https://github.com/gretelai/gretel-synthetics/blob/master/examples/dataframe_batch.ipynb) shows an overview of using this library with DataFrames natively.
+
+### Components
+
+There are four primary components to be aware of when using this library.
+
+1) Configurations. Configurations are classes that are specific to an underlying ML engine used to train and generate data.  An example would be using `TensorFlowConfig` to create all the necessary paramters to train a model based on TF. `LocalConfig` is aliased to `TensorFlowConfig` for backwards compatability with older versions of the library.  A model is saved to a designated directory, which can optionally be archived and utilized later.
+
+2) Tokenizers. Tokenizers convert input text into integer based IDs that are used by the underlying ML engine. These tokenizers can be created and sent to the training input. This is optional, and if no specific tokenizer is specified then a default one will be used. You can find [an example](https://github.com/gretelai/gretel-synthetics/blob/master/examples/tensorflow/batch-df-char-tokenizer.ipynb) here that uses a simple char-by-char tokenizer to build a model from an input CSV. This example uses our DataFrame module for working with CSVs/DFs that have a large number of columns.
+
+3) Training.  Training a model combines the configuration and tokenizer and builds a model, which is stored in the designated directory, that can be used to generate new records.
+
+4) Generation. Once a model is trained, any number of new lines or records can be generated. Optionally, a record validator can be provided to ensure that the generated data meets any constraints that are necessary.  See our notebooks for examples on validators.
 
