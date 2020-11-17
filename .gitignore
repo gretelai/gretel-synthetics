@@ -137,3 +137,5 @@ checkpoints
 examples/checkpoints.zip
 
 docs/_build
+examples/tokenizer_demo/
+dp-checkpoints

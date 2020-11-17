@@ -45,11 +45,11 @@ def train(store: BaseConfig, tokenizer_trainer: Optional[BaseTokenizerTrainer] =
 
     Args:
         store: A subclass instance of ``BaseConfig.`` This config is reponsible for
-        providing the actual training entrypoint for a specific training routine.
+            providing the actual training entrypoint for a specific training routine.
 
         tokenizer_trainer: An optional subclass instance of a ``BaseTokenizerTrainer``.  If provided
-        this tokenizer will be used to pre-process and create an annotated dataset for training.
-        If not provided a default tokenizer will be used.
+            this tokenizer will be used to pre-process and create an annotated dataset for training.
+            If not provided a default tokenizer will be used.
     """
     if tokenizer_trainer is None:
         tokenizer_trainer = _create_default_tokenizer(store)

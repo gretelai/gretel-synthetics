@@ -75,10 +75,11 @@ def test_train_batch_sp(train_df, tmp_path):
 
 def test_train_batch_char_tok(train_df, tmp_path):
     config = TensorFlowConfig(
-        epochs=8,
+        epochs=5,
         field_delimiter=",",
         checkpoint_dir=tmp_path,
-        input_data_path=PATH_HOLDER
+        input_data_path=PATH_HOLDER,
+        learning_rate=.01
     )
     batcher = DataFrameBatch(
         df=train_df,
@@ -91,17 +92,18 @@ def test_train_batch_char_tok(train_df, tmp_path):
     tok_params = json.loads(open(tmp_path / "batch_0" / BaseTokenizerTrainer.settings_fname).read())
     assert tok_params["tokenizer_type"] == CharTokenizerTrainer.__name__
 
-    batcher.generate_all_batch_lines(num_lines=100, parallelism=1, max_invalid=5000)
+    batcher.generate_all_batch_lines(num_lines=100, max_invalid=5000)
     syn_df = batcher.batches_to_df()
     assert syn_df.shape[0] == 100
 
 
 def test_train_batch_sp_tok(train_df, tmp_path):
     config = TensorFlowConfig(
-        epochs=8,
+        epochs=5,
         field_delimiter=",",
         checkpoint_dir=tmp_path,
-        input_data_path=PATH_HOLDER
+        input_data_path=PATH_HOLDER,
+        learning_rate=.01
     )
     tokenizer = SentencePieceTokenizerTrainer(
         vocab_size=10000,
@@ -115,6 +117,6 @@ def test_train_batch_sp_tok(train_df, tmp_path):
     batcher.create_training_data()
     batcher.train_all_batches()
 
-    batcher.generate_all_batch_lines(num_lines=100, parallelism=1, max_invalid=5000)
+    batcher.generate_all_batch_lines(num_lines=100, max_invalid=5000)
     syn_df = batcher.batches_to_df()
     assert syn_df.shape[0] == 100
