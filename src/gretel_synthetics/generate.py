@@ -4,7 +4,7 @@ creating text.
 """
 from collections import namedtuple
 from dataclasses import dataclass, asdict
-from typing import TYPE_CHECKING, Optional, Callable, List, Iterable, Iterator
+from typing import TYPE_CHECKING, Optional, Callable, List, Iterable, Union, Iterator
 from abc import ABC, abstractmethod
 
 from gretel_synthetics.generate_parallel import get_num_workers, generate_parallel
@@ -94,26 +94,36 @@ class Settings:
     """
 
     config: BaseConfig
-    start_string: Optional[str] = None
+    start_string: Optional[Union[str, List[str]]] = None
+    multi_seed: bool = False
     line_validator: Optional[Callable] = None
     max_invalid: int = 1000
     generator: BaseGenerator = None
     tokenizer: BaseTokenizer = None
 
     def __post_init__(self):
-        if self.start_string is not None:
-            self._process_start_string()
-        else:
+        if self.start_string is None:
             self.start_string = self.tokenizer.newline_str
+        else:
+            if isinstance(self.start_string, str):
+                self.start_string = self._process_start_string(self.start_string)
+            elif isinstance(self.start_string, list):
+                new_strings = []
+                for s in self.start_string:
+                    new_strings.append(self._process_start_string(s))
+                self.start_string = new_strings
+                self.multi_seed = True
+            else:
+                raise GenerationError("start_string must be a string or list of strings")
 
-    def _process_start_string(self):
-        if not isinstance(self.start_string, str):
+    def _process_start_string(self, start_str: str) -> str:
+        if not isinstance(start_str, str):
             raise GenerationError("Seed start_string must be a str!")
         if self.config.field_delimiter is not None:
             # the start_string must end with the delim
-            if not self.start_string.endswith(self.config.field_delimiter):
-                raise GenerationError(f"start_string must end with the specified field delimiter: {self.config.field_delimiter}")  # noqa
-            self.start_string = self.start_string.replace(
+            if not start_str.endswith(self.config.field_delimiter):
+                raise GenerationError(f"start_str must end with the specified field delimiter: {self.config.field_delimiter}")  # noqa
+            return start_str.replace(
                 self.config.field_delimiter,
                 self.config.field_delimiter_token
             )
@@ -121,7 +131,7 @@ class Settings:
 
 def generate_text(
     config: BaseConfig,
-    start_string: Optional[str] = None,
+    start_string: Optional[Union[str, List[str]]] = None,
     line_validator: Optional[Callable] = None,
     max_invalid: int = 1000,
     num_lines: Optional[int] = None,
@@ -202,7 +212,15 @@ def generate_text(
     else:
         _line_count = config.gen_lines
 
+    # If we are given a list of start strings, we assume that we
+    # want to generate a line for each start string, so set the
+    # line count to this number
+    if settings.multi_seed:
+        _line_count = len(start_string)
+
     num_workers = get_num_workers(parallelism, _line_count, chunk_size=5)
+    if num_workers > 1 and settings.multi_seed:
+        raise RuntimeError("When providing a list of start strings, parallelism cannot be used")
     if num_workers == 1:
         gen = generator_class(settings)
         yield from gen.generate_next(_line_count)

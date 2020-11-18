@@ -36,6 +36,15 @@ def test_delim_multi_field(tf_config):
     assert check.start_string == "foo<d>bar<d>baz<d>"
 
 
+def test_delim_multi_field_multi_starts(tf_config):
+    check = Settings(
+        config=tf_config,
+        start_string=["one,two,three,", "four,five,six,", "seven,eight,nine,"],
+        tokenizer=mock_tokenizer
+    )
+    assert check.start_string == ['one<d>two<d>three<d>', 'four<d>five<d>six<d>', 'seven<d>eight<d>nine<d>']
+
+
 def test_delim_single_field(tf_config):
     check = Settings(config=tf_config, start_string="onlyonefield,", tokenizer=mock_tokenizer)
     assert check.start_string == "onlyonefield<d>"

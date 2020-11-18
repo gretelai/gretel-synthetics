@@ -430,22 +430,38 @@ class DataFrameBatch:
         except KeyError:
             raise ValueError("invalid batch number!")
 
-    def _validate_batch_seed_values(self, batch: Batch, seed_values: dict) -> str:
+    def _validate_batch_seed_values(self, batch: Batch, seed_values: Union[dict, List[dict]]) -> Union[str, List[str]]:
         """Validate that seed values line up with the first N columns in a batch. Also construct
         an appropiate seed string based on the values in the batch
         """
-        if len(seed_values) > len(batch.headers):
-            raise RuntimeError("The number of seed fields is greater than the number of columns in the first batch")
+        ret_str = True
+        if isinstance(seed_values, dict):
+            seed_values = [seed_values]
+        elif isinstance(seed_values, list):
+            ret_str = False
+        else:
+            raise TypeError("seed_values should be a dict or list of dicts")
 
-        headers_to_seed = batch.headers[:len(seed_values)]
-        tmp = []
-        for header in headers_to_seed:
-            value = seed_values.get(header)
-            if value is None:
-                raise RuntimeError(f"The header: {header} is not in the seed values mapping")  # noqa
-            tmp.append(str(value))
+        seed_strings = []
+        
+        for seed in seed_values:
+            if len(seed) > len(batch.headers):
+                raise RuntimeError("The number of seed fields is greater than the number of columns in the first batch")
 
-        return batch.config.field_delimiter.join(tmp) + batch.config.field_delimiter
+            headers_to_seed = batch.headers[:len(seed)]
+            tmp = []
+            for header in headers_to_seed:
+                value = seed.get(header)
+                if value is None:
+                    raise RuntimeError(f"The header: {header} is not in the seed values mapping")  # noqa
+                tmp.append(str(value))
+
+            seed_strings.append(batch.config.field_delimiter.join(tmp) + batch.config.field_delimiter)
+
+        if ret_str:
+            return seed_strings[0]
+        else:
+            return seed_strings
 
     def generate_batch_lines(
         self,
@@ -453,7 +469,7 @@ class DataFrameBatch:
         max_invalid=MAX_INVALID,
         raise_on_exceed_invalid: bool = False,
         num_lines: int = None,
-        seed_fields: dict = None,
+        seed_fields: Union[dict, List[dict]] = None,
         parallelism: int = 0,
     ) -> bool:
         """Generate lines for a single batch. Lines generated are added

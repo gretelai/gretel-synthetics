@@ -94,7 +94,7 @@ class DataFileGenerator:
     ) -> str:
         batch_mode = is_model_dir_batch_mode(model_dir)
         if batch_mode:
-            if seed is not None and not isinstance(seed, dict):
+            if seed is not None and not isinstance(seed, (dict, list)):
                 raise TypeError("Seed must be a dict in batch mode")
             out_fname = f"{file_name}.csv"
             batcher = DataFrameBatch(mode="read", checkpoint_dir=str(model_dir))

@@ -92,3 +92,20 @@ def test_generate_batch_smart_seed(model_path, seed, tmp_path):
         row = dict(row)
         for k, v in seed.items():
             assert row[k] == v
+
+
+@pytest.mark.parametrize(
+    "model_path,seed", [
+        ("https://gretel-public-website.s3-us-west-2.amazonaws.com/tests/synthetics/models/safecast-batch-sp-0-14.tar.gz",
+            [{"payload.service_handler": "i-051a2a353509414f0"},
+             {"payload.service_handler": "i-051a2a353509414f1"},
+             {"payload.service_handler": "i-051a2a353509414f2"},
+             {"payload.service_handler": "i-051a2a353509414f3"}])  # noqa
+    ]
+)
+def test_generate_batch_smart_seed_multi(model_path, seed, tmp_path):
+    gen = DataFileGenerator(model_path)
+    out_file = str(tmp_path / "outdata")
+    fname = gen.generate(100, out_file, seed=seed)
+    df = pd.read_csv(fname)
+    assert list(df["payload.service_handler"]) == list(pd.DataFrame(seed)["payload.service_handler"])
