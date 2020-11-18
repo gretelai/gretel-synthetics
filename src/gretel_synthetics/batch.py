@@ -543,7 +543,7 @@ class DataFrameBatch:
         max_invalid=MAX_INVALID,
         raise_on_failed_batch: bool = False,
         num_lines: int = None,
-        seed_fields: dict = None,
+        seed_fields: Union[dict, List[dict]] = None,
         parallelism: int = 0,
     ) -> dict:
         """Generate synthetic lines for all batches. Lines for each batch
