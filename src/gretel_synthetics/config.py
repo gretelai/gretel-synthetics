@@ -290,12 +290,12 @@ def config_from_model_dir(model_dir: str) -> BaseConfig:
     # location of the model dir does not match the one that was
     # used for training originally
     params_dict["checkpoint_dir"] = model_dir
-    old_dp_learning_rate = params_dict.pop("dp_learning_rate", .01)
+    old_dp_learning_rate = params_dict.pop("dp_learning_rate", .001)
 
     # backwards compat with <= 0.14.0
     if model_type is None:
         config = TensorFlowConfig(**params_dict)
-        config.learning_rate = old_dp_learning_rate
+        config.learning_rate = old_dp_learning_rate if config.dp else .01
         return config
     cls = CONFIG_MAP[model_type]
     return cls(**params_dict)
