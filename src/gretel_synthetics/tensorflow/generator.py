@@ -6,6 +6,7 @@ from typing import (
     Iterable,
     Optional,
     Tuple,
+    Union
 )
 
 import tensorflow as tf
@@ -48,6 +49,9 @@ class TensorFlowGenerator(BaseGenerator):
 
     def __init__(self, settings: Settings):
         self.settings = settings
+        if self.settings.multi_seed:
+            self.settings.config.predict_batch_size = 1
+            self.settings.reset_states = True
         self.model = load_model(settings.config, self.settings.tokenizer)
         self.delim = settings.config.field_delimiter
         self._predictions = self._predict_forever()
@@ -99,10 +103,10 @@ class TensorFlowGenerator(BaseGenerator):
                     text=rec, valid=False, explain=str(err), delimiter=self.delim
                 )
             else:
-                if self.settings.line_validator and _valid:
+                if (self.settings.line_validator and _valid) or not self.settings.line_validator:
                     valid_lines_generated += 1
-                elif not self.settings.line_validator:
-                    valid_lines_generated += 1
+                    if self.settings.multi_seed:
+                        self.settings.start_string.pop(0)
                 else:
                     ...
 
@@ -153,7 +157,7 @@ def _replace_prefix(
 def _predict_chars(
     model: tf.keras.Sequential,
     tokenizer: BaseTokenizer,
-    start_string: str,
+    start_string: Union[str, List[str]],
     store: TensorFlowConfig,
     predict_and_sample: Optional[Callable] = None,
 ) -> GeneratorType[PredString, None, None]:
@@ -171,7 +175,12 @@ def _predict_chars(
     """
 
     # Converting our start string to numbers (vectorizing)
-    start_vec = tokenizer.encode_to_ids(start_string)
+    if isinstance(start_string, str):
+        start_string = [start_string]
+
+    _start_string = start_string[0]
+
+    start_vec = tokenizer.encode_to_ids(_start_string)
     input_eval = tf.constant([start_vec for _ in range(store.predict_batch_size)])
 
     if predict_and_sample is None:
@@ -189,16 +198,14 @@ def _predict_chars(
         # expense of model accuracy
         model.reset_states()
 
-    # if the start string is not the default newline, then we create a prefix string
-    # that we will append to each decoded prediction
     prediction_prefix = None
-    if start_string != tokenizer.newline_str:
+    if _start_string != tokenizer.newline_str:
         if store.field_delimiter is not None:
-            prediction_prefix = start_string.replace(
+            prediction_prefix = _start_string.replace(
                 store.field_delimiter_token, store.field_delimiter
             )
         else:
-            prediction_prefix = start_string
+            prediction_prefix = _start_string
 
     while not_done:
         input_eval = predict_and_sample(input_eval)
@@ -209,7 +216,6 @@ def _predict_chars(
             (i, tokenizer.decode_from_ids(batch_sentence_ids[i])) for i in not_done
         ]
         batch_decoded = _replace_prefix(batch_decoded, prediction_prefix)
-
         for i, decoded in batch_decoded:
             end_idx = decoded.find(tokenizer.newline_str)
             if end_idx >= 0:
