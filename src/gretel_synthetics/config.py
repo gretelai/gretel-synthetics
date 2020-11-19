@@ -178,7 +178,7 @@ class TensorFlowConfig(BaseConfig):
             training matters. Note: When training with differential privacy enabled,
             if the updates are noisy (such as when the additive noise is large
             compared to the clipping threshold), a low learning rate may help with training.
-            Default is ``0.001``.
+            Default is ``0.01``.
         dp_noise_multiplier (optional): The amount of noise sampled and added to gradients during
             training. Generally, more noise results in better privacy, at the expense of
             model accuracy. Default is ``0.1``.
@@ -218,7 +218,7 @@ class TensorFlowConfig(BaseConfig):
     seq_length: int = 100
     embedding_dim: int = 256
     rnn_units: int = 256
-    learning_rate: float = 0.001
+    learning_rate: float = 0.01
     dropout_rate: float = 0.2
     rnn_initializer: str = "glorot_uniform"
 
@@ -241,7 +241,7 @@ class TensorFlowConfig(BaseConfig):
 
     def __post_init__(self):
         if self.dp:
-            major, minor, micro = tf.__version__.split(".")
+            major, minor, _ = tf.__version__.split(".")
             if (int(major), int(minor)) < (2, 4):
                 raise RuntimeError(
                     "Running in differential privacy mode requires TensorFlow 2.4.x or greater. "

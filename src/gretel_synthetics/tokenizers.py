@@ -278,6 +278,12 @@ class BaseTokenizer(Base):
         """
         return decoded_line
 
+    def tokenize_delimiter(self, line: str) -> str:
+        return line
+
+    def detokenize_delimiter(self, line: str) -> str:
+        return line
+
 
 ##################
 # Single Char
@@ -525,6 +531,12 @@ class SentencePieceTokenizer(BaseTokenizer):
                 self.field_delimiter
             )
         return decoded_line
+
+    def tokenize_delimiter(self, line: str) -> str:
+        return line.replace(self.field_delimiter, self.field_delimiter_token)
+
+    def detokenize_delimiter(self, line: str) -> str:
+        return line.replace(self.field_delimiter_token, self.field_delimiter)
 
 
 ##########
