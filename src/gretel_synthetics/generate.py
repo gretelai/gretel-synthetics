@@ -123,10 +123,7 @@ class Settings:
             # the start_string must end with the delim
             if not start_str.endswith(self.config.field_delimiter):
                 raise GenerationError(f"start_str must end with the specified field delimiter: {self.config.field_delimiter}")  # noqa
-            return start_str.replace(
-                self.config.field_delimiter,
-                self.config.field_delimiter_token
-            )
+            return self.tokenizer.tokenize_delimiter(start_str)
 
 
 def generate_text(

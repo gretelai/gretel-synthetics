@@ -201,9 +201,7 @@ def _predict_chars(
     prediction_prefix = None
     if _start_string != tokenizer.newline_str:
         if store.field_delimiter is not None:
-            prediction_prefix = _start_string.replace(
-                store.field_delimiter_token, store.field_delimiter
-            )
+            prediction_prefix = tokenizer.detokenize_delimiter(_start_string)
         else:
             prediction_prefix = _start_string
 

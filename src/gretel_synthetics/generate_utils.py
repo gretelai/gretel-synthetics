@@ -75,6 +75,7 @@ class DataFileGenerator:
         *,
         seed: Optional[Union[str, dict]] = None,
         validator: Optional[Callable] = None,
+        parallelism: int = 1
     ):
         if self.model_path.is_dir():
             return self._generate(self.model_path, count, file_name, seed, validator)
@@ -87,10 +88,10 @@ class DataFileGenerator:
                             logging.info("Extracting archive to temp dir...")
                             tar_in.extractall(tmpdir)
 
-                return self._generate(Path(tmpdir), count, file_name, seed, validator)
+                return self._generate(Path(tmpdir), count, file_name, seed, validator, parallelism)
 
     def _generate(
-        self, model_dir: Path, count: int, file_name: str, seed, validator
+        self, model_dir: Path, count: int, file_name: str, seed, validator, parallelism
     ) -> str:
         batch_mode = is_model_dir_batch_mode(model_dir)
         if batch_mode:
@@ -101,7 +102,7 @@ class DataFileGenerator:
             batcher.generate_all_batch_lines(
                 num_lines=count,
                 max_invalid=max(count, MAX_INVALID),
-                parallelism=1,
+                parallelism=parallelism,
                 seed_fields=seed
             )
             out_df = batcher.batches_to_df()
@@ -120,7 +121,7 @@ class DataFileGenerator:
                 num_lines=count,
                 line_validator=validator,
                 max_invalid=max(count, MAX_INVALID),
-                parallelism=1,
+                parallelism=parallelism,
                 start_string=seed
             ):
                 if data.valid or data.valid is None:

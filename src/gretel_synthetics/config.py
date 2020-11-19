@@ -218,7 +218,7 @@ class TensorFlowConfig(BaseConfig):
     seq_length: int = 100
     embedding_dim: int = 256
     rnn_units: int = 256
-    learning_rate: float = 0.001
+    learning_rate: float = 0.01  # NOTE: this will be adjusted automatically based on DP settings
     dropout_rate: float = 0.2
     rnn_initializer: str = "glorot_uniform"
 
@@ -247,6 +247,7 @@ class TensorFlowConfig(BaseConfig):
                     "Running in differential privacy mode requires TensorFlow 2.4.x or greater. "
                     "Please see the README for details"
                 )
+            self.learning_rate = 0.001
 
         if self.best_model_metric not in (const.VAL_LOSS, const.VAL_ACC):
             raise AttributeError("Invalid value for best_model_metric")

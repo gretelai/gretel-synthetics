@@ -511,6 +511,10 @@ class DataFrameBatch:
         validator = batch.get_validator()
         if num_lines is None:
             num_lines = batch.config.gen_lines
+
+        if isinstance(seed_fields, list):
+            num_lines = len(seed_fields)
+
         t = tqdm(total=num_lines, desc="Valid record count ")
         t2 = tqdm(total=max_invalid, desc="Invalid record count ")
         line: GenText

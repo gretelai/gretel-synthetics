@@ -43,7 +43,7 @@ def test_local_config_settings(mkdir):
         "character_coverage": 1.0,
         "pretrain_sentence_count": 1000000,
         "dp": False,
-        "learning_rate": 0.001,
+        "learning_rate": 0.01,
         "dp_noise_multiplier": 0.1,
         "dp_l2_norm_clip": 3.0,
         "dp_microbatches": 64,
