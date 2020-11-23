@@ -18,7 +18,7 @@ setup(
     setup_requires=["setuptools_scm"],
     description='Synthetic Data Generation with optional Differential Privacy',
     url='https://github.com/gretelai/gretel-synthetics',
-    license='Apache-2.0',
+    license='http://www.apache.org/licenses/LICENSE-2.0',
     long_description=long_description,
     long_description_content_type='text/markdown',
     package_dir={'': 'src'},
