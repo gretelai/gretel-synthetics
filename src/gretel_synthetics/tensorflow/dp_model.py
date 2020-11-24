@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 else:
     TensorFlowConfig = None
 
-recurrent_v2 = importlib.import_module("import tensorflow.python.keras.layers.recurrent_v2")
+recurrent_v2 = importlib.import_module("tensorflow.python.keras.layers.recurrent_v2")
 # NOTE: This patches the LSTMs to use the new Keras 2.4.x code paths
 # and will have no effect when the module function is removed
 use_new_code = getattr(recurrent_v2, "_use_new_code", None)
