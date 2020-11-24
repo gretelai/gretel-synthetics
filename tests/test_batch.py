@@ -4,11 +4,12 @@ from unittest.mock import patch, Mock
 import random
 from copy import deepcopy
 from dataclasses import asdict
+import json
 
 import pytest
 import pandas as pd
 
-from gretel_synthetics.batch import DataFrameBatch, MAX_INVALID, READ
+from gretel_synthetics.batch import DataFrameBatch, MAX_INVALID, READ, ORIG_HEADERS
 from gretel_synthetics.generate import GenText
 from gretel_synthetics.errors import TooManyInvalidError
 
@@ -34,7 +35,7 @@ config_template = {
     "dp_l2_norm_clip": 1.0,
     "dp_microbatches": 256,
     "field_delimiter": "|",
-    "overwrite": False,
+    "overwrite": True,
     "checkpoint_dir": checkpoint_dir,
 }
 
@@ -110,6 +111,9 @@ def test_init(test_data):
     for i, batch in batches.batches.items():
         assert Path(batch.checkpoint_dir).is_dir()
         assert Path(batch.checkpoint_dir).name == f"batch_{i}"
+
+    orig_headers = json.loads(open(Path(config_template["checkpoint_dir"]) / ORIG_HEADERS).read())
+    assert orig_headers == list(set(test_data.columns))
 
     batches.create_training_data()
     df = pd.read_csv(batches.batches[0].input_data_path, sep=config_template["field_delimiter"])
