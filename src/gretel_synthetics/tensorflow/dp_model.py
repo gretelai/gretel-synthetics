@@ -1,14 +1,22 @@
 from typing import Tuple, TYPE_CHECKING
 import logging
+
 import tensorflow as tf
 from tensorflow.keras.optimizers import RMSprop
 from tensorflow_privacy.privacy.analysis import compute_dp_sgd_privacy
 from tensorflow_privacy.privacy.optimizers.dp_optimizer_keras import make_keras_optimizer_class
+import tensorflow.python.keras.layers.recurrent_v2 as recurrent_v2  # pylint: disable=no-name-in-module
 
 if TYPE_CHECKING:
     from gretel_synthetics.config import TensorFlowConfig
 else:
     TensorFlowConfig = None
+
+# NOTE: This patches the LSTMs to use the new Keras 2.4.x code paths
+# and will have no effect when the module function is removed
+use_new_code = getattr(recurrent_v2, "_use_new_code", None)
+if use_new_code is not None:
+    recurrent_v2._use_new_code = lambda: True  # pylint: disable=protected-access
 
 
 def loss(labels, logits):

@@ -12,6 +12,7 @@ import json
 import logging
 import tensorflow as tf
 
+
 import gretel_synthetics.const as const
 from gretel_synthetics.tensorflow.train import train_rnn
 from gretel_synthetics.tensorflow.generator import TensorFlowGenerator
