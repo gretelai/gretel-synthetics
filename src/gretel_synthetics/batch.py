@@ -17,6 +17,7 @@ import logging
 import io
 import json
 import glob
+import shutil
 
 import pandas as pd
 import numpy as np
@@ -290,7 +291,7 @@ class DataFrameBatch:
     guaranteed to preserve the original header order.
     """
 
-    original_headers: FrozenSet[str]
+    original_headers: List[str]
     """Stores the original header list / order from the original training data that was used.
     This is written out to the model directory during training and loaded back in when
     using read-only mode.
@@ -343,6 +344,9 @@ class DataFrameBatch:
             overwrite = config.get("overwrite", False)
             if not overwrite and checkpoint_path.is_dir() and any(checkpoint_path.iterdir()):
                 raise RuntimeError("checkpoint_dir already exists and is non-empty, set overwrite on config or remove model directory!")  # noqa
+            
+            if overwrite and checkpoint_path.is_dir():
+                shutil.rmtree(checkpoint_path)
 
             if not isinstance(df, pd.DataFrame):
                 raise ValueError("df must be a DataFrame in write mode")
@@ -369,7 +373,7 @@ class DataFrameBatch:
             )
 
             # Preserve the original order of the DF headers
-            self.original_headers = frozenset(list(self._source_df))
+            self.original_headers = list(self._source_df)
             with open(Path(self.config[CHECKPOINT_DIR]) / ORIG_HEADERS, "w") as fout:
                 fout.write(json.dumps(list(self.original_headers)))
         else:
@@ -379,9 +383,9 @@ class DataFrameBatch:
                 self.master_header_list.extend(batch.headers)
 
             try:
-                self.original_headers = frozenset(json.loads(
+                self.original_headers = json.loads(
                     open(Path(self._read_checkpoint_dir) / ORIG_HEADERS).read()
-                ))
+                )
             except FileNotFoundError:
                 self.original_headers = None
 

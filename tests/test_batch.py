@@ -113,7 +113,7 @@ def test_init(test_data):
         assert Path(batch.checkpoint_dir).name == f"batch_{i}"
 
     orig_headers = json.loads(open(Path(config_template["checkpoint_dir"]) / ORIG_HEADERS).read())
-    assert orig_headers == list(set(test_data.columns))
+    assert list(set(orig_headers)) == list(set(test_data.columns))
 
     batches.create_training_data()
     df = pd.read_csv(batches.batches[0].input_data_path, sep=config_template["field_delimiter"])
@@ -188,8 +188,9 @@ def test_init(test_data):
 
 
 def test_batches_to_df(test_data):
-    batches = DataFrameBatch(df=pd.DataFrame([
-        {"foo": "bar", "foo1": "bar1", "foo2": "bar2", "foo3": 3}]), config=config_template, batch_size=2)
+    _df = pd.DataFrame([
+        {"foo": "bar", "foo1": "bar1", "foo2": "bar2", "foo3": 3}])
+    batches = DataFrameBatch(df=_df, config=config_template, batch_size=2)
 
     batches.batches[0].add_valid_data(
         GenText(text="baz|baz1", valid=True, delimiter="|")
@@ -262,7 +263,8 @@ def test_generate_all_batch_lines_raise_on_failed(test_data):
     }
 
 
-def test_read_mode(test_data):
+@patch("gretel_synthetics.batch.DataFrameBatch.generate_all_batch_lines")
+def test_read_mode(mock_gen, test_data):
     writer = DataFrameBatch(df=test_data, config=config_template)
     writer.create_training_data()
 
