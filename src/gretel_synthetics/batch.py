@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 import gzip
 from math import ceil
-from typing import List, Type, Callable, Dict, Union, FrozenSet
+from typing import List, Type, Callable, Dict, Union
 from copy import deepcopy
 import logging
 import io
@@ -390,7 +390,10 @@ class DataFrameBatch:
                 self.original_headers = None
 
             logger.info("Validating underlying models exist via generation test...")
-            self.generate_all_batch_lines(parallelism=1, num_lines=1)
+            try:
+                self.generate_all_batch_lines(parallelism=1, num_lines=1)
+            except Exception as err:
+                raise RuntimeError("Error testing generation during model load") from err
 
     def _create_header_batches(self):
         num_batches = ceil(len(self._source_df.columns) / self.batch_size)
