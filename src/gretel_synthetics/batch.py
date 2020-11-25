@@ -532,6 +532,11 @@ class DataFrameBatch:
             seed_fields: A dictionary that maps field/column names to initial seed values for those columns. This seed
                 will only apply to the first batch that gets trained and generated. Additionally, the fields provided
                 in the mapping MUST exist at the front of the first batch.
+
+                NOTE:
+                    This param may also be a list of dicts. If this is the case, then ``num_lines`` will automatically
+                    be set to the list length downstream, and a 1:1 ratio will be used for generating valid lines for
+                    each prefix.
             parallelism: The number of concurrent workers to use. ``1`` (the default) disables parallelization,
                 while a non-positive value means "number of CPUs + x" (i.e., use ``0`` for using as many workers
                 as there are CPUs). A floating-point value is interpreted as a fraction of the available CPUs,
@@ -611,9 +616,17 @@ class DataFrameBatch:
                 will be set to ``False`` in the result dictionary from this method.
             num_lines: The number of lines to create from each batch.  If ``None`` then the value
                 from the config template will be used.
+
+                NOTE:
+                    Will be overridden / ignored if ``seed_fields`` is a list. Will be set to the len of the list.
             seed_fields: A dictionary that maps field/column names to initial seed values for those columns. This seed
                 will only apply to the first batch that gets trained and generated. Additionally, the fields provided
                 in the mapping MUST exist at the front of the first batch.
+
+                NOTE:
+                    This param may also be a list of dicts. If this is the case, then ``num_lines`` will automatically
+                    be set to the list length downstream, and a 1:1 ratio will be used for generating valid lines for
+                    each prefix.
             parallelism: The number of concurrent workers to use. ``1`` (the default) disables parallelization,
                 while a non-positive value means "number of CPUs + x" (i.e., use ``0`` for using as many workers
                 as there are CPUs). A floating-point value is interpreted as a fraction of the available CPUs,

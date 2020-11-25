@@ -68,7 +68,10 @@ class GenText(gen_text):
 
 
 class BaseGenerator(ABC):
-    """Specific generation modules should have a
+    """
+    Do not use directly.
+
+    Specific generation modules should have a
     subclass of this ABC that implements the core logic
     for generating data
     """
@@ -81,6 +84,8 @@ class BaseGenerator(ABC):
 @dataclass
 class Settings:
     """
+    Do not use directly.
+
     Arguments for a generator generating lines of text.
 
     This class contains basic settings for a generation process. It is separated from the Generator class
@@ -145,6 +150,13 @@ def generate_text(
             value, then you MUST utilize the field delimiter specified in your config.
             An example would be "foo,bar,baz,". Also, if using a field delimiter, the string
             MUST end with the delimiter value.
+
+            NOTE:
+                This param may also be a list of prefixes. If this is provided, then
+                the generator will attempt to create exactly 1 record for each seed in the
+                list. The ``num_lines`` param will be implicity set to the size of the list
+                and this number of records will be created at a 1:1 ratio between prefix strings
+                and valid records.
         line_validator: An optional callback validator function that will take
             the raw string value from the generator as a single argument. This validator
             can executue arbitrary code with the raw string value. The validator function
@@ -155,7 +167,10 @@ def generate_text(
         max_invalid: If using a ``line_validator``, this is the maximum number of invalid
             lines to generate. If the number of invalid lines exceeds this value a ``RunTimeError``
             will be raised.
-        num_lines: If not ``None``, this will override the ``gen_lines`` value that is provided in the ``config``
+        num_lines: If not ``None``, this will override the ``gen_lines`` value that is provided in the ``config``.
+            NOTE:
+                If ``start_string`` is a list, this value will be set to the length of that list and any other
+                values for the param are ignored.
         parallelism: The number of concurrent workers to use. ``1`` (the default) disables parallelization,
             while a non-positive value means "number of CPUs + x" (i.e., use ``0`` for using as many workers
             as there are CPUs). A floating-point value is interpreted as a fraction of the available CPUs,
