@@ -17,6 +17,7 @@ import logging
 import io
 import json
 import glob
+import shutil
 
 import pandas as pd
 import numpy as np
@@ -43,6 +44,8 @@ GEN_LINES = "gen_lines"
 READ = "read"
 WRITE = "write"
 HEADER_FILE = "headers.json"
+ORIG_HEADERS = "original_headers.json"
+CHECKPOINT_DIR = "checkpoint_dir"
 CONFIG_FILE = "model_params.json"
 TRAIN_FILE = "train.csv"
 PATH_HOLDER = "___path_holder___"
@@ -220,7 +223,7 @@ def _build_batch_dirs(
         # we write the headers out as well incase we load these
         # batches back in via "read" mode only later...it's the only
         # way to get the header names back
-        with open(ckpoint / "headers.json", "w") as fout:
+        with open(ckpoint / HEADER_FILE, "w") as fout:
             fout.write(json.dumps(headers))
 
     return out
@@ -282,6 +285,18 @@ class DataFrameBatch:
 
     mode: Union[WRITE, READ]
 
+    master_header_list: List[str]
+    """During training, this is the original column order. When reading from
+    disk, we concatenate all headers from all batches together. This list is not
+    guaranteed to preserve the original header order.
+    """
+
+    original_headers: List[str]
+    """Stores the original header list / order from the original training data that was used.
+    This is written out to the model directory during training and loaded back in when
+    using read-only mode.
+    """
+
     def __init__(
         self,
         *,
@@ -308,6 +323,8 @@ class DataFrameBatch:
 
         self.tokenizer = tokenizer
 
+        self.original_headers = None
+
         if self.mode == READ:
             if isinstance(config, dict):
                 _ckpoint_dir = config.get("checkpoint_dir")
@@ -322,6 +339,14 @@ class DataFrameBatch:
         if self.mode == WRITE:
             if not config:
                 raise ValueError("config is required!")
+
+            checkpoint_path = Path(config[CHECKPOINT_DIR])
+            overwrite = config.get("overwrite", False)
+            if not overwrite and checkpoint_path.is_dir() and any(checkpoint_path.iterdir()):
+                raise RuntimeError("checkpoint_dir already exists and is non-empty, set overwrite on config or remove model directory!")  # noqa
+            
+            if overwrite and checkpoint_path.is_dir():
+                shutil.rmtree(checkpoint_path)
 
             if not isinstance(df, pd.DataFrame):
                 raise ValueError("df must be a DataFrame in write mode")
@@ -346,11 +371,29 @@ class DataFrameBatch:
             self.batches = _build_batch_dirs(
                 self.config["checkpoint_dir"], self.batch_headers, self.config
             )
+
+            # Preserve the original order of the DF headers
+            self.original_headers = list(self._source_df)
+            with open(Path(self.config[CHECKPOINT_DIR]) / ORIG_HEADERS, "w") as fout:
+                fout.write(json.dumps(list(self.original_headers)))
         else:
             self.batches = _crawl_checkpoint_for_batches(self._read_checkpoint_dir)
             self.master_header_list = []
             for batch in self.batches.values():
                 self.master_header_list.extend(batch.headers)
+
+            try:
+                self.original_headers = json.loads(
+                    open(Path(self._read_checkpoint_dir) / ORIG_HEADERS).read()
+                )
+            except FileNotFoundError:
+                self.original_headers = None
+
+            logger.info("Validating underlying models exist via generation test...")
+            try:
+                self.generate_all_batch_lines(parallelism=1, num_lines=1)
+            except Exception as err:
+                raise RuntimeError("Error testing generation during model load") from err
 
     def _create_header_batches(self):
         num_batches = ceil(len(self._source_df.columns) / self.batch_size)
@@ -625,4 +668,4 @@ class DataFrameBatch:
         for batch in batch_iter:
             accum_df = pd.concat([accum_df, batch.synthetic_df], axis=1)
 
-        return accum_df[self.master_header_list]
+        return accum_df[self.original_headers or self.master_header_list]
