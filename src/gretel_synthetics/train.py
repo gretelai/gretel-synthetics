@@ -6,7 +6,9 @@ to be used.
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
+
 from gretel_synthetics.tokenizers import SentencePieceTokenizerTrainer, tokenizer_from_model_dir
+
 
 if TYPE_CHECKING:
     from gretel_synthetics.config import BaseConfig
@@ -63,6 +65,7 @@ def train(store: BaseConfig, tokenizer_trainer: Optional[BaseTokenizerTrainer] =
     )
     train_fn = store.get_training_callable()
     store.save_model_params()
+    store.gpu_check()
     train_fn(params)
 
 

@@ -118,6 +118,13 @@ class BaseConfig:
         """
         pass
 
+    def gpu_check(self):
+        """Optionally do a GPU check and warn if
+        a GPU is not available, if not overridden,
+        do nothing
+        """
+        pass
+
     def __post_init__(self):
         if not self.checkpoint_dir or not self.input_data_path:
             raise AttributeError(
@@ -259,6 +266,11 @@ class TensorFlowConfig(BaseConfig):
 
     def get_training_callable(self):
         return train_rnn
+
+    def gpu_check(self):
+        device_name = tf.test.gpu_device_name()
+        if not device_name.startswith("/device:GPU:"):
+            logging.warning("***** GPU not found, CPU will be used instead! *****")
 
 
 #################

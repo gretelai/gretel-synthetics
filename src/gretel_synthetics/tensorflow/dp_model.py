@@ -31,13 +31,16 @@ def build_dp_model(store, batch_size, vocab_size) -> tf.keras.Sequential:
     """
     logging.warning("Experimental: Differentially private training enabled")
 
-    recurrent_v2 = importlib.import_module("tensorflow.python.keras.layers.recurrent_v2")
-    # NOTE: This patches the LSTMs to use the new Keras 2.4.x code paths
-    # and will have no effect when the module function is removed
-    use_new_code = getattr(recurrent_v2, "_use_new_code", None)
-    if use_new_code is not None:
-        logging.warning("******* Patching TensorFlow to utilize new Keras code paths, see: %s", "https://github.com/tensorflow/tensorflow/issues/44917 *******")  # noqa
-        recurrent_v2._use_new_code = lambda: True  # pylint: disable=protected-access
+    try:
+        recurrent_v2 = importlib.import_module("tensorflow.python.keras.layers.recurrent_v2")
+        # NOTE: This patches the LSTMs to use the new Keras 2.4.x code paths
+        # and will have no effect when the module function is removed
+        use_new_code = getattr(recurrent_v2, "_use_new_code", None)
+        if use_new_code is not None:
+            logging.warning("******* Patching TensorFlow to utilize new Keras code paths, see: %s", "https://github.com/tensorflow/tensorflow/issues/44917 *******")  # noqa
+            recurrent_v2._use_new_code = lambda: True  # pylint: disable=protected-access
+    except ModuleNotFoundError:
+        pass
 
     optimizer = make_keras_optimizer_class(RMSprop)(
         l2_norm_clip=store.dp_l2_norm_clip,
