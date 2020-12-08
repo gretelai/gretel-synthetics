@@ -51,7 +51,7 @@ class TensorFlowGenerator(BaseGenerator):
         self.settings = settings
         if self.settings.multi_seed:
             self.settings.config.predict_batch_size = 1
-            self.settings.reset_states = True
+            self.settings.config.reset_states = True
         self.model = load_model(settings.config, self.settings.tokenizer)
         self.delim = settings.config.field_delimiter
         self._predictions = self._predict_forever()
