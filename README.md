@@ -51,7 +51,7 @@ $ jupyter notebook
 
 When the UI launches in your browser, navigate to `examples/synthetic_records.ipynb` and get generating!
 
-If you want to install `gretel-synthetics` locally and use GPU:
+If you want to install `gretel-synthetics` locally and use a GPU (recommended):
 
 1. Create a virtual environment (e.g. using `conda`) 
 
