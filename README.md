@@ -67,7 +67,7 @@ $ conda activate tf
 
 3. Run the setup script `./setup-utils/setup-gretel-synthetics-tensorflow24-with-gpu.sh`
 
-The last step will install all the necessary software packages for GPU, `tensorflow=2.4` and `gretel-synthetics`. 
+The last step will install all the necessary software packages for GPU usage, `tensorflow=2.4` and `gretel-synthetics`. 
 Note that this script works only for Ubuntu 18.04. You might need to modify it for other OS versions.
 
 ## Overview
