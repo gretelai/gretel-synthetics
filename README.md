@@ -30,19 +30,16 @@ Check out additional examples [here](https://github.com/gretelai/gretel-syntheti
 ## Getting Started
 
 By default, we do not install Tensorflow via pip as many developers and cloud services such as Google Colab are
-running customized versions for their hardware. If you wish to pip install Tensorflow along with gretel-synthetics,
-use the [tf] commands below instead.
+running customized versions for their hardware. 
 
 ```
-pip install -U .                     # Do not install Tensorflow by default (assuming you have built a distro for your hardware)
-pip install -U -e ".[tf]"            # Install a pinned version of Tensorflow"
+pip install -U .                    
 ```
 
 _or_
 
 ```
-pip install gretel-synthetics        # Do not install Tensorflow by default (assuming you have built a distro for your hardware)
-pip install gretel-synthetics[tf]    # Install a pinned version of Tensorflow
+pip install gretel-synthetics        
 ```
 
 _then..._
@@ -54,6 +51,24 @@ $ jupyter notebook
 
 When the UI launches in your browser, navigate to `examples/synthetic_records.ipynb` and get generating!
 
+If you want to install `gretel-synthetics` locally and use a GPU (recommended):
+
+1. Create a virtual environment (e.g. using `conda`) 
+
+```
+$ conda create --name tf --python=3.8
+```
+
+2. Activate the virtual environment
+
+```
+$ conda activate tf
+```
+
+3. Run the setup script `./setup-utils/setup-gretel-synthetics-tensorflow24-with-gpu.sh`
+
+The last step will install all the necessary software packages for GPU usage, `tensorflow=2.4` and `gretel-synthetics`. 
+Note that this script works only for Ubuntu 18.04. You might need to modify it for other OS versions.
 
 ## Overview
 
