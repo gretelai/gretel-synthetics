@@ -34,9 +34,6 @@ setup(
         'dataclasses==0.7;python_version<"3.7"',
         'loky==2.8.0'
     ],
-    extras_require={
-        'tf': ['tensorflow==2.4.0rc1']
-    },
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: Apache Software License",
