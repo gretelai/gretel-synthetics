@@ -157,18 +157,21 @@ def test_init(test_data):
 
     with patch("gretel_synthetics.batch.generate_text") as mock_gen:
         mock_gen.return_value = [good(), good(), good(), bad(), bad(), good(), good()]
-        assert batches.generate_batch_lines(5, max_invalid=1)
+        summary = batches.generate_batch_lines(5, max_invalid=1)
+        assert summary.get('is_valid')
         check_call = mock_gen.mock_calls[0]
         _, _, kwargs = check_call
         assert kwargs["max_invalid"] == 1
 
     with patch("gretel_synthetics.batch.generate_text") as mock_gen:
         mock_gen.return_value = [good(), good(), good(), bad(), bad(), good(), good()]
-        assert batches.generate_batch_lines(5)
+        summary = batches.generate_batch_lines(5)
+        assert summary.get('is_valid')
 
     with patch("gretel_synthetics.batch.generate_text") as mock_gen:
         mock_gen.return_value = [good(), good(), good(), bad(), bad(), good()]
-        assert not batches.generate_batch_lines(5)
+        summary = batches.generate_batch_lines(5) 
+        assert not summary.get('is_valid')
 
     with patch.object(batches, "generate_batch_lines") as mock_gen:
         batches.generate_all_batch_lines(max_invalid=15)
@@ -211,12 +214,14 @@ def test_generate_batch_lines_raise_on_exceed(test_data):
 
     with patch("gretel_synthetics.batch.generate_text") as mock_gen:
         mock_gen.side_effect = TooManyInvalidError()
-        assert not batches.generate_batch_lines(0)
+        summary = batches.generate_batch_lines(0)
+        assert not summary.get('is_valid')
 
     with patch("gretel_synthetics.batch.generate_text") as mock_gen:
         mock_gen.side_effect = TooManyInvalidError()
         with pytest.raises(TooManyInvalidError):
-            assert not batches.generate_batch_lines(0, raise_on_exceed_invalid=True)
+            summary = batches.generate_batch_lines(0, raise_on_exceed_invalid=True)
+            assert not summary.get('is_valid')
 
 
 def test_generate_batch_lines_always_raise_other_exceptions(test_data):
@@ -226,12 +231,14 @@ def test_generate_batch_lines_always_raise_other_exceptions(test_data):
     with patch("gretel_synthetics.batch.generate_text") as mock_gen:
         mock_gen.side_effect = RuntimeError()
         with pytest.raises(RuntimeError):
-            assert not batches.generate_batch_lines(0)
+            summary = batches.generate_batch_lines(0)
+            assert not summary.get('is_valid')
 
     with patch("gretel_synthetics.batch.generate_text") as mock_gen:
         mock_gen.side_effect = RuntimeError()
         with pytest.raises(RuntimeError):
-            assert not batches.generate_batch_lines(0, raise_on_exceed_invalid=True)
+            summary = batches.generate_batch_lines(0, raise_on_exceed_invalid=True)
+            assert not summary.get('is_valid')
 
 
 def test_generate_all_batch_lines_raise_on_failed(test_data):
