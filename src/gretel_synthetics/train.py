@@ -6,13 +6,12 @@ to be used.
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
-
-from gretel_synthetics.tokenizers import SentencePieceTokenizerTrainer, tokenizer_from_model_dir
+from gretel_synthetics.tokenizer import SentencePieceTokenizerTrainer, tokenizer_from_model_dir
 
 
 if TYPE_CHECKING:
     from gretel_synthetics.config import BaseConfig
-    from gretel_synthetics.tokenizers import BaseTokenizerTrainer, BaseTokenizer
+    from gretel_synthetics.tokenizer import BaseTokenizerTrainer, BaseTokenizer
 else:
     BaseConfig = None
     BaseTokenizerTrainer = None
