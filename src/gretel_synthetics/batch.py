@@ -566,7 +566,7 @@ class DataFrameBatch:
         t = tqdm(total=num_lines, desc="Valid record count ")
         t2 = tqdm(total=max_invalid, desc="Invalid record count ")
         line: GenText
-        n_valid, n_invalid = 0, 0
+        summary = {'valid_lines': 0, 'invalid_lines': 0, 'is_valid': False}
         try:
             for line in generate_text(
                 batch.config,
@@ -579,20 +579,20 @@ class DataFrameBatch:
                 if line.valid is None or line.valid is True:
                     batch.add_valid_data(line)
                     t.update(1)
-                    n_valid += 1
+                    summary['valid_lines'] += 1
                 else:
                     t2.update(1)
                     batch.gen_data_invalid.append(line)
-                    n_invalid += 1
+                    summary['invalid_lines'] += 1
         except TooManyInvalidError:
             if raise_on_exceed_invalid:
                 raise
             else:
-                return False
+                return summary
         t.close()
         t2.close()
-        is_valid = batch.gen_data_count >= num_lines
-        return {'valid_lines': n_valid, 'invalid_lines': n_invalid, 'is_valid': is_valid}
+        summary['is_valid'] = batch.gen_data_count >= num_lines
+        return summary
 
     def generate_all_batch_lines(
         self,
