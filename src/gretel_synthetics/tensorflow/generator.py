@@ -17,7 +17,7 @@ from gretel_synthetics.errors import TooManyInvalidError
 
 if TYPE_CHECKING:
     from gretel_synthetics.config import TensorFlowConfig
-    from gretel_synthetics.tokenizers import BaseTokenizer
+    from gretel_synthetics.tokenizer import BaseTokenizer
 else:
     TensorFlowConfig = None
     BaseTokenizer = None

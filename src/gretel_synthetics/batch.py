@@ -29,7 +29,7 @@ import gretel_synthetics.const as const
 from gretel_synthetics.generate import GenText, generate_text
 from gretel_synthetics.errors import TooManyInvalidError
 from gretel_synthetics.train import train
-from gretel_synthetics.tokenizers import BaseTokenizerTrainer
+from gretel_synthetics.tokenizer import BaseTokenizerTrainer
 
 
 logging.basicConfig()

@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 
 from gretel_synthetics.generate_parallel import get_num_workers, generate_parallel
 from gretel_synthetics.errors import GenerationError
-from gretel_synthetics.tokenizers import BaseTokenizer, tokenizer_from_model_dir
+from gretel_synthetics.tokenizer import BaseTokenizer, tokenizer_from_model_dir
 
 if TYPE_CHECKING:
     from gretel_synthetics.config import BaseConfig

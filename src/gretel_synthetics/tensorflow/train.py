@@ -18,7 +18,7 @@ from tqdm import tqdm
 from gretel_synthetics.tensorflow.model import build_model, load_model
 from gretel_synthetics.tensorflow.dp_model import compute_epsilon
 from gretel_synthetics.const import VAL_ACC, VAL_LOSS
-from gretel_synthetics.tokenizers import BaseTokenizer
+from gretel_synthetics.tokenizer import BaseTokenizer
 
 if TYPE_CHECKING:
     from gretel_synthetics.config import TensorFlowConfig

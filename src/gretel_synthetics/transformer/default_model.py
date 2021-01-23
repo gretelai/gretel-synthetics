@@ -1,6 +1,5 @@
 import logging
 
-from gretel_synthetics.config import BaseConfig
 
 from transformers import (
     CONFIG_MAPPING,
@@ -15,7 +14,7 @@ MODEL_CONFIG_CLASSES = list(MODEL_FOR_CAUSAL_LM_MAPPING.keys())
 MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
 
 
-def build_default_model(store: BaseConfig):
+def build_default_model(store):
     """
     Load pre-trained model
 

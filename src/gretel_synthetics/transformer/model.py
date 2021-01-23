@@ -3,11 +3,10 @@ Initialize huggingface transformer model (GPT-2)
 """
 from transformers import AutoTokenizer
 
-from gretel_synthetics.config import BaseConfig
 from gretel_synthetics.transformer.default_model import build_default_model
 
 
-def load_model(store: BaseConfig, tokenizer: AutoTokenizer):
+def load_model(store, tokenizer: AutoTokenizer):
     """
     Build and return models in DP and non-DP (differentially private), if supported
 
