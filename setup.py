@@ -26,13 +26,16 @@ setup(
     python_requires=">=3.6",
     install_requires=[
         'tensorflow_privacy==0.5.1',
-        'sentencepiece==0.1.91',
+        'sentencepiece==0.1.95',
         'smart_open>=2.1.0,<3.0',
         'tqdm<5.0',
         'pandas>=1.1.0',
         'numpy>=1.18.0',
         'dataclasses==0.7;python_version<"3.7"',
-        'loky==2.8.0'
+        'loky==2.8.0',
+        'datasets==1.2.1',
+        'transformers==2.3.0',
+        'torch==1.4.0',
     ],
     classifiers=[
         "Programming Language :: Python :: 3",
