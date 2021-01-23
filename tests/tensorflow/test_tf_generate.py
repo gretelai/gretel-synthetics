@@ -47,7 +47,7 @@ def test_predict_chars(mock_cat, tf_config, random_cat):
     line = next(_predict_chars(mock_model, tokenizer, NEWLINE, config))
 
 
-@patch("gretel_synthetics.tokenizers.SentencePieceTokenizer.load")
+@patch("gretel_synthetics.tokenizer.SentencePieceTokenizer.load")
 @patch("gretel_synthetics.tensorflow.generator._predict_chars")
 @patch("gretel_synthetics.tensorflow.model._prepare_model")
 @patch("pickle.load")

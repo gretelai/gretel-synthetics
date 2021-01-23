@@ -5,7 +5,7 @@ import pytest
 
 
 from gretel_synthetics.config import BaseConfig
-import gretel_synthetics.tokenizers as tok
+import gretel_synthetics.tokenizer as tok
 
 
 class SimpleConfig(BaseConfig):
