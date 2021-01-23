@@ -6,7 +6,7 @@ import json
 import pytest
 import pandas as pd
 
-from gretel_synthetics.tokenizers import SentencePieceTokenizerTrainer, CharTokenizerTrainer, BaseTokenizerTrainer
+from gretel_synthetics.tokenizer import SentencePieceTokenizerTrainer, CharTokenizerTrainer, BaseTokenizerTrainer
 from gretel_synthetics.batch import PATH_HOLDER, DataFrameBatch
 from gretel_synthetics.config import TensorFlowConfig
 import gretel_synthetics.const as const
