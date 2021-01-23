@@ -16,7 +16,7 @@ from transformers import CONFIG_MAPPING, MODEL_FOR_CAUSAL_LM_MAPPING
 import gretel_synthetics.const as const
 from gretel_synthetics.tensorflow.train import train_rnn
 from gretel_synthetics.tensorflow.generator import TensorFlowGenerator
-
+from gretel_synthetics.transformer.train import train
 
 logging.basicConfig(
     format="%(asctime)s : %(threadName)s : %(levelname)s : %(message)s",
