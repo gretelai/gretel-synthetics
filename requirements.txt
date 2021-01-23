@@ -1,6 +1,6 @@
 tensorflow==2.4.0
 tensorflow_privacy==0.5.1
-sentencepiece==0.1.95
+sentencepiece==0.1.91
 smart_open>=2.1.0,<3.0
 pandas>=1.1.0
 numpy>=1.18.0

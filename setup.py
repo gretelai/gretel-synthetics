@@ -26,7 +26,7 @@ setup(
     python_requires=">=3.6",
     install_requires=[
         'tensorflow_privacy==0.5.1',
-        'sentencepiece==0.1.95',
+        'sentencepiece==0.1.91',
         'smart_open>=2.1.0,<3.0',
         'tqdm<5.0',
         'pandas>=1.1.0',
