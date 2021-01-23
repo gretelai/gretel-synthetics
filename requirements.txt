@@ -7,5 +7,5 @@ numpy>=1.18.0
 tqdm<5.0
 loky==2.8.0
 datasets==1.2.1
-transformers==2.3.0
+transformers==4.2.2
 torch==1.4.0

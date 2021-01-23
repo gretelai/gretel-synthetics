@@ -34,7 +34,7 @@ setup(
         'dataclasses==0.7;python_version<"3.7"',
         'loky==2.8.0',
         'datasets==1.2.1',
-        'transformers==2.3.0',
+        'transformers==4.2.2',
         'torch==1.4.0',
     ],
     classifiers=[
