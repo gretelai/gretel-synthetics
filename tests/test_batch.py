@@ -9,7 +9,7 @@ import json
 import pytest
 import pandas as pd
 
-from gretel_synthetics.batch import DataFrameBatch, MAX_INVALID, READ, ORIG_HEADERS
+from gretel_synthetics.batch import DataFrameBatch, MAX_INVALID, READ, ORIG_HEADERS, GenerationSummary
 from gretel_synthetics.generate import GenText
 from gretel_synthetics.errors import TooManyInvalidError
 
@@ -215,13 +215,13 @@ def test_generate_batch_lines_raise_on_exceed(test_data):
     with patch("gretel_synthetics.batch.generate_text") as mock_gen:
         mock_gen.side_effect = TooManyInvalidError()
         summary = batches.generate_batch_lines(0)
-        assert not summary.get('is_valid')
+        assert not summary.is_valid
 
     with patch("gretel_synthetics.batch.generate_text") as mock_gen:
         mock_gen.side_effect = TooManyInvalidError()
         with pytest.raises(TooManyInvalidError):
             summary = batches.generate_batch_lines(0, raise_on_exceed_invalid=True)
-            assert not summary.get('is_valid')
+            assert not summary.is_valid
 
 
 def test_generate_batch_lines_always_raise_other_exceptions(test_data):
