@@ -52,6 +52,16 @@ PATH_HOLDER = "___path_holder___"
 
 
 @dataclass
+class GenerationSummary:
+    """A class to capture the summary data after synthetic data is generated.
+    """
+
+    valid_lines: int = 0
+    invalid_lines: int = 0
+    is_valid: bool = False
+
+
+@dataclass
 class Batch:
     """A representation of a synthetic data workflow.  It should not be used
     directly. This object is created automatically by the primary batch handler,
@@ -566,7 +576,7 @@ class DataFrameBatch:
         t = tqdm(total=num_lines, desc="Valid record count ")
         t2 = tqdm(total=max_invalid, desc="Invalid record count ")
         line: GenText
-        summary = {'valid_lines': 0, 'invalid_lines': 0, 'is_valid': False}
+        summary = GenerationSummary()
         try:
             for line in generate_text(
                 batch.config,
@@ -579,11 +589,11 @@ class DataFrameBatch:
                 if line.valid is None or line.valid is True:
                     batch.add_valid_data(line)
                     t.update(1)
-                    summary['valid_lines'] += 1
+                    summary.valid_lines += 1
                 else:
                     t2.update(1)
                     batch.gen_data_invalid.append(line)
-                    summary['invalid_lines'] += 1
+                    summary.invalid_lines += 1
         except TooManyInvalidError:
             if raise_on_exceed_invalid:
                 raise
@@ -591,7 +601,7 @@ class DataFrameBatch:
                 return summary
         t.close()
         t2.close()
-        summary['is_valid'] = batch.gen_data_count >= num_lines
+        summary.is_valid = batch.gen_data_count >= num_lines
         return summary
 
     def generate_all_batch_lines(
