@@ -611,7 +611,7 @@ class DataFrameBatch:
         num_lines: int = None,
         seed_fields: Union[dict, List[dict]] = None,
         parallelism: int = 0,
-    ) -> dict:
+    ) -> Dict[int, GenerationSummary]:
         """Generate synthetic lines for all batches. Lines for each batch
         are added to the individual ``Batch`` objects. Once generateion is
         done, you may re-assemble the dataset into a DataFrame.
@@ -651,8 +651,8 @@ class DataFrameBatch:
             that shows if each batch was able to generate the full number of requested lines::
 
                 {
-                    0: {'valid_lines' : 1000, 'invalid_lines': 10, 'is_valid': True},
-                    1: {'valid_lines' : 500, 'invalid_lines': 5, 'is_valid': True}
+                    0: GenerationSummary(valid_lines=1000, invalid_lines=10, is_valid=True),
+                    1: GenerationSummary(valid_lines=500, invalid_lines=5, is_valid=True)
                 }
         """
         batch_status = {}
