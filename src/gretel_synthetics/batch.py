@@ -524,7 +524,7 @@ class DataFrameBatch:
         num_lines: int = None,
         seed_fields: Union[dict, List[dict]] = None,
         parallelism: int = 0,
-    ) -> dict:
+    ) -> GenerationSummary:
         """Generate lines for a single batch. Lines generated are added
         to the underlying ``Batch`` object for each batch. The lines
         can be accessed after generation and re-assembled into a DataFrame.
