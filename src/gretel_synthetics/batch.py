@@ -52,6 +52,16 @@ PATH_HOLDER = "___path_holder___"
 
 
 @dataclass
+class GenerationSummary:
+    """A class to capture the summary data after synthetic data is generated.
+    """
+
+    valid_lines: int = 0
+    invalid_lines: int = 0
+    is_valid: bool = False
+
+
+@dataclass
 class Batch:
     """A representation of a synthetic data workflow.  It should not be used
     directly. This object is created automatically by the primary batch handler,
@@ -514,7 +524,7 @@ class DataFrameBatch:
         num_lines: int = None,
         seed_fields: Union[dict, List[dict]] = None,
         parallelism: int = 0,
-    ) -> dict:
+    ) -> GenerationSummary:
         """Generate lines for a single batch. Lines generated are added
         to the underlying ``Batch`` object for each batch. The lines
         can be accessed after generation and re-assembled into a DataFrame.
@@ -566,7 +576,7 @@ class DataFrameBatch:
         t = tqdm(total=num_lines, desc="Valid record count ")
         t2 = tqdm(total=max_invalid, desc="Invalid record count ")
         line: GenText
-        n_valid, n_invalid = 0, 0
+        summary = GenerationSummary()
         try:
             for line in generate_text(
                 batch.config,
@@ -579,20 +589,20 @@ class DataFrameBatch:
                 if line.valid is None or line.valid is True:
                     batch.add_valid_data(line)
                     t.update(1)
-                    n_valid += 1
+                    summary.valid_lines += 1
                 else:
                     t2.update(1)
                     batch.gen_data_invalid.append(line)
-                    n_invalid += 1
+                    summary.invalid_lines += 1
         except TooManyInvalidError:
             if raise_on_exceed_invalid:
                 raise
             else:
-                return False
+                return summary
         t.close()
         t2.close()
-        is_valid = batch.gen_data_count >= num_lines
-        return {'valid_lines': n_valid, 'invalid_lines': n_invalid, 'is_valid': is_valid}
+        summary.is_valid = batch.gen_data_count >= num_lines
+        return summary
 
     def generate_all_batch_lines(
         self,
@@ -601,7 +611,7 @@ class DataFrameBatch:
         num_lines: int = None,
         seed_fields: Union[dict, List[dict]] = None,
         parallelism: int = 0,
-    ) -> dict:
+    ) -> Dict[int, GenerationSummary]:
         """Generate synthetic lines for all batches. Lines for each batch
         are added to the individual ``Batch`` objects. Once generateion is
         done, you may re-assemble the dataset into a DataFrame.
@@ -641,8 +651,8 @@ class DataFrameBatch:
             that shows if each batch was able to generate the full number of requested lines::
 
                 {
-                    0: {'valid_lines' : 1000, 'invalid_lines': 10, 'is_valid': True},
-                    1: {'valid_lines' : 500, 'invalid_lines': 5, 'is_valid': True}
+                    0: GenerationSummary(valid_lines=1000, invalid_lines=10, is_valid=True),
+                    1: GenerationSummary(valid_lines=500, invalid_lines=5, is_valid=True)
                 }
         """
         batch_status = {}
