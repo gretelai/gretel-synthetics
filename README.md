@@ -17,7 +17,7 @@
 * [Get started with gretel-synthetics](https://gretel-synthetics.readthedocs.io/en/stable/)
 * [Configuration](https://gretel-synthetics.readthedocs.io/en/stable/api/config.html)
 * [Train your model](https://gretel-synthetics.readthedocs.io/en/stable/api/train.html)
-* [Generate synthetic recoreds](https://gretel-synthetics.readthedocs.io/en/stable/api/generate.html)
+* [Generate synthetic records](https://gretel-synthetics.readthedocs.io/en/stable/api/generate.html)
 
 
 ## Try it out now!
