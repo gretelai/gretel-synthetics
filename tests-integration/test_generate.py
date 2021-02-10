@@ -208,3 +208,22 @@ def test_generate_batch_smart_seed_multi(model_path, seed, tmp_path):
     fname = gen.generate(100, out_file, seed=seed)
     df = pd.read_csv(fname)
     assert list(df["payload.service_handler"]) == list(pd.DataFrame(seed)["payload.service_handler"])
+
+
+def test_record_factory_smart_seed(safecast_model_dir):
+    seeds = [{"payload.service_handler": "i-051a2a353509414f0"},
+             {"payload.service_handler": "i-051a2a353509414f1"},
+             {"payload.service_handler": "i-051a2a353509414f2"},
+             {"payload.service_handler": "i-051a2a353509414f3"}]
+
+    batcher = DataFrameBatch(mode="read", checkpoint_dir=safecast_model_dir)
+    factory = batcher.create_record_factory(
+        num_lines=1000,
+        seed_fields=seeds
+    )
+
+    # list of seeds should reset num_lines
+    assert factory.num_lines == len(seeds)
+
+    for seed, record in zip(seeds, factory):
+        assert seed["payload.service_handler"] == record["payload.service_handler"]
