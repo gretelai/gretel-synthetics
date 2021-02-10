@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 import gzip
 from math import ceil
-from typing import List, Type, Callable, Dict, Union
+from typing import List, Type, Callable, Dict, Union, Iterator as IteratorType, Optional
 from copy import deepcopy
 import logging
 import io
@@ -24,7 +24,12 @@ import numpy as np
 from tqdm.auto import tqdm
 import cloudpickle
 
-from gretel_synthetics.config import LocalConfig, BaseConfig, config_from_model_dir, CONFIG_MAP
+from gretel_synthetics.config import (
+    LocalConfig,
+    BaseConfig,
+    config_from_model_dir,
+    CONFIG_MAP,
+)
 import gretel_synthetics.const as const
 from gretel_synthetics.generate import GenText, generate_text
 from gretel_synthetics.errors import TooManyInvalidError
@@ -53,8 +58,7 @@ PATH_HOLDER = "___path_holder___"
 
 @dataclass
 class GenerationSummary:
-    """A class to capture the summary data after synthetic data is generated.
-    """
+    """A class to capture the summary data after synthetic data is generated."""
 
     valid_lines: int = 0
     invalid_lines: int = 0
@@ -194,8 +198,7 @@ def _crawl_checkpoint_for_batches(checkpoint_dir: str):
 def _build_batch_dirs(
     base_ckpoint: str, headers: List[List[str]], config: dict
 ) -> dict:
-    """Return a mapping of batch number => ``Batch`` object
-    """
+    """Return a mapping of batch number => ``Batch`` object"""
     out = {}
     logger.info("Creating directory structure for batch jobs...")
     base_path = Path(config["checkpoint_dir"])
@@ -237,6 +240,300 @@ def _build_batch_dirs(
             fout.write(json.dumps(headers))
 
     return out
+
+
+def _validate_batch_seed_values(
+    batch: Batch, seed_values: Union[dict, List[dict]]
+) -> Union[str, List[str]]:
+    """Validate that seed values line up with the first N columns in a batch. Also construct
+    an appropiate seed string based on the values in the batch
+    """
+    ret_str = True
+    if isinstance(seed_values, dict):
+        seed_values = [seed_values]
+    elif isinstance(seed_values, list):
+        ret_str = False
+    else:
+        raise TypeError("seed_values should be a dict or list of dicts")
+
+    seed_strings = []
+
+    for seed in seed_values:
+        if len(seed) > len(batch.headers):
+            raise RuntimeError(
+                "The number of seed fields is greater than the number of columns in the first batch"
+            )
+
+        headers_to_seed = batch.headers[: len(seed)]
+        tmp = []
+        for header in headers_to_seed:
+            value = seed.get(header)
+            if value is None:
+                raise RuntimeError(
+                    f"The header: {header} is not in the seed values mapping"
+                )  # noqa
+            tmp.append(str(value))
+
+        seed_strings.append(
+            batch.config.field_delimiter.join(tmp) + batch.config.field_delimiter
+        )
+
+    if ret_str:
+        return seed_strings[0]
+    else:
+        return seed_strings
+
+
+class _BufferedDataFrame:
+    """Buffer dictionaries into a memory stream, then
+    load it as a DataFrame and set the column order
+    based on the provided list. This allows
+    datatypes to be inferred as if the values were
+    being read from a CSV on disk.
+    """
+
+    def __init__(self, delim: str, columns: List[str]):
+        self.delim = delim
+        self.columns = columns
+        self.headers_set = False
+        self.buffer = io.StringIO()
+
+    def add(self, record: dict):
+        # write the columns names into the buffer, we
+        # use the first dict to specify the order and
+        # assume subsequent dicts have the same order
+        if not self.headers_set:
+            _columns = self.delim.join(record.keys())
+            self.buffer.write(_columns + "\n")
+            self.headers_set = True
+        _row = self.delim.join(record.values())
+        self.buffer.write(_row + "\n")
+
+    @property
+    def df(self) -> pd.DataFrame:
+        self.buffer.seek(0)
+        return pd.read_csv(self.buffer, sep=self.delim)[self.columns]
+
+
+class RecordFactory:
+    """A stateful factory that can be used to generate and validate entire
+    records, regardless of the number of underlying header clusters that were
+    used to build multiple sub-models.
+
+    Instances of this class should be created by calling the appropiate method
+    of the ``DataFrameBatch`` instance. This class should not have to
+    be used directly. You should be able to create an instance like so::
+
+        factory = batcher.create_record_factory(num_lines=50)
+
+    The class is init'd with default capacity and limits as specified
+    by the ``num_lines`` and ``max_invalid`` attributes.  At any time,
+    you can inspect the state of the instance by doing::
+
+        factory.summary
+
+    The factory instance can be used one of two ways: buffered or unbuffered.
+
+    For unbuffered mode, the entire instance can be used as an iterator to
+    create synthetic records. Each record will be a dictionary.
+
+    NOTE:
+        All values in the generated dictionaries will be strings.
+
+    The ``valid_count`` and ``invalid_count`` counters will update as
+    records are generated.
+
+    When creating the record factory, you may also provide an entire
+    record validator::
+
+        def validator(rec: dict):
+            ...
+
+        factory = batcher.create_record_factory(num_lines=50, validator=validator)
+
+    Each generated record dict will be passed to the validator. This validator may either
+    return False or raise an exception to mark a record as invalid.
+
+    At any point, you may reset the state of the factory by calling::
+
+        factory.reset()
+
+    This will reset all counters and allow you to keep generating records.
+
+    Finally, you can generate records in buffered mode, where generated records
+    will be buffered in memory and returned as one collection. By default, a list
+    of dicts will be returned::
+
+        factory.generate_all()
+
+    You may request the records to be returned as a DataFrame.  The dtypes will 
+    be inferred as if you were reading the data from a CSV::
+
+        factory.generate_all(output="df")
+
+    NOTE:
+        When using ``generate_all``, the factory states will be reset automatically.
+    """
+
+    num_lines: int
+    """The target number of lines to generate when
+    iterating or generating all records.
+    """
+
+    max_invalid: int
+    """The number of max invalid lines to tolerate before
+    stopping generation and raising a ``RunTimeError.``
+    """
+
+    valid_count: int
+    """The number of valid records / lines that have been generated
+    """
+
+    invalid_count: int
+    """The number of invalid records / lines that were generated
+    """
+
+    validator: Callable
+    """An optional callable that will receive a fully constructed record for one
+    final validation before returning or yielding a single record. Records that
+    do not pass this validation will also increment the ``invalid_count.``
+    """
+
+    _batches: Dict[int, Batch]
+    _header_list: List[str]
+    _seed_fields: Union[str, List[str]]
+    _record_generator: IteratorType[dict]
+    _delimiter: str
+
+    def __init__(
+        self,
+        *,
+        num_lines: int,
+        batches: dict,
+        header_list: list,
+        delimiter: str,
+        seed_fields: Union[dict, list] = None,
+        max_invalid=MAX_INVALID,
+        validator: Optional[Callable] = None
+    ):
+        self.num_lines = num_lines
+        self.max_invalid = max_invalid
+        self._batches = batches
+        self._header_list = header_list
+        self._seed_fields = seed_fields
+        self._delimiter = delimiter
+        self.validator = validator
+        self.reset()
+
+        if self._seed_fields is not None:
+            self._seed_fields = _validate_batch_seed_values(
+                self._batches[0], self._seed_fields
+            )
+
+        if isinstance(self._seed_fields, list):
+            logger.info(
+                "Adjusting num_lines because seed_fields is a list, will only target %d lines",
+                len(self._seed_fields),
+            )  # noqa
+            self.num_lines = len(self._seed_fields)
+
+    def _get_record(self) -> IteratorType[dict]:
+        # seed our actual batch line generators
+        generators = []
+        for idx, batch in self._batches.items():
+            start_string = None
+            if idx == 0:
+                start_string = self._seed_fields
+            generators.append(
+                (
+                    batch,
+                    # We seed the low level API with much higher limits on
+                    # valid / invalid generation because we will enforce
+                    # those limits in this high level instance.
+                    generate_text(
+                        batch.config,
+                        line_validator=batch.get_validator(),
+                        max_invalid=self.max_invalid * 10000,
+                        num_lines=self.num_lines * 10000,
+                        start_string=start_string,
+                        parallelism=4,
+                    ),
+                )
+            )
+
+        # keep looping as long as our target line count is less than
+        # our total line count
+        while self.valid_count < self.num_lines:
+            # loop over each batch line generater and attempt
+            # to construct a full line, we'll only count a
+            # full line once we get through each generator
+            if self.invalid_count >= self.max_invalid:
+                raise RuntimeError("Invalid record count exceeded during generation")
+
+            record = {}
+            batch: Batch
+            for batch, gen in generators:
+                while True:
+                    line = next(gen)  # type:  GenText
+                    if line.valid is False:
+                        self.invalid_count += 1
+                        if self.invalid_count > self.max_invalid:
+                            raise RuntimeError("Invalid record count exceeded during generation")
+                        continue
+                    partial_rec = dict(zip(batch.headers, line.values_as_list()))
+                    record.update(partial_rec)
+                    break
+
+            # Do a final validation, if configured, on the fully constructed
+            # record, if this validation fails, we'll still increment our
+            # invalid count.
+            if self.validator is not None:
+                try:
+                    _valid = self.validator(record)
+                    if _valid is False:
+                        self.invalid_count += 1
+                        continue
+                except Exception:
+                    self.invalid_count += 1
+                    continue
+
+            self.valid_count += 1
+            yield record
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        return next(self._record_generator)
+
+    def reset(self):
+        self.valid_count = 0
+        self.invalid_count = 0
+        self._record_generator = self._get_record()
+
+    def generate_all(self, output: Optional[str] = None):
+        self.reset()
+        if output is not None and output not in ("df",):
+            raise ValueError("invalid output type")
+
+        _iter = tqdm(self._record_generator, total=self.num_lines)
+
+        if output == "df":
+            buffer = _BufferedDataFrame(self._delimiter, self._header_list)
+            for rec in _iter:
+                buffer.add(rec)
+            return buffer.df
+
+        return list(_iter)
+
+    @property
+    def summary(self):
+        return {
+            "num_lines": self.num_lines,
+            "max_invalid": self.max_invalid,
+            "valid_count": self.valid_count,
+            "invalid_count": self.invalid_count,
+        }
 
 
 class DataFrameBatch:
@@ -352,9 +649,15 @@ class DataFrameBatch:
 
             checkpoint_path = Path(config[CHECKPOINT_DIR])
             overwrite = config.get("overwrite", False)
-            if not overwrite and checkpoint_path.is_dir() and any(checkpoint_path.iterdir()):
-                raise RuntimeError("checkpoint_dir already exists and is non-empty, set overwrite on config or remove model directory!")  # noqa
-            
+            if (
+                not overwrite
+                and checkpoint_path.is_dir()
+                and any(checkpoint_path.iterdir())
+            ):
+                raise RuntimeError(
+                    "checkpoint_dir already exists and is non-empty, set overwrite on config or remove model directory!"
+                )  # noqa
+
             if overwrite and checkpoint_path.is_dir():
                 shutil.rmtree(checkpoint_path)
 
@@ -403,7 +706,9 @@ class DataFrameBatch:
             try:
                 self.generate_all_batch_lines(parallelism=1, num_lines=1)
             except Exception as err:
-                raise RuntimeError("Error testing generation during model load") from err
+                raise RuntimeError(
+                    "Error testing generation during model load"
+                ) from err
 
     def _create_header_batches(self):
         num_batches = ceil(len(self._source_df.columns) / self.batch_size)
@@ -456,8 +761,7 @@ class DataFrameBatch:
             raise ValueError("batch_idx is invalid")
 
     def train_all_batches(self):
-        """Train a model for each batch.
-        """
+        """Train a model for each batch."""
         if self.mode == READ:  # pragma: no cover
             raise RuntimeError("Method cannot be used in read-only mode")
         for idx in self.batches.keys():
@@ -482,39 +786,6 @@ class DataFrameBatch:
             self.batches[batch_idx].set_validator(validator)
         except KeyError:
             raise ValueError("invalid batch number!")
-
-    def _validate_batch_seed_values(self, batch: Batch, seed_values: Union[dict, List[dict]]) -> Union[str, List[str]]:
-        """Validate that seed values line up with the first N columns in a batch. Also construct
-        an appropiate seed string based on the values in the batch
-        """
-        ret_str = True
-        if isinstance(seed_values, dict):
-            seed_values = [seed_values]
-        elif isinstance(seed_values, list):
-            ret_str = False
-        else:
-            raise TypeError("seed_values should be a dict or list of dicts")
-
-        seed_strings = []
-        
-        for seed in seed_values:
-            if len(seed) > len(batch.headers):
-                raise RuntimeError("The number of seed fields is greater than the number of columns in the first batch")
-
-            headers_to_seed = batch.headers[:len(seed)]
-            tmp = []
-            for header in headers_to_seed:
-                value = seed.get(header)
-                if value is None:
-                    raise RuntimeError(f"The header: {header} is not in the seed values mapping")  # noqa
-                tmp.append(str(value))
-
-            seed_strings.append(batch.config.field_delimiter.join(tmp) + batch.config.field_delimiter)
-
-        if ret_str:
-            return seed_strings[0]
-        else:
-            return seed_strings
 
     def generate_batch_lines(
         self,
@@ -562,7 +833,7 @@ class DataFrameBatch:
         # If we are on batch 0 and we have seed values, we want to validate that
         # the seed values line up properly with the first N columns.
         if batch_idx == 0 and seed_fields is not None:
-            seed_string = self._validate_batch_seed_values(batch, seed_fields)
+            seed_string = _validate_batch_seed_values(batch, seed_fields)
 
         batch: Batch
         batch.reset_gen_data()
@@ -585,7 +856,7 @@ class DataFrameBatch:
                 num_lines=num_lines,
                 start_string=seed_string,
                 parallelism=parallelism,
-            ):  
+            ):
                 if line.valid is None or line.valid is True:
                     batch.add_valid_data(line)
                     t.update(1)
@@ -603,6 +874,27 @@ class DataFrameBatch:
         t2.close()
         summary.is_valid = batch.gen_data_count >= num_lines
         return summary
+
+    def create_record_factory(
+        self,
+        *,
+        num_lines: int,
+        max_invalid: int = MAX_INVALID,
+        validator: Callable = None,
+        seed_fields: Union[dict, List[dict]] = None,
+    ) -> RecordFactory:
+        if validator is not None:
+            if not callable(validator):
+                raise ValueError("validator must be callable")
+        return RecordFactory(
+            num_lines=num_lines,
+            batches=self.batches,
+            delimiter=self.batches[0].config.field_delimiter,
+            header_list=self.original_headers or self.master_header_list,
+            seed_fields=seed_fields,
+            max_invalid=max_invalid,
+            validator=validator
+        )
 
     def generate_all_batch_lines(
         self,
@@ -647,7 +939,7 @@ class DataFrameBatch:
                 rounded down.
 
         Returns:
-            A dictionary of batch number to a dictionary that reports the number of valid, invalid lines and bool value 
+            A dictionary of batch number to a dictionary that reports the number of valid, invalid lines and bool value
             that shows if each batch was able to generate the full number of requested lines::
 
                 {

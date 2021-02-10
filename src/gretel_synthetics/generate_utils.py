@@ -78,7 +78,7 @@ class DataFileGenerator:
         parallelism: int = 1
     ):
         if self.model_path.is_dir():
-            return self._generate(self.model_path, count, file_name, seed, validator)
+            return self._generate(self.model_path, count, file_name, seed, validator, 1)
 
         if self.model_path.suffixes == [".tar", ".gz"]:
             with TemporaryDirectory() as tmpdir:

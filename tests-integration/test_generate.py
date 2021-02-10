@@ -1,7 +1,7 @@
 """
 E2E Tests for Generating Data. These tests make use of pre-created models that can
 be downloaded from S3.  We utilize a generation utility that will automatically determine
-if we are using a simple model or a DF Batch model. 
+if we are using a simple model or a DF Batch model.
 
 When adding a new model to test, the model filename should conform to:
 
@@ -22,13 +22,112 @@ TOK:
 """
 import pytest
 import pandas as pd
+import gzip
+import tarfile
+import tempfile
+import random
+
+from smart_open import open as smart_open
 
 from gretel_synthetics.generate_utils import DataFileGenerator
+from gretel_synthetics.batch import DataFrameBatch
 
 
 BATCH_MODELS = [
     "https://gretel-public-website.s3-us-west-2.amazonaws.com/tests/synthetics/models/safecast-batch-sp-0-14.tar.gz"
 ]
+
+
+def _unpack_to_dir(source: str, target: str):
+    with smart_open(source, "rb", ignore_ext=True) as fin:
+        with gzip.open(fin) as gzip_in:
+            with tarfile.open(fileobj=gzip_in, mode="r:gz") as tar_in:
+                tar_in.extractall(target)
+
+
+@pytest.fixture(scope="module")
+def safecast_model_dir():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        _unpack_to_dir(BATCH_MODELS[0], tmp_dir)
+        yield tmp_dir
+
+
+def test_record_factory_single_line(safecast_model_dir):
+    batcher = DataFrameBatch(mode="read", checkpoint_dir=safecast_model_dir)
+    factory = batcher.create_record_factory(num_lines=10)
+    record = next(factory)
+    assert "payload.service_handler" in record
+    assert factory.valid_count == 1
+
+
+def test_record_factory_exhaust_iter(safecast_model_dir):
+    batcher = DataFrameBatch(mode="read", checkpoint_dir=safecast_model_dir)
+    factory = batcher.create_record_factory(num_lines=10)
+    records = list(factory)
+    assert len(records) == 10
+    assert factory.valid_count == 10
+    summary = factory.summary
+    assert summary["num_lines"] == 10
+    assert summary["max_invalid"] == 1000
+    assert summary["valid_count"] == 10
+
+
+def test_record_factory_generate_all(safecast_model_dir):
+    batcher = DataFrameBatch(mode="read", checkpoint_dir=safecast_model_dir)
+    factory = batcher.create_record_factory(num_lines=10)
+    next(factory)
+    next(factory)
+
+    # generate_all should reset our iterator for the full 10 records
+    assert len(factory.generate_all()) == 10
+
+    df = factory.generate_all(output="df")
+    assert df.shape == (10, 16)
+    assert str(df["payload.loc_lat"].dtype) == "float64"
+
+
+def test_record_factory_bad_validator(safecast_model_dir):
+    batcher = DataFrameBatch(mode="read", checkpoint_dir=safecast_model_dir)
+    with pytest.raises(ValueError) as err:
+        batcher.create_record_factory(num_lines=10, validator="foo")
+    assert "must be callable" in str(err)
+
+
+def test_record_factory_simple_validator(safecast_model_dir):
+    batcher = DataFrameBatch(mode="read", checkpoint_dir=safecast_model_dir)
+
+    def _validator(rec: dict):
+        # ensure returning None and True works
+        which = random.randint(0, 1)
+        if which:
+            assert float(rec["payload.loc_lat"])
+        else:
+            return True
+
+    factory = batcher.create_record_factory(num_lines=10, validator=_validator)
+    assert len(list(factory)) == 10
+
+
+def test_record_factory_bool_fail_validator(safecast_model_dir):
+    batcher = DataFrameBatch(mode="read", checkpoint_dir=safecast_model_dir)
+
+    def _validator(rec: dict):
+        return False
+
+    factory = batcher.create_record_factory(num_lines=10, validator=_validator, max_invalid=10)
+    with pytest.raises(RuntimeError):
+        list(factory)
+
+
+def test_record_factory_exc_fail_validator(safecast_model_dir):
+    batcher = DataFrameBatch(mode="read", checkpoint_dir=safecast_model_dir)
+
+    def _validator(rec: dict):
+        raise ValueError
+
+    factory = batcher.create_record_factory(num_lines=10, validator=_validator, max_invalid=10)
+    with pytest.raises(RuntimeError):
+        list(factory)
 
 
 @pytest.mark.parametrize(
@@ -96,7 +195,7 @@ def test_generate_batch_smart_seed(model_path, seed, tmp_path):
 
 @pytest.mark.parametrize(
     "model_path,seed", [
-        ("https://gretel-public-website.s3-us-west-2.amazonaws.com/tests/synthetics/models/safecast-batch-sp-0-14.tar.gz",
+        ("https://gretel-public-website.s3-us-west-2.amazonaws.com/tests/synthetics/models/safecast-batch-sp-0-14.tar.gz",  # noqa
             [{"payload.service_handler": "i-051a2a353509414f0"},
              {"payload.service_handler": "i-051a2a353509414f1"},
              {"payload.service_handler": "i-051a2a353509414f2"},
