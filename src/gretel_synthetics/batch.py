@@ -404,6 +404,7 @@ class RecordFactory:
     _seed_fields: Union[str, List[str]]
     _record_generator: IteratorType[dict]
     _delimiter: str
+    _parallelism: int
 
     def __init__(
         self,
@@ -414,7 +415,8 @@ class RecordFactory:
         delimiter: str,
         seed_fields: Union[dict, list] = None,
         max_invalid=MAX_INVALID,
-        validator: Optional[Callable] = None
+        validator: Optional[Callable] = None,
+        parallelism: int = 4
     ):
         self.num_lines = num_lines
         self.max_invalid = max_invalid
@@ -422,6 +424,7 @@ class RecordFactory:
         self._header_list = header_list
         self._seed_fields = seed_fields
         self._delimiter = delimiter
+        self._parallelism = parallelism
         self.validator = validator
         self.reset()
 
@@ -432,9 +435,10 @@ class RecordFactory:
 
         if isinstance(self._seed_fields, list):
             logger.info(
-                "Adjusting num_lines because seed_fields is a list, will only target %d lines",
+                "Adjusting num_lines and parallelism because seed_fields is a list, will only target %d lines",
                 len(self._seed_fields),
             )  # noqa
+            self._parallelism = 1
             self.num_lines = len(self._seed_fields)
 
     def _get_record(self) -> IteratorType[dict]:
@@ -456,7 +460,7 @@ class RecordFactory:
                         max_invalid=self.max_invalid * 10000,
                         num_lines=self.num_lines * 10000,
                         start_string=start_string,
-                        parallelism=4,
+                        parallelism=self._parallelism,
                     ),
                 )
             )
@@ -882,6 +886,7 @@ class DataFrameBatch:
         max_invalid: int = MAX_INVALID,
         validator: Callable = None,
         seed_fields: Union[dict, List[dict]] = None,
+        parallellism: int = 4
     ) -> RecordFactory:
         if validator is not None:
             if not callable(validator):
@@ -893,7 +898,8 @@ class DataFrameBatch:
             header_list=self.original_headers or self.master_header_list,
             seed_fields=seed_fields,
             max_invalid=max_invalid,
-            validator=validator
+            validator=validator,
+            parallelism=parallellism
         )
 
     def generate_all_batch_lines(

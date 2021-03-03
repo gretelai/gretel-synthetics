@@ -219,11 +219,11 @@ def test_record_factory_smart_seed(safecast_model_dir):
     batcher = DataFrameBatch(mode="read", checkpoint_dir=safecast_model_dir)
     factory = batcher.create_record_factory(
         num_lines=1000,
-        seed_fields=seeds
+        seed_fields=seeds*10
     )
 
     # list of seeds should reset num_lines
-    assert factory.num_lines == len(seeds)
+    assert factory.num_lines == len(seeds) * 10
 
     for seed, record in zip(seeds, factory):
         assert seed["payload.service_handler"] == record["payload.service_handler"]
