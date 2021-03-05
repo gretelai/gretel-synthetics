@@ -524,8 +524,12 @@ class RecordFactory:
 
         if output == "df":
             buffer = _BufferedDataFrame(self._delimiter, self._header_list)
-            for rec in _iter:
-                buffer.add(rec)
+            try:
+                for rec in _iter:
+                    buffer.add(rec)
+            except (RuntimeError, StopIteration) as err:
+                logger.warning(f"Runtime error on iteration, returning current buffer, {str(err)}")
+            
             return buffer.df
 
         return list(_iter)
