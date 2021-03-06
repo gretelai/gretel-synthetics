@@ -3,7 +3,7 @@ from typing import (
     Callable,
     Generator as GeneratorType,
     List,
-    Iterable,
+    Iterator,
     Optional,
     Tuple,
     Union
@@ -57,8 +57,8 @@ class TensorFlowGenerator(BaseGenerator):
         self._predictions = self._predict_forever()
 
     def generate_next(
-        self, num_lines: int, hard_limit: Optional[int] = None
-    ) -> Iterable[GenText]:
+        self, num_lines: Optional[int], hard_limit: Optional[int] = None
+    ) -> Iterator[GenText]:
         """
         Returns a sequence of lines.
 
@@ -74,9 +74,14 @@ class TensorFlowGenerator(BaseGenerator):
         valid_lines_generated = 0
         total_lines_generated = 0
 
-        while valid_lines_generated < num_lines and (
-            hard_limit is None or total_lines_generated < hard_limit
-        ):
+        while True:
+            if num_lines and valid_lines_generated >= num_lines:
+                break
+            if hard_limit and total_lines_generated >= hard_limit:
+                break
+            if self.settings.multi_seed and not self.settings.start_string:
+                break
+
             rec = next(self._predictions).data
             total_lines_generated += 1
             _valid = None

@@ -31,7 +31,7 @@ from gretel_synthetics.config import (
     CONFIG_MAP,
 )
 import gretel_synthetics.const as const
-from gretel_synthetics.generate import GenText, generate_text
+from gretel_synthetics.generate import GenText, generate_text, SeedingGenerator
 from gretel_synthetics.errors import TooManyInvalidError
 from gretel_synthetics.train import train
 from gretel_synthetics.tokenizers import BaseTokenizerTrainer
@@ -442,11 +442,29 @@ class RecordFactory:
             self.num_lines = len(self._seed_fields)
 
     def _get_record(self) -> IteratorType[dict]:
-        # seed our actual batch line generators
+        # our actual batch line generators
         generators = []
+
+        # if we have a list of seed fields, we do special
+        # handling to create the proper generator
+        seed_generator = None  # assume no seeds to start
+        if isinstance(self._seed_fields, list):
+            seed_generator = SeedingGenerator(
+                self._batches[0].config,
+                seed_list=self._seed_fields,
+                line_validator=self._batches[0].get_validator(),
+                max_invalid=self.max_invalid * 10000
+            )
+            generators.append((self._batches[0], seed_generator))
+
         for idx, batch in self._batches.items():
             start_string = None
+            if idx == 0 and seed_generator:
+                # We've already added the first batch's generator to the list
+                # so we just continue on to the next one
+                continue
             if idx == 0:
+                # In the event we have seeds that aren't a list, (i.e. static seeds)
                 start_string = self._seed_fields
             generators.append(
                 (
@@ -465,6 +483,10 @@ class RecordFactory:
                 )
             )
 
+        # At this point, we've created our list of generators. Below here
+        # is what gets run on every next() call, which tries to construct
+        # a full record from all the underlying batches.
+
         # keep looping as long as our target line count is less than
         # our total line count
         while self.valid_count < self.num_lines:
@@ -473,6 +495,13 @@ class RecordFactory:
             # full line once we get through each generator
             if self.invalid_count >= self.max_invalid:
                 raise RuntimeError("Invalid record count exceeded during generation")
+
+            seed_cache = None
+            if seed_generator:
+                # If we're using a seeding generator (from a list of seeds)
+                # we cache the next seed we are about to use to generate
+                # the next record.
+                seed_cache = seed_generator.settings.start_string[0]
 
             record = {}
             batch: Batch
@@ -491,15 +520,22 @@ class RecordFactory:
             # Do a final validation, if configured, on the fully constructed
             # record, if this validation fails, we'll still increment our
             # invalid count.
+
+            valid = True  # assume we have a valid record
+
             if self.validator is not None:
                 try:
                     _valid = self.validator(record)
                     if _valid is False:
-                        self.invalid_count += 1
-                        continue
+                        valid = False
                 except Exception:
-                    self.invalid_count += 1
-                    continue
+                    valid = False
+
+            if not valid:
+                self.invalid_count += 1
+                if seed_cache:
+                    seed_generator.settings.start_string.insert(0, seed_cache)
+                continue  # back to the while start
 
             self.valid_count += 1
             yield record
@@ -529,7 +565,7 @@ class RecordFactory:
                     buffer.add(rec)
             except (RuntimeError, StopIteration) as err:
                 logger.warning(f"Runtime error on iteration, returning current buffer, {str(err)}")
-            
+
             return buffer.df
 
         return list(_iter)

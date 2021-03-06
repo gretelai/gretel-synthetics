@@ -34,7 +34,7 @@ from gretel_synthetics.batch import DataFrameBatch
 
 
 BATCH_MODELS = [
-    "https://gretel-public-website.s3-us-west-2.amazonaws.com/tests/synthetics/models/safecast-batch-sp-0-14.tar.gz"
+    "https://gretel-public-website.s3-us-west-2.amazonaws.com/tests/synthetics/models/safecast-batch-sp-0-14.tar.gz",
 ]
 
 
@@ -45,10 +45,24 @@ def _unpack_to_dir(source: str, target: str):
                 tar_in.extractall(target)
 
 
+def _unpack_to_dir_nogz(source: str, target: str):
+    with smart_open(source, "rb", ignore_ext=True) as fin:
+        with tarfile.open(fileobj=fin, mode="r:gz") as tar_in:
+            tar_in.extractall(target)
+
+
 @pytest.fixture(scope="module")
 def safecast_model_dir():
     with tempfile.TemporaryDirectory() as tmp_dir:
         _unpack_to_dir(BATCH_MODELS[0], tmp_dir)
+        yield tmp_dir
+
+
+@pytest.fixture(scope="module")
+def hr_model_dir():
+    archive = "https://gretel-public-website.s3-us-west-2.amazonaws.com/tests/synthetics/models/hr-3batch-sp.tar.gz"
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        _unpack_to_dir_nogz(archive, tmp_dir)
         yield tmp_dir
 
 
@@ -228,4 +242,79 @@ def test_record_factory_smart_seed(safecast_model_dir):
     for seed, record in zip(seeds, factory):
         assert seed["payload.service_handler"] == record["payload.service_handler"]
 
-    factory.generate_all(output="df")
+
+class MyValidator:
+
+    counter = 0
+
+    def __call__(self, _):
+        if self.counter:
+            self.counter = 0
+            return False
+        self.counter = 1
+
+
+def test_record_factory_smart_seed_buffer(safecast_model_dir):
+    seeds = [{"payload.service_handler": "i-051a2a353509414f0"},
+             {"payload.service_handler": "i-051a2a353509414f1"},
+             {"payload.service_handler": "i-051a2a353509414f2"},
+             {"payload.service_handler": "i-051a2a353509414f3"}] * 2
+
+    batcher = DataFrameBatch(mode="read", checkpoint_dir=safecast_model_dir)
+
+    factory = batcher.create_record_factory(
+        num_lines=100, # doesn't matter w/ smart seed
+        seed_fields=seeds,
+        validator=MyValidator(),
+        max_invalid=5000
+    )
+
+    df = factory.generate_all(output="df")
+    assert len(df) == 8
+    assert factory.summary["num_lines"] == 8
+    assert factory.summary["valid_count"] == 8
+
+
+def test_record_factory_multi_batch(hr_model_dir):
+    batcher = DataFrameBatch(mode="read", checkpoint_dir=hr_model_dir)
+
+    factory = batcher.create_record_factory(
+        num_lines=50,
+        max_invalid=5000
+    )
+
+    df = factory.generate_all(output="df")
+    assert len(df) == 50
+
+
+def test_record_factory_multi_batch_seed_list(hr_model_dir):
+    batcher = DataFrameBatch(mode="read", checkpoint_dir=hr_model_dir)
+
+    age_seeds = [{"age": i} for i in range(1, 51)]
+
+    factory = batcher.create_record_factory(
+        num_lines=50,  # doesn't matter w/ smart seed
+        max_invalid=5000,
+        seed_fields=age_seeds,
+        validator=MyValidator()
+    )
+
+    df = factory.generate_all(output="df")
+    assert len(df) == 50
+    assert df["age"].nunique() == 50
+
+
+def test_record_factory_multi_batch_seed_static(hr_model_dir):
+    batcher = DataFrameBatch(mode="read", checkpoint_dir=hr_model_dir)
+
+    factory = batcher.create_record_factory(
+        num_lines=10,
+        max_invalid=5000,
+        seed_fields={"age": 5},
+        validator=MyValidator()
+    )
+
+    df = factory.generate_all(output="df")
+    assert len(df) == 10
+    assert df["age"].nunique() == 1
+    assert df.iloc[0]["age"] == 5
