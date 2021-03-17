@@ -6,11 +6,12 @@ For example usage please see our Jupyter Notebooks.
 """
 from dataclasses import dataclass, asdict
 from abc import abstractmethod
-from typing import Callable, TYPE_CHECKING, Optional
+from typing import Callable, TYPE_CHECKING, Optional, Union
 from pathlib import Path
 import json
 import logging
 import tensorflow as tf
+import shutil
 
 
 import gretel_synthetics.const as const
@@ -80,6 +81,11 @@ class BaseConfig:
         Default is ``False``.
     """
 
+    model_exists: bool = False
+    """Whether or not the checkpoint dir already has a model that
+    should be used as base to continue training from.
+    """
+
     # Default SP tokenizer settings. This are kept here for
     # backwards compatibility for <= 0.14.x
     vocab_size: int = 20000
@@ -117,6 +123,39 @@ class BaseConfig:
         training a model.
         """
         pass
+
+    @classmethod
+    def from_existing(cls, source_checkpoint: str, **kwargs) -> "BaseConfig":
+        # TODO: check for immutable kwargs
+
+        # TODO: if source_checkpoint is a .tar.gz, create a temporary directory and unpack
+        # the data there, then we can trash the directory afterwards instead of leaving
+        # new directory around
+
+        # this is the new checkpoint_dir we will use
+        checkpoint_dir = kwargs.get("checkpoint_dir", None)
+        if checkpoint_dir is None:
+            raise ValueError("missing checkpoint_dir")
+
+        # Update all the new params that we want to use
+        params = config_from_model_dir(source_checkpoint, params_only=True)
+        for param_name, value in kwargs.items():
+            params[param_name] = value
+
+        # reset the checkpoint_dir
+        params["checkpoint_dir"] = checkpoint_dir
+        params["model_exists"] = True
+
+        # clear out checkpoint dir
+        try:
+            shutil.rmtree(checkpoint_dir)
+        except FileNotFoundError:
+            pass
+
+        # copy the source checkpoint dir contents over to the new one
+        shutil.copytree(source_checkpoint, checkpoint_dir)
+
+        return cls(**params)
 
     def gpu_check(self):
         """Optionally do a GPU check and warn if
@@ -283,7 +322,7 @@ can be used to re-instantiate a config from a serialized state.
 """
 
 
-def config_from_model_dir(model_dir: str) -> BaseConfig:
+def config_from_model_dir(model_dir: str, params_only: bool = False) -> Union[BaseConfig, dict]:
     """Factory that will take a known directory of a model
     and return a class instance for that config. We automatically
     try and detect the correct BaseConfig sub-class to use based
@@ -292,6 +331,9 @@ def config_from_model_dir(model_dir: str) -> BaseConfig:
     If there is no ``model_type`` param in the saved config, we
     assume that the model was saved using an earlier version of the
     package and will instantiate a TensorFlowConfig
+
+    Args:
+        params_only: If True, will only return a dict of the config params
     """
     params_file = Path(model_dir) / const.MODEL_PARAMS
     params_dict = json.loads(open(params_file).read())
@@ -311,6 +353,8 @@ def config_from_model_dir(model_dir: str) -> BaseConfig:
         config.learning_rate = old_dp_learning_rate if config.dp else .01
         return config
     cls = CONFIG_MAP[model_type]
+    if params_only:
+        return params_dict
     return cls(**params_dict)
 
 

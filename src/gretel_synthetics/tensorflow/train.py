@@ -169,9 +169,12 @@ def train_rnn(params: TrainingParams):
 
     total_token_count, dataset = _create_dataset(store, text_iter, num_lines, tokenizer)
     logging.info("Initializing synthetic model")
-    model = build_model(
-        vocab_size=tokenizer.total_vocab_size, batch_size=store.batch_size, store=store
-    )
+    if store.model_exists:
+        model = load_model(store, tokenizer)
+    else:
+        model = build_model(
+            vocab_size=tokenizer.total_vocab_size, batch_size=store.batch_size, store=store
+        )
 
     # Save checkpoints during training
     checkpoint_prefix = (Path(store.checkpoint_dir) / "synthetic").as_posix()
