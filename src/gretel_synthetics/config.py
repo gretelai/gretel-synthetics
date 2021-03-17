@@ -337,6 +337,9 @@ def config_from_model_dir(model_dir: str, params_only: bool = False) -> Union[Ba
     """
     params_file = Path(model_dir) / const.MODEL_PARAMS
     params_dict = json.loads(open(params_file).read())
+    if params_only:
+        return params_dict
+
     model_type = params_dict.pop(const.MODEL_TYPE, None)
 
     # swap out the checkpoint dir location for the currently
@@ -353,8 +356,6 @@ def config_from_model_dir(model_dir: str, params_only: bool = False) -> Union[Ba
         config.learning_rate = old_dp_learning_rate if config.dp else .01
         return config
     cls = CONFIG_MAP[model_type]
-    if params_only:
-        return params_dict
     return cls(**params_dict)
 
 

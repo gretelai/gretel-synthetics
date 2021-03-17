@@ -61,7 +61,8 @@ def test_local_config_settings(mkdir):
         "predict_batch_size": 64,
         "reset_states": True,
         "training_data_path": "foo/training_data.txt",
-        "model_type": "TensorFlowConfig"
+        "model_type": "TensorFlowConfig",
+        "model_exists": False
     }
 
 
