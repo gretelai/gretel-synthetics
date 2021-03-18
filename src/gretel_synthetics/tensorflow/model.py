@@ -41,9 +41,7 @@ def _prepare_model(
     load_dir = store.checkpoint_dir
 
     model.load_weights(tf.train.latest_checkpoint(load_dir)).expect_partial()
-
     model.build(tf.TensorShape([1, None]))
-    model.summary()
 
     return model
 
