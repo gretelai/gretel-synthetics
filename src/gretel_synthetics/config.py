@@ -140,7 +140,13 @@ class BaseConfig:
         pass
 
     @classmethod
-    def from_pretrained(cls, source_checkpoint: str, **kwargs) -> "BaseConfig":
+    def from_pretrained(cls, model_path: str, **kwargs) -> "BaseConfig":
+        """
+        Load a pre-trained model to fine tune on a new dataset
+        Args:
+            model_path: file or directory path for pre-trained synthetic model
+            **kwargs: configuration arguments
+        """
         logging.warning("Loading initial weights and vocab from pre-trained model")
         immutable_args = ['rnn_units', 'vocab_size', 'embedding_dim', 'dropout_rate', 'rnn_initializer']
         invalid_args = list(set(immutable_args).intersection(set(kwargs)))
@@ -148,23 +154,23 @@ class BaseConfig:
             raise ValueError(f"cannot specify {','.join(invalid_args)} in config "
                              f"when loading from a pre-trained model")
 
-        if source_checkpoint.endswith(".tar.gz"):
+        if model_path.endswith(".tar.gz"):
             source_model_dir = 'source_model'
             try:
                 shutil.rmtree(source_model_dir)
             except FileNotFoundError:
                 pass
-            unpack_remote_model_to_dir(source_checkpoint, source_model_dir)
-            source_checkpoint = [f for f in Path(source_model_dir).iterdir() if f.is_dir()][0].as_posix()
+            unpack_remote_model_to_dir(model_path, source_model_dir)
+            model_path = [f for f in Path(source_model_dir).iterdir() if f.is_dir()][0].as_posix()
 
         checkpoint_dir = kwargs.get("checkpoint_dir", None)
         if checkpoint_dir is None:
             raise ValueError("missing checkpoint_dir")
-        if checkpoint_dir == source_checkpoint:
+        if checkpoint_dir == model_path:
             raise ValueError("source_checkpoint and checkpoint_dir cannot be the same path")
 
         # Update all the new params that we want to use
-        params = config_from_model_dir(source_checkpoint, params_only=True)
+        params = config_from_model_dir(model_path, params_only=True)
         for param_name, value in kwargs.items():
             params[param_name] = value
 
@@ -177,7 +183,7 @@ class BaseConfig:
             pass
 
         # copy the source checkpoint dir contents over to the new one
-        shutil.copytree(source_checkpoint, checkpoint_dir)
+        shutil.copytree(model_path, checkpoint_dir)
 
         return cls(**params)
 
