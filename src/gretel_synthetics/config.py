@@ -7,12 +7,14 @@ For example usage please see our Jupyter Notebooks.
 from dataclasses import dataclass, asdict
 from abc import abstractmethod
 from typing import Callable, TYPE_CHECKING, Optional, Union
-from pathlib import Path
+import gzip
 import json
 import logging
-import tensorflow as tf
+from pathlib import Path
 import shutil
-
+from smart_open import open as smart_open
+import tarfile
+import tensorflow as tf
 
 import gretel_synthetics.const as const
 from gretel_synthetics.tensorflow.train import train_rnn
@@ -29,6 +31,19 @@ if TYPE_CHECKING:
     from gretel_synthetics.generate import BaseGenerator
 else:
     BaseGenerator = None
+
+
+def unpack_remote_model_to_dir(remote_file: str, target_dir: str):
+    """Unpack a compressed synthetic model to a local directory
+    """
+    model_path = Path(target_dir)
+    if not model_path.is_dir():
+        model_path.mkdir()
+
+    with smart_open(remote_file, "rb", ignore_ext=True) as fin:
+        with gzip.open(fin) as gzip_in:
+            with tarfile.open(fileobj=gzip_in, mode="r:gz") as tar_in:
+                tar_in.extractall(model_path)
 
 
 @dataclass
@@ -126,16 +141,27 @@ class BaseConfig:
 
     @classmethod
     def from_pretrained(cls, source_checkpoint: str, **kwargs) -> "BaseConfig":
-        # TODO: check for immutable kwargs
+        logging.warning("Loading initial weights and vocab from pre-trained model")
+        immutable_args = ['rnn_units', 'vocab_size', 'embedding_dim', 'dropout_rate', 'rnn_initializer']
+        invalid_args = list(set(immutable_args).intersection(set(kwargs)))
+        if len(invalid_args) > 0:
+            raise ValueError(f"cannot specify {','.join(invalid_args)} in config "
+                             f"when loading from a pre-trained model")
 
-        # TODO: if source_checkpoint is a .tar.gz, create a temporary directory and unpack
-        # the data there, then we can trash the directory afterwards instead of leaving
-        # new directory around
+        if source_checkpoint.endswith(".tar.gz"):
+            source_model_dir = 'source_model'
+            try:
+                shutil.rmtree(source_model_dir)
+            except FileNotFoundError:
+                pass
+            unpack_remote_model_to_dir(source_checkpoint, source_model_dir)
+            source_checkpoint = [f for f in Path(source_model_dir).iterdir() if f.is_dir()][0].as_posix()
 
-        # this is the new checkpoint_dir we will use
         checkpoint_dir = kwargs.get("checkpoint_dir", None)
         if checkpoint_dir is None:
             raise ValueError("missing checkpoint_dir")
+        if checkpoint_dir == source_checkpoint:
+            raise ValueError("source_checkpoint and checkpoint_dir cannot be the same path")
 
         # Update all the new params that we want to use
         params = config_from_model_dir(source_checkpoint, params_only=True)
@@ -145,8 +171,6 @@ class BaseConfig:
         # reset the checkpoint_dir
         params["checkpoint_dir"] = checkpoint_dir
         params["model_exists"] = True
-
-        # clear out checkpoint dir
         try:
             shutil.rmtree(checkpoint_dir)
         except FileNotFoundError:
@@ -333,6 +357,7 @@ def config_from_model_dir(model_dir: str, params_only: bool = False) -> Union[Ba
     package and will instantiate a TensorFlowConfig
 
     Args:
+        model_dir: Directory path to load model from
         params_only: If True, will only return a dict of the config params
     """
     params_file = Path(model_dir) / const.MODEL_PARAMS
