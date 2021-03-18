@@ -125,7 +125,7 @@ class BaseConfig:
         pass
 
     @classmethod
-    def from_existing(cls, source_checkpoint: str, **kwargs) -> "BaseConfig":
+    def from_pretrained(cls, source_checkpoint: str, **kwargs) -> "BaseConfig":
         # TODO: check for immutable kwargs
 
         # TODO: if source_checkpoint is a .tar.gz, create a temporary directory and unpack
