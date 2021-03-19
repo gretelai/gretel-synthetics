@@ -8,7 +8,7 @@ test_data_dir = Path(__file__).parent / "data"
 
 @pytest.mark.parametrize("model_name,dp,expected_learning_rate",
                          [("non-dp-model", False, 0.01),
-                          ("dp-model", True, 0.001)])
+                          ("dp-model", True, 0.01)])
 def test_load_legacy_config(model_name, dp, expected_learning_rate):
     legacy_model_dir = test_data_dir / '0.14.x' / model_name
 
