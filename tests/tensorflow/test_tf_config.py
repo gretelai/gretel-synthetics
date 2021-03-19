@@ -24,7 +24,7 @@ def test_local_config(mkdir):
 
 @patch("gretel_synthetics.config.Path.mkdir")
 def test_local_config_settings(mkdir):
-    lc = TensorFlowConfig(checkpoint_dir="foo", input_data_path="bar")
+    lc = TensorFlowConfig(checkpoint_dir="foo", input_data_path="bar", input_test_path="foobar")
     check = lc.as_dict()
     assert check == {
         "max_lines": 0,
@@ -58,9 +58,11 @@ def test_local_config_settings(mkdir):
         "field_delimiter_token": "<d>",
         "overwrite": False,
         "input_data_path": "bar",
+        "input_test_path": "foobar",
         "predict_batch_size": 64,
         "reset_states": True,
         "training_data_path": "foo/training_data.txt",
+        "testing_data_path": "foo/testing_data.txt",
         "model_type": "TensorFlowConfig",
         "model_exists": False
     }

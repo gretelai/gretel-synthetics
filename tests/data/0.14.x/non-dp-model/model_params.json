@@ -18,7 +18,7 @@
   "pretrain_sentence_count": 1000000,
   "max_line_len": 2048,
   "dp": false,
-  "dp_learning_rate": 0.001,
+  "dp_learning_rate": 0.01,
   "dp_noise_multiplier": 1.1,
   "dp_l2_norm_clip": 1.0,
   "dp_microbatches": 256,
