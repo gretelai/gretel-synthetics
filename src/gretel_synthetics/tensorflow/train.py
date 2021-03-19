@@ -17,7 +17,7 @@ from tqdm import tqdm
 
 from gretel_synthetics.tensorflow.model import build_model, load_model
 from gretel_synthetics.tensorflow.dp_model import compute_epsilon
-from gretel_synthetics.const import VAL_ACC, VAL_LOSS
+from gretel_synthetics.const import VAL_ACC, VAL_LOSS, Data
 from gretel_synthetics.tokenizers import BaseTokenizer
 
 if TYPE_CHECKING:
@@ -154,7 +154,7 @@ def train_rnn(params: TrainingParams):
 
     tokenizer = params.tokenizer
     num_lines = params.tokenizer_trainer.num_lines
-    text_iter = params.tokenizer_trainer.training_data_iter()
+    train_iter = params.tokenizer_trainer.data_iterator(Data.train)
 
     if not store.overwrite:  # pragma: no cover
         try:
@@ -166,8 +166,11 @@ def train_rnn(params: TrainingParams):
                 "A model already exists in the checkpoint location, you must enable "
                 "overwrite mode or delete the checkpoints first."
             )
+    total_token_count, dataset = _create_dataset(store, train_iter, num_lines, tokenizer, label='training')
+    if store.input_test_path is not None:
+        test_iter = params.tokenizer_trainer.data_iterator(Data.test)
+        test_token_count, test_dataset = _create_dataset(store, test_iter, num_lines, tokenizer, label='testing')
 
-    total_token_count, dataset = _create_dataset(store, text_iter, num_lines, tokenizer)
     logging.info("Initializing synthetic model")
     if store.model_exists:
         model = load_model(store, tokenizer)
@@ -202,6 +205,13 @@ def train_rnn(params: TrainingParams):
     best_val = None
     try:
         model.fit(dataset, epochs=store.epochs, callbacks=_callbacks)
+
+        # Evaluate model against test set
+        if store.input_test_path is not None:
+            logging.info("Beginning model evaluation against test data")
+            results = model.evaluate(test_dataset)
+            logging.info(f"Evaluation test loss: {results[0]:.2f}, test acc: {results[1]:.2f}")
+
         if store.save_best_model:
             best_val = checkpoint_callback.best
         if store.early_stopping:
@@ -226,14 +236,15 @@ def train_rnn(params: TrainingParams):
 
 
 def _create_dataset(
-    store: TensorFlowConfig, text_iter: Iterator[str], num_lines: int, tokenizer: BaseTokenizer
+    store: TensorFlowConfig, text_iter: Iterator[str], num_lines: int, tokenizer: BaseTokenizer,
+        label: str = 'training'
 ) -> Tuple[int, tf.data.Dataset]:
     """
     Before training, we need to map strings to a numerical representation.
     Create two lookup tables: one mapping characters to numbers,
     and another for numbers to characters.
     """
-    logging.info("Tokenizing training data")
+    logging.info(f"Tokenizing {label} data")
     ids = []
     total_token_count = 0
     for line in tqdm(text_iter, total=num_lines):
@@ -241,7 +252,7 @@ def _create_dataset(
         ids.extend(_tokens)
         total_token_count += len(_tokens)
 
-    logging.info("Creating and shuffling tensorflow dataset")
+    logging.info(f"Creating and shuffling {label} dataset")
     char_dataset = tf.data.Dataset.from_tensor_slices(ids)
     sequences = char_dataset.batch(store.seq_length + 1, drop_remainder=True)
     dataset = sequences.map(_split_input_target)

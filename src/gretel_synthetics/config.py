@@ -56,6 +56,10 @@ class BaseConfig:
     """Path to raw training data, user provided.
     """
 
+    input_test_path: str = None
+    """Path to raw test data for model evaluation (optional), user provided.
+    """
+
     checkpoint_dir: str = None
     """Directory where model data will
     be stored, user provided.
@@ -63,6 +67,11 @@ class BaseConfig:
 
     training_data_path: str = None
     """Where annotated and tokenized training data will be stored. This attr
+    will be modified during construction.
+    """
+
+    testing_data_path: str = None
+    """Where annotated and tokenized testing data will be stored. This attr
     will be modified during construction.
     """
 
@@ -203,6 +212,9 @@ class BaseConfig:
             Path(self.checkpoint_dir).resolve().mkdir()
         self.training_data_path = Path(
             self.checkpoint_dir, const.TRAINING_DATA
+        ).as_posix()
+        self.testing_data_path = Path(
+            self.checkpoint_dir, const.TESTING_DATA
         ).as_posix()
 
         # assign the model type for serialization

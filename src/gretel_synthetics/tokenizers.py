@@ -108,7 +108,7 @@ class BaseTokenizerTrainer(Base):
 
         super().__init__()
 
-    def create_annotated_training_data(self) -> Iterator[str]:
+    def create_annotated_training_data(self, data_type: const.Data = const.Data.train) -> Iterator[str]:
         """
         This should be called _before_ training as it is required
         to have the annotated training data created in the model
@@ -121,29 +121,51 @@ class BaseTokenizerTrainer(Base):
         a training data file as specified by the config.
 
         Args:
-            None
+            data_type: Enum. const.Data.train, const.Data.test
         """
-        logging.info(f"Loading training data from {self.config.input_data_path}")
-        self.num_lines = 0
-        with smart_open(self.config.input_data_path, "r", encoding="utf-8", errors="replace") as infile:
-            with open(self.config.training_data_path, "w") as fout:
+
+        if data_type == const.Data.train:
+            label = 'training'
+            input_path = self.config.input_data_path
+            output_path = self.config.training_data_path
+        elif data_type == const.Data.test:
+            label = 'testing'
+            input_path = self.config.input_test_path
+            output_path = self.config.testing_data_path
+        else:
+            raise ValueError("Invalid data_type specified.")
+
+        if data_type == const.Data.train:
+            self.num_lines = 0
+        logging.info(f"Loading {label} data from {input_path}")
+        with smart_open(input_path, "r", encoding="utf-8", errors="replace") as infile:
+            with open(output_path, "w") as fout:
                 for line in infile:
-                    self.num_lines += 1
+                    if data_type == const.Data.train:
+                        self.num_lines += 1
                     if self.config.max_lines and self.num_lines >= self.config.max_lines:
                         break
 
                     # Tokenizer specific line processing
                     annotated_line = self._annotate_training_line(line)
                     fout.write(annotated_line)
-        return self.training_data_iter()
+        return self.data_iterator(data_type)
 
-    def training_data_iter(self) -> Iterator[str]:
+    def data_iterator(self, data_type: const.Data = const.Data.train) -> Iterator[str]:
         """Create a generator that will iterate each line of the training
         data that was created during the annotation step.  Synthetic model trainers
         will most likely need to iterate this to process each line of the annotated
         training data.
+
+        Args:
+            data_type: Enum. Select 'train' or 'test'. Default: 'train'
         """
-        with open(self.config.training_data_path, "r") as fin:
+        if data_type == const.Data.train:
+            input_path = self.config.training_data_path
+        elif data_type == const.Data.test:
+            input_path = self.config.testing_data_path
+
+        with open(input_path, "r") as fin:
             for line in fin:
                 yield line
 

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Optional
 
 
 from gretel_synthetics.tokenizers import SentencePieceTokenizerTrainer, tokenizer_from_model_dir
-
+from gretel_synthetics.const import Data
 
 if TYPE_CHECKING:
     from gretel_synthetics.config import BaseConfig
@@ -56,7 +56,10 @@ def train(store: BaseConfig, tokenizer_trainer: Optional[BaseTokenizerTrainer] =
     if tokenizer_trainer is None:
         tokenizer_trainer = _create_default_tokenizer(store)
 
-    tokenizer_trainer.create_annotated_training_data()
+    tokenizer_trainer.create_annotated_training_data(Data.train)
+    if store.input_test_path is not None:
+        tokenizer_trainer.create_annotated_training_data(Data.test)
+
     if not store.model_exists:
         tokenizer_trainer.train()
     tokenizer = tokenizer_from_model_dir(store.checkpoint_dir)
