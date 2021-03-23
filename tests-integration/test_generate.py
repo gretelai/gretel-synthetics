@@ -88,7 +88,11 @@ def test_record_factory_exhaust_iter(safecast_model_dir):
 
 def test_record_factory_generate_all(safecast_model_dir):
     batcher = DataFrameBatch(mode="read", checkpoint_dir=safecast_model_dir)
-    factory = batcher.create_record_factory(num_lines=10)
+
+    def _validator(rec: dict):
+        assert float(rec["payload.loc_lat"])
+
+    factory = batcher.create_record_factory(num_lines=10, validator=_validator)
     next(factory)
     next(factory)
 
