@@ -9,7 +9,14 @@ import json
 import pytest
 import pandas as pd
 
-from gretel_synthetics.batch import DataFrameBatch, MAX_INVALID, READ, ORIG_HEADERS, GenerationSummary
+from gretel_synthetics.batch import (
+    DataFrameBatch,
+    MAX_INVALID,
+    READ,
+    ORIG_HEADERS,
+    _validate_batch_seed_values,
+    _BufferedDataFrame,
+)
 from gretel_synthetics.generate import GenText
 from gretel_synthetics.errors import TooManyInvalidError
 
@@ -82,6 +89,7 @@ def test_missing_delim(test_data):
     with pytest.raises(ValueError):
         DataFrameBatch(df=test_data, config=config)
 
+
 def test_init(test_data):
     with pytest.raises(ValueError):
         DataFrameBatch(df="nope", config=config_template)
@@ -112,11 +120,15 @@ def test_init(test_data):
         assert Path(batch.checkpoint_dir).is_dir()
         assert Path(batch.checkpoint_dir).name == f"batch_{i}"
 
-    orig_headers = json.loads(open(Path(config_template["checkpoint_dir"]) / ORIG_HEADERS).read())
+    orig_headers = json.loads(
+        open(Path(config_template["checkpoint_dir"]) / ORIG_HEADERS).read()
+    )
     assert list(set(orig_headers)) == list(set(test_data.columns))
 
     batches.create_training_data()
-    df = pd.read_csv(batches.batches[0].input_data_path, sep=config_template["field_delimiter"])
+    df = pd.read_csv(
+        batches.batches[0].input_data_path, sep=config_template["field_delimiter"]
+    )
     assert len(df.columns) == len(first_row)
 
     with pytest.raises(ValueError):
@@ -150,8 +162,10 @@ def test_init(test_data):
     # generate lines, simulating generation the max
     # valid line count
     def good():
-        return GenText(text="1,2,3,4,5", valid=random.choice([None, True]), delimiter=",")
-    
+        return GenText(
+            text="1,2,3,4,5", valid=random.choice([None, True]), delimiter=","
+        )
+
     def bad():
         return GenText(text="1,2,3", valid=False, delimiter=",")
 
@@ -170,7 +184,7 @@ def test_init(test_data):
 
     with patch("gretel_synthetics.batch.generate_text") as mock_gen:
         mock_gen.return_value = [good(), good(), good(), bad(), bad(), good()]
-        summary = batches.generate_batch_lines(5) 
+        summary = batches.generate_batch_lines(5)
         assert not summary.is_valid
 
     with patch.object(batches, "generate_batch_lines") as mock_gen:
@@ -179,10 +193,11 @@ def test_init(test_data):
         check_call = mock_gen.mock_calls[0]
         _, _, kwargs = check_call
         assert kwargs["max_invalid"] == 15
-       
 
     # get synthetic df
-    line = GenText(text="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15", valid=True, delimiter=",")
+    line = GenText(
+        text="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15", valid=True, delimiter=","
+    )
     with patch("gretel_synthetics.batch.generate_text") as mock_gen:
         mock_gen.return_value = [line] * len(batches.batches[10].headers)
         batches.generate_batch_lines(10)
@@ -191,21 +206,23 @@ def test_init(test_data):
 
 
 def test_batches_to_df(test_data):
-    _df = pd.DataFrame([
-        {"foo": "bar", "foo1": "bar1", "foo2": "bar2", "foo3": 3}])
+    _df = pd.DataFrame([{"foo": "bar", "foo1": "bar1", "foo2": "bar2", "foo3": 3}])
     batches = DataFrameBatch(df=_df, config=config_template, batch_size=2)
 
     batches.batches[0].add_valid_data(
         GenText(text="baz|baz1", valid=True, delimiter="|")
     )
-    batches.batches[1].add_valid_data(
-        GenText(text="baz2|5", valid=True, delimiter="|")
-    )
+    batches.batches[1].add_valid_data(GenText(text="baz2|5", valid=True, delimiter="|"))
 
     check = batches.batches_to_df()
     assert list(check.columns) == ["foo", "foo1", "foo2", "foo3"]
     assert check.shape == (1, 4)
-    assert [t.name for t in list(check.dtypes)] == ['object', 'object', 'object', 'int64']
+    assert [t.name for t in list(check.dtypes)] == [
+        "object",
+        "object",
+        "object",
+        "int64",
+    ]
 
 
 def test_generate_batch_lines_raise_on_exceed(test_data):
@@ -252,11 +269,13 @@ def test_generate_all_batch_lines_raise_on_failed(test_data):
         "raise_on_exceed_invalid": False,
         "num_lines": None,
         "parallelism": 0,
-        "seed_fields": None
+        "seed_fields": None,
     }
 
     batches.generate_batch_lines = Mock()
-    batches.generate_all_batch_lines(max_invalid=10, raise_on_failed_batch=True, num_lines=5)
+    batches.generate_all_batch_lines(
+        max_invalid=10, raise_on_failed_batch=True, num_lines=5
+    )
     _, args, kwargs = batches.generate_batch_lines.mock_calls[0]
     assert args == (0,)
     assert kwargs == {
@@ -264,7 +283,7 @@ def test_generate_all_batch_lines_raise_on_failed(test_data):
         "raise_on_exceed_invalid": True,
         "num_lines": 5,
         "parallelism": 0,
-        "seed_fields": None
+        "seed_fields": None,
     }
 
 
@@ -303,32 +322,26 @@ def test_read_mode(mock_gen, test_data):
 
 def test_validate_seed_lines_too_many_fields(test_data):
     batches = DataFrameBatch(df=test_data, config=config_template, batch_size=3)
-    
+
     with pytest.raises(RuntimeError) as err:
-        batches._validate_batch_seed_values(
+        _validate_batch_seed_values(
             batches.batches[0],
-            {
-                "ID_Code": "foo",
-                "target": 0,
-                "var_0": 33,
-                "var_1": 33
-            }
+            {"ID_Code": "foo", "target": 0, "var_0": 33, "var_1": 33},
         )
     assert "number of seed fields" in str(err.value)
-
 
 
 def test_validate_seed_lines_field_not_present(test_data):
     batches = DataFrameBatch(df=test_data, config=config_template, batch_size=3)
 
     with pytest.raises(RuntimeError) as err:
-        batches._validate_batch_seed_values(
+        _validate_batch_seed_values(
             batches.batches[0],
             {
                 "ID_code": "foo",
                 "target": 0,
                 "var_1": 33,
-            }
+            },
         )
     assert "The header: var_0 is not in the seed" in str(err.value)
 
@@ -336,13 +349,13 @@ def test_validate_seed_lines_field_not_present(test_data):
 def test_validate_seed_lines_ok_full_size(test_data):
     batches = DataFrameBatch(df=test_data, config=config_template, batch_size=3)
 
-    check = batches._validate_batch_seed_values(
+    check = _validate_batch_seed_values(
         batches.batches[0],
         {
             "ID_code": "foo",
             "target": 0,
             "var_0": 33,
-        }
+        },
     )
     assert check == "foo|0|33|"
 
@@ -350,11 +363,11 @@ def test_validate_seed_lines_ok_full_size(test_data):
 def test_validate_seed_lines_ok_one_field(test_data):
     batches = DataFrameBatch(df=test_data, config=config_template, batch_size=3)
 
-    check = batches._validate_batch_seed_values(
+    check = _validate_batch_seed_values(
         batches.batches[0],
         {
             "ID_code": "foo",
-        }
+        },
     )
     assert check == "foo|"
 
@@ -362,11 +375,21 @@ def test_validate_seed_lines_ok_one_field(test_data):
 def test_validate_seed_lines_ok_two_field(test_data):
     batches = DataFrameBatch(df=test_data, config=config_template, batch_size=3)
 
-    check = batches._validate_batch_seed_values(
-        batches.batches[0],
-        {
-            "ID_code": "foo",
-            "target": 1
-        }
+    check = _validate_batch_seed_values(
+        batches.batches[0], {"ID_code": "foo", "target": 1}
     )
     assert check == "foo|1|"
+
+def test_buffered_df():
+    buffer = _BufferedDataFrame(
+        ",", ["foo", "bar", "baz"]
+    )
+    buffer.add(
+        {"bar": "33.4", "foo": "hello", "baz": "2021-02-07T16:32:27.828956"}
+    )
+    buffer.add(
+        {"bar": "35.4", "foo": "world", "baz": "2021-02-08T16:32:27.828956"}
+    )
+    df = buffer.df
+    assert list(df.columns) == ["foo", "bar", "baz"]
+    assert str(df.bar.dtype) == "float64"

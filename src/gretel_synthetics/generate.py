@@ -4,8 +4,9 @@ creating text.
 """
 from collections import namedtuple
 from dataclasses import dataclass, asdict
-from typing import TYPE_CHECKING, Optional, Callable, List, Iterable, Union, Iterator
+from typing import TYPE_CHECKING, Optional, Callable, List, Union, Iterator
 from abc import ABC, abstractmethod
+from collections.abc import Iterator as IteratorClass
 
 from gretel_synthetics.generate_parallel import get_num_workers, generate_parallel
 from gretel_synthetics.errors import GenerationError
@@ -43,8 +44,7 @@ class gen_text:
     delimiter: str = None
 
     def as_dict(self) -> dict:
-        """Serialize the generated record to a dictionary
-        """
+        """Serialize the generated record to a dictionary"""
         return asdict(self)
 
     def values_as_list(self) -> Optional[List[str]]:
@@ -77,7 +77,9 @@ class BaseGenerator(ABC):
     """
 
     @abstractmethod
-    def generate_next(self, num_lines: int, hard_limit: Optional[int] = None) -> Iterable[GenText]:
+    def generate_next(
+        self, num_lines: Optional[int], hard_limit: Optional[int] = None
+    ) -> Iterator[GenText]:
         pass
 
 
@@ -103,8 +105,8 @@ class Settings:
     multi_seed: bool = False
     line_validator: Optional[Callable] = None
     max_invalid: int = 1000
-    generator: BaseGenerator = None
     tokenizer: BaseTokenizer = None
+    generator: BaseGenerator = None
 
     def __post_init__(self):
         if self.start_string is None:
@@ -119,7 +121,9 @@ class Settings:
                 self.start_string = new_strings
                 self.multi_seed = True
             else:
-                raise GenerationError("start_string must be a string or list of strings")
+                raise GenerationError(
+                    "start_string must be a string or list of strings"
+                )
 
     def _process_start_string(self, start_str: str) -> str:
         if not isinstance(start_str, str):
@@ -127,7 +131,9 @@ class Settings:
         if self.config.field_delimiter is not None:
             # the start_string must end with the delim
             if not start_str.endswith(self.config.field_delimiter):
-                raise GenerationError(f"start_str must end with the specified field delimiter: {self.config.field_delimiter}")  # noqa
+                raise GenerationError(
+                    f"start_str must end with the specified field delimiter: {self.config.field_delimiter}"
+                )  # noqa
             return self.tokenizer.tokenize_delimiter(start_str)
 
 
@@ -137,7 +143,7 @@ def generate_text(
     line_validator: Optional[Callable] = None,
     max_invalid: int = 1000,
     num_lines: Optional[int] = None,
-    parallelism: int = 0
+    parallelism: int = 0,
 ) -> Iterator[GenText]:
     """A generator that will load a model and start creating records.
 
@@ -215,8 +221,8 @@ def generate_text(
         start_string=start_string,
         line_validator=line_validator,
         max_invalid=max_invalid,
-        generator=generator_class,
-        tokenizer=tokenizer
+        tokenizer=tokenizer,
+        generator=generator_class
     )
 
     if num_lines is not None:
@@ -232,14 +238,53 @@ def generate_text(
 
     num_workers = get_num_workers(parallelism, _line_count, chunk_size=5)
     if num_workers > 1 and settings.multi_seed:
-        raise RuntimeError("When providing a list of start strings, parallelism cannot be used")
+        raise RuntimeError(
+            "When providing a list of start strings, parallelism cannot be used"
+        )
     if num_workers == 1:
         gen = generator_class(settings)
         yield from gen.generate_next(_line_count)
     else:
-        yield from generate_parallel(
-            settings,
-            _line_count,
-            num_workers,
-            chunk_size=5
+        yield from generate_parallel(settings, _line_count, num_workers, chunk_size=5)
+
+
+class SeedingGenerator(IteratorClass):
+    """A single threaded line / text generator that is specifically
+    for using with a list of seeds. This also exposes the ``Settings``
+    class back to the caller so the actual seed list can be directly
+    accessed, which controls the underlying progression of the
+    main text generator.
+
+    This is useful when you need to manipulate the actual seed list
+    as data is being generated.
+    """
+
+    settings: Settings
+    num_lines: int
+
+    def __init__(
+        self,
+        config: BaseConfig,
+        *,
+        seed_list: List[str],
+        line_validator: Optional[Callable] = None,
+        max_invalid: int = 1000,
+    ):
+        generator_class = config.get_generator_class()
+        tokenizer = tokenizer_from_model_dir(config.checkpoint_dir)
+
+        self.settings = Settings(
+            config=config,
+            start_string=seed_list,
+            line_validator=line_validator,
+            max_invalid=max_invalid,
+            tokenizer=tokenizer,
         )
+
+        self._generator = generator_class(self.settings).generate_next(None)
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        return next(self._generator)

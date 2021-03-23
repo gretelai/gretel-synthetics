@@ -120,3 +120,10 @@ def test_train_batch_sp_tok(train_df, tmp_path):
     batcher.generate_all_batch_lines(num_lines=100, max_invalid=5000)
     syn_df = batcher.batches_to_df()
     assert syn_df.shape[0] == 100
+
+    # Generate with a RecordFactory
+    factory = batcher.create_record_factory(num_lines=100, max_invalid=5000)
+    syn_df = factory.generate_all(output="df")
+    assert syn_df.shape[0] == 100
+    assert list(syn_df.columns) == list(train_df.columns)
+    assert factory.summary["valid_count"] == 100
