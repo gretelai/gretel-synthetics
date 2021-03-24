@@ -209,17 +209,19 @@ def train_rnn(params: TrainingParams):
                 best_val = early_stopping_callback.best
             except AttributeError:
                 best_val = None
+    except (ValueError, IndexError):
+        raise RuntimeError("Model training failed. Your training data may have too few records in it. "
+                           "Please try increasing your training rows and try again")
     except KeyboardInterrupt:
         ...
-    finally:
-        _save_history_csv(
-            history_callback,
-            store.checkpoint_dir,
-            store.dp,
-            store.best_model_metric,
-            best_val,
-        )
-        logging.info(f"Saving model to {tf.train.latest_checkpoint(store.checkpoint_dir)}")
+    _save_history_csv(
+        history_callback,
+        store.checkpoint_dir,
+        store.dp,
+        store.best_model_metric,
+        best_val,
+    )
+    logging.info(f"Saving model to {tf.train.latest_checkpoint(store.checkpoint_dir)}")
 
 
 def _create_dataset(

@@ -127,3 +127,21 @@ def test_train_batch_sp_tok(train_df, tmp_path):
     assert syn_df.shape[0] == 100
     assert list(syn_df.columns) == list(train_df.columns)
     assert factory.summary["valid_count"] == 100
+
+
+def test_train_small_df(train_df, tmp_path):
+    small_df = train_df.sample(n=50)
+    config = TensorFlowConfig(
+        epochs=5,
+        field_delimiter=",",
+        checkpoint_dir=tmp_path,
+        input_data_path=PATH_HOLDER
+    )
+    batcher = DataFrameBatch(
+        df=small_df,
+        config=config
+    )
+    batcher.create_training_data()
+    with pytest.raises(RuntimeError) as excinfo:
+        batcher.train_all_batches()
+    assert "Model training failed" in str(excinfo.value)
