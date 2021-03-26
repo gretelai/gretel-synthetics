@@ -30,6 +30,17 @@ class TrainingParams:
     config: BaseConfig
 
 
+@dataclass
+class EpochState:
+    """
+    Training state passed to the epoch callback on BaseConfig at the end of each epoch.
+    """
+    epoch: int
+    accuracy: Optional[float] = None
+    loss: Optional[float] = None
+    batch: Optional[int] = None
+
+
 def _create_default_tokenizer(store: BaseConfig) -> SentencePieceTokenizerTrainer:
     trainer = SentencePieceTokenizerTrainer(
         vocab_size=store.vocab_size,

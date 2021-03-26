@@ -80,6 +80,12 @@ class BaseConfig:
         Default is ``False``.
     """
 
+    epoch_callback: Optional[Callable] = None
+    """Callback to be invoked at the end of each epoch.  It will be invoked with a EpochState instance 
+    as its only parameter.  NOTE that the callback is deleted when save_model_params is called, we do not
+    attempt to serialize it to json.
+    """
+
     # Default SP tokenizer settings. This are kept here for
     # backwards compatibility for <= 0.14.x
     vocab_size: int = 20000
@@ -97,6 +103,9 @@ class BaseConfig:
         save_path = Path(self.checkpoint_dir) / const.MODEL_PARAMS
         # logging.info(f"Saving model history to {save_path.name}")
         out_dict = self.as_dict()
+        # Do not attempt to serialize Callable to json, just delete it.
+        if out_dict.get('epoch_callback') is not None:
+            del out_dict['epoch_callback']
         with open(save_path, "w") as f:
             json.dump(out_dict, f, indent=2)
         return save_path

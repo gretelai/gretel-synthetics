@@ -65,6 +65,20 @@ class GenerationSummary:
     is_valid: bool = False
 
 
+class _BatchEpochCallback:
+    """
+    Wrapper class to take a user supplied callback and inject the batch number.  The batch number
+    is then available in the EpochState object when it is supplied to the callback.
+    """
+    def __init__(self, user_callback: callable, batch_number: int):
+        self._batch_number = batch_number
+        self._user_callback = user_callback
+
+    def callback(self, epoch_state):
+        epoch_state.batch = self._batch_number
+        self._user_callback(epoch_state)
+
+
 @dataclass
 class Batch:
     """A representation of a synthetic data workflow.  It should not be used
@@ -166,6 +180,11 @@ def _create_batch_from_dir(batch_dir: str):
     # to training data simply for read-only data generation
     train_path = ""
 
+    # Wrap the user supplied callback with a _BatchEpochCallback so we have the batch number too.
+    if config.epoch_callback is not None:
+        batch_count = int(Path(batch_dir).name.split("_")[-1])
+        config.epoch_callback = _BatchEpochCallback(config.epoch_callback, batch_count).callback
+
     batch = Batch(
         checkpoint_dir=batch_dir,
         input_data_path=train_path,
@@ -223,6 +242,10 @@ def _build_batch_dirs(
             config_class = LocalConfig
         else:
             config_class = CONFIG_MAP[config_class_str]
+
+        # Wrap the user supplied callback with a _BatchEpochCallback so we have the batch number too.
+        if new_config.get('epoch_callback') is not None:
+            new_config['epoch_callback'] = _BatchEpochCallback(new_config.get('epoch_callback'), i).callback
 
         out[i] = Batch(
             checkpoint_dir=checkpoint_dir,
