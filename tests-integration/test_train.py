@@ -2,6 +2,7 @@
 E2E Tests for training and generating data
 """
 import json
+import os
 
 import pytest
 import pandas as pd
@@ -10,6 +11,7 @@ from gretel_synthetics.tokenizers import SentencePieceTokenizerTrainer, CharToke
 from gretel_synthetics.batch import PATH_HOLDER, DataFrameBatch
 from gretel_synthetics.config import TensorFlowConfig
 import gretel_synthetics.const as const
+from gretel_synthetics.train import EpochState
 
 
 DATA = "https://gretel-public-website.s3-us-west-2.amazonaws.com/tests/synthetics/data/USAdultIncome14K.csv"
@@ -127,3 +129,41 @@ def test_train_batch_sp_tok(train_df, tmp_path):
     assert syn_df.shape[0] == 100
     assert list(syn_df.columns) == list(train_df.columns)
     assert factory.summary["valid_count"] == 100
+
+
+def test_epoch_callback(train_df, tmp_path):
+    def epoch_callback(s: EpochState):
+        with open(tmp_path / 'callback_dump.txt', 'a') as f:
+            f.write(f'{s.epoch},{s.accuracy},{s.loss},{s.batch}\n')
+    config = TensorFlowConfig(
+        epochs=5,
+        field_delimiter=",",
+        checkpoint_dir=tmp_path,
+        input_data_path=PATH_HOLDER,
+        learning_rate=.01,
+        epoch_callback=epoch_callback
+    )
+    tokenizer = SentencePieceTokenizerTrainer(
+        vocab_size=10000,
+        config=config
+    )
+    batcher = DataFrameBatch(
+        batch_size=4,
+        df=train_df,
+        config=config,
+        tokenizer=tokenizer
+    )
+    batcher.create_training_data()
+    batcher.train_all_batches()
+    with open(tmp_path / 'callback_dump.txt', 'r') as f:
+        lines = f.readlines()
+        assert len(lines) == 20
+        for i, line in enumerate(lines):
+            fields = line.strip().split(',')
+            assert len(fields) == 4
+            assert int(fields[0]) == i % 5
+            assert int(fields[3]) == i // 5
+            float(fields[1])
+            float(fields[2])
+    os.remove(tmp_path / 'callback_dump.txt')
+    # assert False

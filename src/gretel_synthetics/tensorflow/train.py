@@ -9,7 +9,7 @@ import io
 from contextlib import redirect_stdout
 import logging
 from pathlib import Path
-from typing import Tuple, Optional, TYPE_CHECKING, Iterator
+from typing import Tuple, Optional, TYPE_CHECKING, Iterator, Callable
 
 import pandas as pd
 import tensorflow as tf
@@ -19,6 +19,7 @@ from gretel_synthetics.tensorflow.model import build_model, load_model
 from gretel_synthetics.tensorflow.dp_model import compute_epsilon
 from gretel_synthetics.const import VAL_ACC, VAL_LOSS
 from gretel_synthetics.tokenizers import BaseTokenizer
+from gretel_synthetics.train import EpochState
 
 if TYPE_CHECKING:
     from gretel_synthetics.config import TensorFlowConfig
@@ -73,6 +74,22 @@ class _ModelHistory(tf.keras.callbacks.Callback):
         # will flip to 1 to denote the actual best model that is saved
         # This just seeds the column for now
         self.best.append(0)
+
+
+class _EpochCallbackWrapper(tf.keras.callbacks.Callback):
+    """Wrapper class for the generic Callable attached to the BaseConfig.  It just translates the signature
+    for on_epoch_end into an EpochState which we use to invoke the BaseConfig callback."""
+    def __init__(self, epoch_callable: Callable):
+        self.epoch_callable = epoch_callable
+
+    def on_epoch_end(self, epoch, logs: dict = None):
+        logs = logs or {}
+        epoch_state = EpochState(
+            epoch=epoch,
+            accuracy=logs.get(VAL_ACC),
+            loss=logs.get(VAL_LOSS)
+        )
+        self.epoch_callable(epoch_state)
 
 
 def _save_history_csv(
@@ -195,6 +212,9 @@ def train_rnn(params: TrainingParams):
             restore_best_weights=store.save_best_model,
         )
         _callbacks.append(early_stopping_callback)
+
+    if store.epoch_callback:
+        _callbacks.append(_EpochCallbackWrapper(store.epoch_callback))
 
     best_val = None
     try:

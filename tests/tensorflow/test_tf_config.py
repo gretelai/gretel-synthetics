@@ -29,6 +29,7 @@ def test_local_config_settings(mkdir):
     assert check == {
         "max_lines": 0,
         "epochs": 100,
+        "epoch_callback": None,
         "early_stopping": True,
         "early_stopping_patience": 5,
         "best_model_metric": "loss",
