@@ -40,6 +40,12 @@ class BaseConfig:
     """Path to raw training data, user provided.
     """
 
+    validation_split: float = 0.1
+    """Fraction of the training data to be used as validation data.
+    Use of a validation set is recommended as it helps prevent
+    over-fitting and memorization. Valid values are ``0.0`` to ``1.0``.
+    Default is ``0.1``."""
+
     checkpoint_dir: str = None
     """Directory where model data will
     be stored, user provided.
