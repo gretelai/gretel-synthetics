@@ -56,6 +56,10 @@ class BaseConfig:
     will be modified during construction.
     """
 
+    validation_data_path: str = None
+    """Where annotated and tokenized validation data will be stored. This attr
+    will be modified during construction."""
+
     field_delimiter: Optional[str] = None
     """If the input data is structured, you may specify a field delimiter which can
     be used to split the generated text into a list of strings. For more detail
@@ -149,6 +153,9 @@ class BaseConfig:
             Path(self.checkpoint_dir).resolve().mkdir()
         self.training_data_path = Path(
             self.checkpoint_dir, const.TRAINING_DATA
+        ).as_posix()
+        self.validation_data_path = Path(
+            self.checkpoint_dir, const.VALIDATION_DATA
         ).as_posix()
 
         # assign the model type for serialization
