@@ -17,7 +17,7 @@ from tqdm import tqdm
 
 from gretel_synthetics.tensorflow.model import build_model, load_model
 from gretel_synthetics.tensorflow.dp_model import compute_epsilon
-from gretel_synthetics.const import VAL_ACC, VAL_LOSS
+from gretel_synthetics.const import METRIC_ACC, METRIC_LOSS
 from gretel_synthetics.tokenizers import BaseTokenizer
 from gretel_synthetics.train import EpochState
 
@@ -52,8 +52,8 @@ class _ModelHistory(tf.keras.callbacks.Callback):
         self.best = []
 
     def on_epoch_end(self, epoch, logs: dict = None):
-        self.losses.append(logs.get(VAL_LOSS))
-        self.accuracy.append(logs.get(VAL_ACC))
+        self.losses.append(logs.get(METRIC_LOSS))
+        self.accuracy.append(logs.get(METRIC_ACC))
 
         if self.config.dp:
             # Account for tf-privacy library writing to stdout
@@ -86,8 +86,8 @@ class _EpochCallbackWrapper(tf.keras.callbacks.Callback):
         logs = logs or {}
         epoch_state = EpochState(
             epoch=epoch,
-            accuracy=logs.get(VAL_ACC),
-            loss=logs.get(VAL_LOSS)
+            accuracy=logs.get(METRIC_ACC),
+            loss=logs.get(METRIC_LOSS)
         )
         self.epoch_callable(epoch_state)
 
@@ -111,7 +111,7 @@ def _save_history_csv(
             history.deltas,
             history.best,
         ),
-        columns=["epoch", VAL_LOSS, VAL_ACC, "epsilon", "delta", "best"],
+        columns=["epoch", METRIC_LOSS, METRIC_ACC, "epsilon", "delta", "best"],
     )
 
     # Grab that last idx in case we need to use it in lieu of finding
