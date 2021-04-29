@@ -40,11 +40,11 @@ class BaseConfig:
     """Path to raw training data, user provided.
     """
 
-    validation_split: float = 0.1
-    """Fraction of the training data to be used as validation data.
+    validation_split: bool = True
+    """Use a fraction of the training data as validation data.
     Use of a validation set is recommended as it helps prevent
-    over-fitting and memorization. Valid values are ``0.0`` to ``1.0``.
-    Default is ``0.1``."""
+    over-fitting and memorization. 
+    When enabled, 20% of data will be used for validation."""
 
     checkpoint_dir: str = None
     """Directory where model data will
@@ -55,10 +55,6 @@ class BaseConfig:
     """Where annotated and tokenized training data will be stored. This attr
     will be modified during construction.
     """
-
-    validation_data_path: str = None
-    """Where annotated and tokenized validation data will be stored. This attr
-    will be modified during construction."""
 
     field_delimiter: Optional[str] = None
     """If the input data is structured, you may specify a field delimiter which can
@@ -154,9 +150,6 @@ class BaseConfig:
         self.training_data_path = Path(
             self.checkpoint_dir, const.TRAINING_DATA
         ).as_posix()
-        self.validation_data_path = Path(
-            self.checkpoint_dir, const.VALIDATION_DATA
-        ).as_posix()
 
         # assign the model type for serialization
         self.model_type = self.__class__.__name__
@@ -176,9 +169,9 @@ class TensorFlowConfig(BaseConfig):
             deduce when the model is no longer improving and terminating training.
         early_stopping_patience (optional). Defaults to 5.  Number of epochs to wait for when there is no improvement
             in the model. After this number of epochs, training will terminate.
-        best_model_metric (optional). Defaults to "loss". The metric to use to track when a model is no
-            longer improving. Defaults to the loss value. An alternative option is "accuracy."
-            A error will be raised if either of this values are not used.
+        best_model_metric (optional). Defaults to "val_loss" or "loss" if a validation set is not used.
+            The metric to use to track when a model is no longer improving. Alternative options are "val_acc"
+            or "acc". A error will be raised if a valid value is not specified.
         batch_size (optional): Number of samples per gradient update. Using larger batch sizes can help
             make more efficient use of CPU/GPU parallelization, at the cost of memory.
             If unspecified, batch_size will default to ``64``.
@@ -242,7 +235,7 @@ class TensorFlowConfig(BaseConfig):
     epochs: int = 100
     early_stopping: bool = True
     early_stopping_patience: int = 5
-    best_model_metric: str = const.VAL_LOSS
+    best_model_metric: str = None
     batch_size: int = 64
     buffer_size: int = 10000
     seq_length: int = 100
@@ -278,7 +271,16 @@ class TensorFlowConfig(BaseConfig):
                     "Please see the README for details"
                 )
 
-        if self.best_model_metric not in (const.VAL_LOSS, const.VAL_ACC):
+        if self.best_model_metric is None:
+            if self.validation_split:
+                self.best_model_metric = const.METRIC_VAL_LOSS
+            else:
+                self.best_model_metric = const.METRIC_LOSS
+
+        if self.best_model_metric not in (const.METRIC_VAL_LOSS,
+                                          const.METRIC_VAL_ACCURACY,
+                                          const.METRIC_LOSS,
+                                          const.METRIC_ACCURACY):
             raise AttributeError("Invalid value for best_model_metric")
 
         super().__post_init__()

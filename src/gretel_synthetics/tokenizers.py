@@ -14,7 +14,7 @@ The general process that is followed when using these tokenizers is:
 
 Create a trainer instance, with desired parameters, including providing the config as a required param.
 
-Call the ``create_annotated_training_data`` for your tokenizer trainer. What is important to note here
+Call the ``annotate_data`` for your tokenizer trainer. What is important to note here
 is that this method actually iterates the input data line by line, and does any special processing, then
 writes a new data file that will be used for actual training. This new data file is written to the
 model directory.
@@ -108,7 +108,7 @@ class BaseTokenizerTrainer(Base):
 
         super().__init__()
 
-    def create_annotated_training_data(self) -> Iterator[str]:
+    def annotate_data(self) -> Iterator[str]:
         """
         This should be called _before_ training as it is required
         to have the annotated training data created in the model
@@ -119,14 +119,14 @@ class BaseTokenizerTrainer(Base):
         data path can optionally route through an annotation
         function and then we will write each raw line out into
         a training data file as specified by the config.
-
-        Args:
-            None
         """
-        logging.info(f"Loading training data from {self.config.input_data_path}")
+        input_path = self.config.input_data_path
+        output_path = self.config.training_data_path
         self.num_lines = 0
-        with smart_open(self.config.input_data_path, "r", encoding="utf-8", errors="replace") as infile:
-            with open(self.config.training_data_path, "w") as fout:
+
+        logging.info(f"Loading input data from {input_path}")
+        with smart_open(input_path, "r", encoding="utf-8", errors="replace") as infile:
+            with open(output_path, "w") as fout:
                 for line in infile:
                     self.num_lines += 1
                     if self.config.max_lines and self.num_lines >= self.config.max_lines:
@@ -135,9 +135,9 @@ class BaseTokenizerTrainer(Base):
                     # Tokenizer specific line processing
                     annotated_line = self._annotate_training_line(line)
                     fout.write(annotated_line)
-        return self.training_data_iter()
+        return self.data_iterator()
 
-    def training_data_iter(self) -> Iterator[str]:
+    def data_iterator(self) -> Iterator[str]:
         """Create a generator that will iterate each line of the training
         data that was created during the annotation step.  Synthetic model trainers
         will most likely need to iterate this to process each line of the annotated
