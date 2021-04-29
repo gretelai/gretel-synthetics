@@ -269,7 +269,7 @@ def _create_dataset(
     Create two lookup tables: one mapping characters to numbers,
     and another for numbers to characters.
     """
-    logging.info(f"Tokenizing input data")
+    logging.info("Tokenizing input data")
     ids = []
     total_token_count = 0
     for line in tqdm(text_iter, total=num_lines):
@@ -277,7 +277,7 @@ def _create_dataset(
         ids.extend(_tokens)
         total_token_count += len(_tokens)
 
-    logging.info(f"Shuffling input data")
+    logging.info("Shuffling input data")
     char_dataset = tf.data.Dataset.from_tensor_slices(ids)
     sequences = char_dataset.batch(store.seq_length + 1, drop_remainder=True)
     full_dataset = sequences.map(_split_input_target).shuffle(store.buffer_size).batch(
@@ -295,11 +295,11 @@ def _create_dataset(
         return y
 
     if store.validation_split:
-        logging.info(f"Creating validation dataset")
+        logging.info("Creating validation dataset")
         validation_dataset = full_dataset.enumerate() \
             .filter(is_validation) \
             .map(recover)
-        logging.info(f"Creating training dataset")
+        logging.info("Creating training dataset")
         train_dataset = full_dataset.enumerate() \
             .filter(is_train) \
             .map(recover)

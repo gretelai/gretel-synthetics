@@ -43,7 +43,7 @@ class BaseConfig:
     validation_split: bool = True
     """Use a fraction of the training data as validation data.
     Use of a validation set is recommended as it helps prevent
-    over-fitting and memorization. 
+    over-fitting and memorization.
     When enabled, 20% of data will be used for validation."""
 
     checkpoint_dir: str = None
