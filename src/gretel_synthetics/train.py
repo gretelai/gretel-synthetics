@@ -42,8 +42,6 @@ class EpochState:
     loss: Optional[float] = None
     val_accuracy: Optional[float] = None
     val_loss: Optional[float] = None
-    epsilon: Optional[float] = None
-    delta: Optional[float] = None
     batch: Optional[int] = None
 
 
