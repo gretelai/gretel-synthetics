@@ -4,11 +4,13 @@ a model. It depends on having created a engine specifc configuration and optiona
 to be used.
 """
 from dataclasses import dataclass
+import logging
 from typing import TYPE_CHECKING, Optional
 
 
 from gretel_synthetics.tokenizers import SentencePieceTokenizerTrainer, tokenizer_from_model_dir
-from gretel_synthetics.const import Data
+from gretel_synthetics.tokenizers import CharTokenizerTrainer
+
 
 if TYPE_CHECKING:
     from gretel_synthetics.config import BaseConfig
@@ -41,14 +43,25 @@ class EpochState:
     batch: Optional[int] = None
 
 
-def _create_default_tokenizer(store: BaseConfig) -> SentencePieceTokenizerTrainer:
-    trainer = SentencePieceTokenizerTrainer(
-        vocab_size=store.vocab_size,
-        character_coverage=store.character_coverage,
-        pretrain_sentence_count=store.pretrain_sentence_count,
-        max_line_len=store.max_line_len,
-        config=store,
-    )
+def _create_default_tokenizer(store: BaseConfig) -> BaseTokenizerTrainer:
+    """
+    Create a default tokenizer. If store.vocab_size == 0, use a CharacterTokenizer.
+    Otherwise use SentencePieceTokenizer
+    """
+    if store.vocab_size == 0:
+        logging.info("Loading CharTokenizerTrainer")
+        trainer = CharTokenizerTrainer(
+            config=store
+        )
+    else:
+        logging.info("Loading SentencePieceTokenizerTrainer")
+        trainer = SentencePieceTokenizerTrainer(
+            vocab_size=store.vocab_size,
+            character_coverage=store.character_coverage,
+            pretrain_sentence_count=store.pretrain_sentence_count,
+            max_line_len=store.max_line_len,
+            config=store,
+        )
     return trainer
 
 
