@@ -11,7 +11,6 @@ METRIC_VAL_LOSS = "val_loss"
 METRIC_VAL_ACCURACY = "val_accuracy"
 MODEL_TYPE = "model_type"
 TRAINING_DATA = "training_data.txt"
-VALIDATION_DATA = "validation_data.txt"
 MODEL_PREFIX = "m"
 
 
