@@ -130,7 +130,8 @@ def _save_history_csv(
         last_idx = df.iloc[[-1]].index.values.astype(int)[0]
     except IndexError as err:
         raise RuntimeError(
-            "An error occurred when saving model history, this could be because training was stopped before the first epoch could finish") from err  # noqa
+            "An error occurred when saving model history, this could be because training "
+            "was stopped before the first epoch could finish") from err  # noqa
 
     # Here we want to find the row that contains the value "best_val" within
     # the specified row by "best_col". We are looking for the first occurance
@@ -299,14 +300,11 @@ def _create_dataset(
         validation_dataset = full_dataset.enumerate() \
             .filter(is_validation) \
             .map(recover)
-
         logging.info(f"Creating training dataset")
         train_dataset = full_dataset.enumerate() \
             .filter(is_train) \
             .map(recover)
-
         return total_token_count, validation_dataset, train_dataset
-
     else:
         return total_token_count, None, full_dataset
 
