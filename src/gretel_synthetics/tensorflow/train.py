@@ -280,8 +280,7 @@ def _create_dataset(
     logging.info(f"Shuffling input data")
     char_dataset = tf.data.Dataset.from_tensor_slices(ids)
     sequences = char_dataset.batch(store.seq_length + 1, drop_remainder=True)
-    full_dataset = sequences.map(_split_input_target)
-    full_dataset = full_dataset.shuffle(store.buffer_size).batch(
+    full_dataset = sequences.map(_split_input_target).shuffle(store.buffer_size).batch(
         store.batch_size, drop_remainder=True
     )
 
