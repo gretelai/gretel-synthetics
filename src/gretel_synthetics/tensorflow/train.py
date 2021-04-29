@@ -229,17 +229,11 @@ def train_rnn(params: TrainingParams):
 
     best_val = None
     try:
-        if store.validation_split:
-            model.fit(training_dataset,
-                      epochs=store.epochs,
-                      callbacks=_callbacks,
-                      validation_data=validation_dataset
-                      )
-        else:
-            model.fit(training_dataset,
-                      epochs=store.epochs,
-                      callbacks=_callbacks,
-                      )
+        model.fit(training_dataset,
+                  epochs=store.epochs,
+                  callbacks=_callbacks,
+                  validation_data=validation_dataset
+                  )
 
         if store.save_best_model:
             best_val = checkpoint_callback.best
