@@ -40,6 +40,8 @@ class EpochState:
     epoch: int
     accuracy: Optional[float] = None
     loss: Optional[float] = None
+    val_accuracy: Optional[float] = None
+    val_loss: Optional[float] = None
     batch: Optional[int] = None
 
 
@@ -79,7 +81,7 @@ def train(store: BaseConfig, tokenizer_trainer: Optional[BaseTokenizerTrainer] =
     """
     if tokenizer_trainer is None:
         tokenizer_trainer = _create_default_tokenizer(store)
-    tokenizer_trainer.create_annotated_training_data()
+    tokenizer_trainer.annotate_data()
     tokenizer_trainer.train()
     tokenizer = tokenizer_from_model_dir(store.checkpoint_dir)
     params = TrainingParams(

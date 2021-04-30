@@ -17,7 +17,7 @@ from tqdm import tqdm
 
 from gretel_synthetics.tensorflow.model import build_model, load_model
 from gretel_synthetics.tensorflow.dp_model import compute_epsilon
-from gretel_synthetics.const import VAL_ACC, VAL_LOSS
+from gretel_synthetics.const import METRIC_ACCURACY, METRIC_LOSS, METRIC_VAL_LOSS, METRIC_VAL_ACCURACY
 from gretel_synthetics.tokenizers import BaseTokenizer
 from gretel_synthetics.train import EpochState
 
@@ -45,30 +45,34 @@ class _ModelHistory(tf.keras.callbacks.Callback):
     def __init__(self, total_token_count: int, config: TensorFlowConfig):
         self.total_token_count = total_token_count
         self.config = config
-        self.losses = []
+        self.loss = []
         self.accuracy = []
-        self.epsilons = []
-        self.deltas = []
+        self.val_loss = []
+        self.val_accuracy = []
+        self.epsilon = []
+        self.delta = []
         self.best = []
 
     def on_epoch_end(self, epoch, logs: dict = None):
-        self.losses.append(logs.get(VAL_LOSS))
-        self.accuracy.append(logs.get(VAL_ACC))
+        self.loss.append(logs.get(METRIC_LOSS))
+        self.accuracy.append(logs.get(METRIC_ACCURACY))
+        self.val_loss.append(logs.get(METRIC_VAL_LOSS, 0))
+        self.val_accuracy.append(logs.get(METRIC_VAL_ACCURACY, 0))
 
         if self.config.dp:
             # Account for tf-privacy library writing to stdout
             with redirect_stdout(io.StringIO()):
                 eps, _ = compute_epsilon(self.total_token_count, self.config, epoch)
-                self.epsilons.append(eps)
+                self.epsilon.append(eps)
 
             # NOTE: this is just a list of the same value, but
             # is simpler for creating the history csv
-            self.deltas.append(1 / float(self.total_token_count))
+            self.delta.append(1 / float(self.total_token_count))
         else:
             # Append 0,0 for epsilon and delta. These will be dropped afterwards anyway in
             # non-DP mode.
-            self.epsilons.append(0)
-            self.deltas.append(0)
+            self.epsilon.append(0)
+            self.delta.append(0)
 
         # NOTE: When we do the final history saving, one of these items
         # will flip to 1 to denote the actual best model that is saved
@@ -79,6 +83,7 @@ class _ModelHistory(tf.keras.callbacks.Callback):
 class _EpochCallbackWrapper(tf.keras.callbacks.Callback):
     """Wrapper class for the generic Callable attached to the BaseConfig.  It just translates the signature
     for on_epoch_end into an EpochState which we use to invoke the BaseConfig callback."""
+
     def __init__(self, epoch_callable: Callable):
         self.epoch_callable = epoch_callable
 
@@ -86,40 +91,47 @@ class _EpochCallbackWrapper(tf.keras.callbacks.Callback):
         logs = logs or {}
         epoch_state = EpochState(
             epoch=epoch,
-            accuracy=logs.get(VAL_ACC),
-            loss=logs.get(VAL_LOSS)
+            accuracy=logs.get(METRIC_ACCURACY),
+            loss=logs.get(METRIC_LOSS),
+            val_accuracy=logs.get(METRIC_VAL_ACCURACY, 0),
+            val_loss=logs.get(METRIC_VAL_LOSS, 0)
         )
         self.epoch_callable(epoch_state)
 
 
 def _save_history_csv(
-    history: _ModelHistory,
-    save_dir: str,
-    dp: bool,
-    best_col: str,
-    best_val: Optional[float] = None,
+        history: _ModelHistory,
+        save_dir: str,
+        dp: bool,
+        best_col: str,
+        best_val: Optional[float] = None,
 ):
     """
     Save model training history to CSV format
     """
     df = pd.DataFrame(
         zip(
-            range(len(history.losses)),
-            history.losses,
+            range(len(history.loss)),
+            history.loss,
             history.accuracy,
-            history.epsilons,
-            history.deltas,
+            history.val_loss,
+            history.val_accuracy,
+            history.epsilon,
+            history.delta,
             history.best,
         ),
-        columns=["epoch", VAL_LOSS, VAL_ACC, "epsilon", "delta", "best"],
-    )
+        columns=["epoch", METRIC_LOSS, METRIC_ACCURACY, METRIC_VAL_LOSS,
+                 METRIC_VAL_ACCURACY, "epsilon", "delta", "best"]
+    ).round(4)
 
     # Grab that last idx in case we need to use it in lieu of finding
     # a better one
     try:
         last_idx = df.iloc[[-1]].index.values.astype(int)[0]
     except IndexError as err:
-        raise RuntimeError("An error occurred when saving model history, this could be because training was stopped before the first epoch could finish") from err  # noqa
+        raise RuntimeError(
+            "An error occurred when saving model history, this could be because training "
+            "was stopped before the first epoch could finish") from err  # noqa
 
     # Here we want to find the row that contains the value "best_val" within
     # the specified row by "best_col". We are looking for the first occurance
@@ -140,8 +152,8 @@ def _save_history_csv(
         # Log differential privacy settings from best training checkpoint
         epsilon = df.at[best_idx, 'epsilon']
         delta = df.at[best_idx, 'delta']
-        logging.info(f"Model satisfies differential privacy with epsilon ε={epsilon:.2f} "
-                     f"and delta δ={delta:.6f}")
+        logging.warning(f"Model satisfies differential privacy with epsilon ε={epsilon:.2f} "
+                        f"and delta δ={delta:.6f}")
     else:
         df.drop(["epsilon", "delta"], axis=1, inplace=True)
 
@@ -171,7 +183,7 @@ def train_rnn(params: TrainingParams):
 
     tokenizer = params.tokenizer
     num_lines = params.tokenizer_trainer.num_lines
-    text_iter = params.tokenizer_trainer.training_data_iter()
+    text_iter = params.tokenizer_trainer.data_iterator()
 
     if not store.overwrite:  # pragma: no cover
         try:
@@ -184,7 +196,7 @@ def train_rnn(params: TrainingParams):
                 "overwrite mode or delete the checkpoints first."
             )
 
-    total_token_count, dataset = _create_dataset(store, text_iter, num_lines, tokenizer)
+    total_token_count, validation_dataset, training_dataset = _create_dataset(store, text_iter, num_lines, tokenizer)
     logging.info("Initializing synthetic model")
     model = build_model(
         vocab_size=tokenizer.total_vocab_size, batch_size=store.batch_size, store=store
@@ -218,7 +230,12 @@ def train_rnn(params: TrainingParams):
 
     best_val = None
     try:
-        model.fit(dataset, epochs=store.epochs, callbacks=_callbacks)
+        model.fit(training_dataset,
+                  epochs=store.epochs,
+                  callbacks=_callbacks,
+                  validation_data=validation_dataset
+                  )
+
         if store.save_best_model:
             best_val = checkpoint_callback.best
         if store.early_stopping:
@@ -245,14 +262,14 @@ def train_rnn(params: TrainingParams):
 
 
 def _create_dataset(
-    store: TensorFlowConfig, text_iter: Iterator[str], num_lines: int, tokenizer: BaseTokenizer
-) -> Tuple[int, tf.data.Dataset]:
+        store: TensorFlowConfig, text_iter: Iterator[str], num_lines: int, tokenizer: BaseTokenizer
+) -> Tuple[int, tf.data.Dataset, tf.data.Dataset]:
     """
     Before training, we need to map strings to a numerical representation.
     Create two lookup tables: one mapping characters to numbers,
     and another for numbers to characters.
     """
-    logging.info("Tokenizing training data")
+    logging.info("Tokenizing input data")
     ids = []
     total_token_count = 0
     for line in tqdm(text_iter, total=num_lines):
@@ -260,14 +277,35 @@ def _create_dataset(
         ids.extend(_tokens)
         total_token_count += len(_tokens)
 
-    logging.info("Creating and shuffling tensorflow dataset")
+    logging.info("Shuffling input data")
     char_dataset = tf.data.Dataset.from_tensor_slices(ids)
     sequences = char_dataset.batch(store.seq_length + 1, drop_remainder=True)
-    dataset = sequences.map(_split_input_target)
-    dataset = dataset.shuffle(store.buffer_size).batch(
+    full_dataset = sequences.map(_split_input_target).shuffle(store.buffer_size).batch(
         store.batch_size, drop_remainder=True
     )
-    return total_token_count, dataset
+
+    # Compile as Lambda functions for compatibility with AutoGraph
+    def is_validation(x, y):
+        return x % 5 == 0
+
+    def is_train(x, y):
+        return not is_validation(x, y)
+
+    def recover(x, y):
+        return y
+
+    if store.validation_split:
+        logging.info("Creating validation dataset")
+        validation_dataset = full_dataset.enumerate() \
+            .filter(is_validation) \
+            .map(recover)
+        logging.info("Creating training dataset")
+        train_dataset = full_dataset.enumerate() \
+            .filter(is_train) \
+            .map(recover)
+        return total_token_count, validation_dataset, train_dataset
+    else:
+        return total_token_count, None, full_dataset
 
 
 @tf.autograph.experimental.do_not_convert

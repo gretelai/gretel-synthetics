@@ -36,7 +36,7 @@ def test_single_char(input_data_path, tmpdir):
     # We need this for batch mode, so verify it can be copied
     deepcopy(trainer)
 
-    line_iter = trainer.create_annotated_training_data()
+    line_iter = trainer.annotate_data()
 
     # Assert that we didn't do any annotation
     line_one = next(line_iter)
@@ -66,7 +66,7 @@ def test_single_char(input_data_path, tmpdir):
 def test_single_char_small_vocab(input_data_path, tmpdir):
     config = SimpleConfig(input_data_path=input_data_path, checkpoint_dir=tmpdir)
     trainer = tok.CharTokenizerTrainer(config=config, vocab_size=10)
-    trainer.create_annotated_training_data()
+    trainer.annotate_data()
     
     trainer.train()
     tokenizer = tok.CharTokenizer.load(tmpdir)
@@ -85,7 +85,7 @@ def test_sp(input_data_path, tmpdir):
     config = SimpleConfig(input_data_path=input_data_path, checkpoint_dir=tmpdir)
     trainer = tok.SentencePieceTokenizerTrainer(config=config)
     deepcopy(trainer)
-    line_iter = trainer.create_annotated_training_data()
+    line_iter = trainer.annotate_data()
 
     line_one = next(line_iter)
     assert line_one == "Once upon a midnight dreary, while I pondered, weak and weary,<n>\n"
@@ -101,7 +101,7 @@ def test_sp(input_data_path, tmpdir):
 def test_sp_field_delim(input_data_path, tmpdir):
     config = SimpleConfig(input_data_path=input_data_path, checkpoint_dir=tmpdir, field_delimiter=",")
     trainer = tok.SentencePieceTokenizerTrainer(config=config)
-    line_iter = trainer.create_annotated_training_data()
+    line_iter = trainer.annotate_data()
 
     line_one = next(line_iter)
     assert line_one == "Once upon a midnight dreary<d> while I pondered<d> weak and weary<d><n>\n"

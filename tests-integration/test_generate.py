@@ -267,7 +267,7 @@ def test_record_factory_smart_seed_buffer(safecast_model_dir):
     batcher = DataFrameBatch(mode="read", checkpoint_dir=safecast_model_dir)
 
     factory = batcher.create_record_factory(
-        num_lines=100, # doesn't matter w/ smart seed
+        num_lines=100,  # doesn't matter w/ smart seed
         seed_fields=seeds,
         validator=MyValidator(),
         max_invalid=5000

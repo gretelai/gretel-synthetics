@@ -7,6 +7,7 @@ import shutil
 import pytest
 
 from gretel_synthetics.config import TensorFlowConfig
+from gretel_synthetics.const import METRIC_LOSS, METRIC_VAL_LOSS
 
 
 @patch("gretel_synthetics.config.Path.mkdir")
@@ -32,7 +33,8 @@ def test_local_config_settings(mkdir):
         "epoch_callback": None,
         "early_stopping": True,
         "early_stopping_patience": 5,
-        "best_model_metric": "loss",
+        "validation_split": True,
+        "best_model_metric": METRIC_VAL_LOSS,
         "batch_size": 64,
         "buffer_size": 10000,
         "seq_length": 100,
@@ -65,6 +67,11 @@ def test_local_config_settings(mkdir):
         "model_type": "TensorFlowConfig"
     }
 
+
+def test_local_config_no_validation_split():
+    lc = TensorFlowConfig(checkpoint_dir="foo", input_data_path="bar", validation_split=False)
+    check = lc.as_dict()
+    assert check['best_model_metric'] == METRIC_LOSS
 
 def test_local_config_missing_attrs():
     with pytest.raises(AttributeError):
