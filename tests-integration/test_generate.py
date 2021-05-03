@@ -114,13 +114,27 @@ def test_record_factory_generate_all_with_callback(safecast_model_dir):
     factory = batcher.create_record_factory(num_lines=1000, validator=_validator)
 
     callback_fn = Mock()
-    progress_callback = GenerationCallback(callback_fn=callback_fn, update_interval=1)
 
-    df = factory.generate_all(output="df", progress_callback=progress_callback)
+    df = factory.generate_all(output="df", callback=callback_fn, callback_interval=1)
     assert df.shape == (1000, 16)
     assert str(df["payload.loc_lat"].dtype) == "float64"
 
-    assert callback_fn.call_count > 0
+    assert callback_fn.call_count >= 2
+    # at least 1 call during generation and another one with final update
+    assert callback_fn.call_count < 1000, "Progress update should be only called periodically"
+
+    args, kwargs = callback_fn.call_args
+    last_update: GenerationProgress = args[0]
+    assert last_update.current_valid_lines == 1000
+    assert last_update.completion_pct == 100
+
+    # calculate sum from all updates
+    valid_lines_sum = 0
+    for call_args in callback_fn.call_args_list:
+        args, kwargs = call_args
+        valid_lines_sum += args[0].new_valid_lines
+
+    assert valid_lines_sum == 1000
 
 
 def test_record_factory_bad_validator(safecast_model_dir):
