@@ -18,6 +18,7 @@ import io
 import json
 import glob
 import shutil
+import time
 
 import pandas as pd
 import numpy as np
@@ -40,7 +41,6 @@ from gretel_synthetics.tokenizers import BaseTokenizerTrainer
 logging.basicConfig()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-
 
 MAX_INVALID = 1000
 BATCH_SIZE = 15
@@ -338,6 +338,33 @@ class _BufferedDataFrame:
         return pd.read_csv(self.buffer, sep=self.delim)[self.columns]
 
 
+@dataclass
+class GenerationProgress:
+    """A class to capture the progress of data generation."""
+
+    current_valid_lines: int
+    current_invalid_lines: int
+
+
+@dataclass
+class GenerationCallback:
+
+    callback_fn: Callable[[GenerationProgress], None]
+    update_interval: int = 30
+
+    _last_update_time: int = field(init=False)
+
+    def __post_init__(self):
+        self._last_update_time = int(time.monotonic())
+
+    def update_progress(self, valid_count: int, invalid_count: int):
+        now = int(time.monotonic())
+
+        if now - self._last_update_time >= self.update_interval:
+            self.callback_fn(GenerationProgress(valid_count, invalid_count))
+            self._last_update_time = now
+
+
 class RecordFactory:
     """A stateful factory that can be used to generate and validate entire
     records, regardless of the number of underlying header clusters that were
@@ -574,7 +601,12 @@ class RecordFactory:
         self.invalid_count = 0
         self._record_generator = self._get_record()
 
-    def generate_all(self, output: Optional[str] = None):
+    def generate_all(
+        self,
+        output: Optional[str] = None,
+        progress_callback: GenerationCallback = None,
+    ):
+
         self.reset()
         if output is not None and output not in ("df",):
             raise ValueError("invalid output type")
@@ -586,6 +618,9 @@ class RecordFactory:
             try:
                 for rec in _iter:
                     buffer.add(rec)
+                    if progress_callback:
+                        progress_callback.update_progress(self.valid_count, self.invalid_count)
+
             except (RuntimeError, StopIteration) as err:
                 logger.warning(f"Runtime error on iteration, returning current buffer, {str(err)}")
 
