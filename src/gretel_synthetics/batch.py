@@ -340,29 +340,56 @@ class _BufferedDataFrame:
 
 @dataclass
 class GenerationProgress:
-    """A class to capture the progress of data generation."""
+    """
+    A class representing current progress of record generation.
 
-    current_valid_lines: int = 0
-    current_invalid_lines: int = 0
+    This class is used to periodically communicate progress of generation to the user,
+    through a callback that can be passed to ``RecordFactory.generate_all()`` method.
+    """
 
-    new_valid_lines: int = 0
-    new_invalid_lines: int = 0
+    current_valid_count: int = 0
+    """The number of valid lines/records that 
+    were generated so far.
+    """
 
-    completion_pct: float = 0.0
+    current_invalid_count: int = 0
+    """The number of invalid lines/records that 
+    were generated so far.
+    """
+
+    new_valid_count: int = 0
+    """The number of new valid lines/records that 
+    were generated since the last progress callback.
+    """
+
+    new_invalid_count: int = 0
+    """The number of new valid lines/records that 
+    were generated since the last progress callback.
+    """
+
+    completion_percent: float = 0.0
+    """The percentage of valid lines/records that generated."""
 
     timestamp: float = field(default_factory=time.time)
+    """The timestamp from when the information in this object has been captured."""
 
 
-@dataclass
-class GenerationCallback:
+class _GenerationCallback:
+    """
+    Wrapper around a callback function that is sending progress updates only once
+    per configured time period (``update_interval``).
+    """
 
-    callback_fn: callable
-    update_interval: int = 30
+    def __init__(self, callback_fn: callable, update_interval: int = 30):
+        """
+        Args:
+            callback_fn: Callback function to be invoked with current progress.
+            update_interval: Number of seconds to wait between sending progress update.
+        """
 
-    _last_update_time: int = field(init=False)
-    _last_progress: GenerationProgress = field(init=False)
+        self._callback_fn = callback_fn
+        self._update_interval = update_interval
 
-    def __post_init__(self):
         self._last_update_time = int(time.monotonic())
         self._last_progress = GenerationProgress()
 
@@ -388,16 +415,16 @@ class GenerationCallback:
         """
         now = int(time.monotonic())
 
-        if (now - self._last_update_time) >= self.update_interval or final_update:
+        if now - self._last_update_time >= self._update_interval or final_update:
             current_progress = GenerationProgress(
-                current_valid_lines=valid_count,
-                current_invalid_lines=invalid_count,
-                new_valid_lines=valid_count - self._last_progress.current_valid_lines,
-                new_invalid_lines=invalid_count - self._last_progress.current_invalid_lines,
-                completion_pct=valid_count/num_lines * 100,
+                current_valid_count=valid_count,
+                current_invalid_count=invalid_count,
+                new_valid_count=valid_count - self._last_progress.current_valid_count,
+                new_invalid_count=invalid_count - self._last_progress.current_invalid_count,
+                completion_percent=0 if num_lines == 0 else round(valid_count/num_lines * 100, 2),
             )
 
-            self.callback_fn(current_progress)
+            self._callback_fn(current_progress)
             self._last_update_time = now
             self._last_progress = current_progress
 
@@ -647,7 +674,7 @@ class RecordFactory:
 
         progress_callback = None
         if callback:
-            progress_callback = GenerationCallback(callback, callback_interval)
+            progress_callback = _GenerationCallback(callback, callback_interval)
 
         self.reset()
         if output is not None and output not in ("df",):

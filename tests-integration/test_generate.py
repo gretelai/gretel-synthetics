@@ -32,7 +32,7 @@ import random
 from smart_open import open as smart_open
 
 from gretel_synthetics.generate_utils import DataFileGenerator
-from gretel_synthetics.batch import DataFrameBatch, GenerationCallback, GenerationProgress
+from gretel_synthetics.batch import DataFrameBatch, GenerationProgress
 
 BATCH_MODELS = [
     "https://gretel-public-website.s3-us-west-2.amazonaws.com/tests/synthetics/models/safecast-batch-sp-0-14.tar.gz",
@@ -125,16 +125,16 @@ def test_record_factory_generate_all_with_callback(safecast_model_dir):
 
     args, kwargs = callback_fn.call_args
     last_update: GenerationProgress = args[0]
-    assert last_update.current_valid_lines == 1000
-    assert last_update.completion_pct == 100
+    assert last_update.current_valid_count == 1000
+    assert last_update.completion_percent == 100
 
     # calculate sum from all updates
-    valid_lines_sum = 0
+    valid_total_count = 0
     for call_args in callback_fn.call_args_list:
         args, kwargs = call_args
-        valid_lines_sum += args[0].new_valid_lines
+        valid_total_count += args[0].new_valid_count
 
-    assert valid_lines_sum == 1000
+    assert valid_total_count == 1000
 
 
 def test_record_factory_bad_validator(safecast_model_dir):
