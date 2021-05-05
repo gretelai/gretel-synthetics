@@ -123,7 +123,7 @@ def test_record_factory_generate_all_with_callback(safecast_model_dir):
     # at least 1 call during generation and another one with final update
     assert callback_fn.call_count < 1000, "Progress update should be only called periodically"
 
-    args, kwargs = callback_fn.call_args
+    args, _ = callback_fn.call_args
     last_update: GenerationProgress = args[0]
     assert last_update.current_valid_count == 1000
     assert last_update.completion_percent == 100
@@ -131,7 +131,7 @@ def test_record_factory_generate_all_with_callback(safecast_model_dir):
     # calculate sum from all updates
     valid_total_count = 0
     for call_args in callback_fn.call_args_list:
-        args, kwargs = call_args
+        args, _ = call_args
         valid_total_count += args[0].new_valid_count
 
     assert valid_total_count == 1000

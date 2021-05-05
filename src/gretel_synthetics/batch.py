@@ -341,34 +341,46 @@ class _BufferedDataFrame:
 @dataclass
 class GenerationProgress:
     """
-    A class representing current progress of record generation.
+    This class should not have to be used directly.
+
+    It is used to communicate the current progress of record generation.
+
+    When a callback function is passed to the ``RecordFactory.generate_all()`` method,
+    each time the callback is called an instance of this class will be passed
+    as the single argument::
+
+        def my_callback(data: GenerationProgress):
+            ...
+
+        factory: RecordFactory
+        df = factory.generate_all(output="df", callback=my_callback)
 
     This class is used to periodically communicate progress of generation to the user,
     through a callback that can be passed to ``RecordFactory.generate_all()`` method.
     """
 
     current_valid_count: int = 0
-    """The number of valid lines/records that 
+    """The number of valid lines/records that
     were generated so far.
     """
 
     current_invalid_count: int = 0
-    """The number of invalid lines/records that 
+    """The number of invalid lines/records that
     were generated so far.
     """
 
     new_valid_count: int = 0
-    """The number of new valid lines/records that 
+    """The number of new valid lines/records that
     were generated since the last progress callback.
     """
 
     new_invalid_count: int = 0
-    """The number of new valid lines/records that 
+    """The number of new valid lines/records that
     were generated since the last progress callback.
     """
 
     completion_percent: float = 0.0
-    """The percentage of valid lines/records that generated."""
+    """The percentage of valid lines/records that have been generated."""
 
     timestamp: float = field(default_factory=time.time)
     """The timestamp from when the information in this object has been captured."""
@@ -378,15 +390,13 @@ class _GenerationCallback:
     """
     Wrapper around a callback function that is sending progress updates only once
     per configured time period (``update_interval``).
+
+    Args:
+        callback_fn: Callback function to be invoked with current progress.
+        update_interval: Number of seconds to wait between sending progress update.
     """
 
     def __init__(self, callback_fn: callable, update_interval: int = 30):
-        """
-        Args:
-            callback_fn: Callback function to be invoked with current progress.
-            update_interval: Number of seconds to wait between sending progress update.
-        """
-
         self._callback_fn = callback_fn
         self._update_interval = update_interval
 
@@ -480,7 +490,7 @@ class RecordFactory:
 
         factory.generate_all()
 
-    You may request the records to be returned as a DataFrame.  The dtypes will 
+    You may request the records to be returned as a DataFrame.  The dtypes will
     be inferred as if you were reading the data from a CSV::
 
         factory.generate_all(output="df")
