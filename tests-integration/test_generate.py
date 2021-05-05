@@ -20,6 +20,8 @@ TOK:
     - char
     - sp
 """
+from unittest.mock import Mock
+
 import pytest
 import pandas as pd
 import gzip
@@ -30,8 +32,7 @@ import random
 from smart_open import open as smart_open
 
 from gretel_synthetics.generate_utils import DataFileGenerator
-from gretel_synthetics.batch import DataFrameBatch
-
+from gretel_synthetics.batch import DataFrameBatch, GenerationProgress
 
 BATCH_MODELS = [
     "https://gretel-public-website.s3-us-west-2.amazonaws.com/tests/synthetics/models/safecast-batch-sp-0-14.tar.gz",
@@ -102,6 +103,38 @@ def test_record_factory_generate_all(safecast_model_dir):
     df = factory.generate_all(output="df")
     assert df.shape == (10, 16)
     assert str(df["payload.loc_lat"].dtype) == "float64"
+
+
+def test_record_factory_generate_all_with_callback(safecast_model_dir):
+    batcher = DataFrameBatch(mode="read", checkpoint_dir=safecast_model_dir)
+
+    def _validator(rec: dict):
+        assert float(rec["payload.loc_lat"])
+
+    factory = batcher.create_record_factory(num_lines=1000, validator=_validator)
+
+    callback_fn = Mock()
+
+    df = factory.generate_all(output="df", callback=callback_fn, callback_interval=1)
+    assert df.shape == (1000, 16)
+    assert str(df["payload.loc_lat"].dtype) == "float64"
+
+    assert callback_fn.call_count >= 2
+    # at least 1 call during generation and another one with final update
+    assert callback_fn.call_count < 1000, "Progress update should be only called periodically"
+
+    args, _ = callback_fn.call_args
+    last_update: GenerationProgress = args[0]
+    assert last_update.current_valid_count == 1000
+    assert last_update.completion_percent == 100
+
+    # calculate sum from all updates
+    valid_total_count = 0
+    for call_args in callback_fn.call_args_list:
+        args, _ = call_args
+        valid_total_count += args[0].new_valid_count
+
+    assert valid_total_count == 1000
 
 
 def test_record_factory_bad_validator(safecast_model_dir):

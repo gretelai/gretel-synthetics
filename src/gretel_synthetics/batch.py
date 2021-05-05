@@ -18,6 +18,7 @@ import io
 import json
 import glob
 import shutil
+import time
 
 import pandas as pd
 import numpy as np
@@ -40,7 +41,6 @@ from gretel_synthetics.tokenizers import BaseTokenizerTrainer
 logging.basicConfig()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-
 
 MAX_INVALID = 1000
 BATCH_SIZE = 15
@@ -338,6 +338,107 @@ class _BufferedDataFrame:
         return pd.read_csv(self.buffer, sep=self.delim)[self.columns]
 
 
+@dataclass
+class GenerationProgress:
+    """
+    This class should not have to be used directly.
+
+    It is used to communicate the current progress of record generation.
+
+    When a callback function is passed to the ``RecordFactory.generate_all()`` method,
+    each time the callback is called an instance of this class will be passed
+    as the single argument::
+
+        def my_callback(data: GenerationProgress):
+            ...
+
+        factory: RecordFactory
+        df = factory.generate_all(output="df", callback=my_callback)
+
+    This class is used to periodically communicate progress of generation to the user,
+    through a callback that can be passed to ``RecordFactory.generate_all()`` method.
+    """
+
+    current_valid_count: int = 0
+    """The number of valid lines/records that
+    were generated so far.
+    """
+
+    current_invalid_count: int = 0
+    """The number of invalid lines/records that
+    were generated so far.
+    """
+
+    new_valid_count: int = 0
+    """The number of new valid lines/records that
+    were generated since the last progress callback.
+    """
+
+    new_invalid_count: int = 0
+    """The number of new valid lines/records that
+    were generated since the last progress callback.
+    """
+
+    completion_percent: float = 0.0
+    """The percentage of valid lines/records that have been generated."""
+
+    timestamp: float = field(default_factory=time.time)
+    """The timestamp from when the information in this object has been captured."""
+
+
+class _GenerationCallback:
+    """
+    Wrapper around a callback function that is sending progress updates only once
+    per configured time period (``update_interval``).
+
+    Args:
+        callback_fn: Callback function to be invoked with current progress.
+        update_interval: Number of seconds to wait between sending progress update.
+    """
+
+    def __init__(self, callback_fn: callable, update_interval: int = 30):
+        self._callback_fn = callback_fn
+        self._update_interval = update_interval
+
+        self._last_update_time = int(time.monotonic())
+        self._last_progress = GenerationProgress()
+
+    def update_progress(
+        self,
+        num_lines: int,
+        valid_count: int,
+        invalid_count: int,
+        *,
+        final_update=False,
+    ):
+
+        """
+        Method that's being called from the generator with a progress update.
+
+        Args:
+            num_lines: Total number of lines to be generated.
+            valid_count: Number of valid lines that were generated so far.
+            invalid_count: Number of invalid lines that were generated so far.
+            final_update:
+                Is this the final update? It is ``True`` when sending last update, after the
+                whole generation was complete.
+        """
+        now = int(time.monotonic())
+
+        if now - self._last_update_time >= self._update_interval or final_update:
+            current_progress = GenerationProgress(
+                current_valid_count=valid_count,
+                current_invalid_count=invalid_count,
+                new_valid_count=valid_count - self._last_progress.current_valid_count,
+                new_invalid_count=invalid_count - self._last_progress.current_invalid_count,
+                completion_percent=0 if num_lines == 0 else round(valid_count/num_lines * 100, 2),
+            )
+
+            self._callback_fn(current_progress)
+            self._last_update_time = now
+            self._last_progress = current_progress
+
+
 class RecordFactory:
     """A stateful factory that can be used to generate and validate entire
     records, regardless of the number of underlying header clusters that were
@@ -389,7 +490,7 @@ class RecordFactory:
 
         factory.generate_all()
 
-    You may request the records to be returned as a DataFrame.  The dtypes will 
+    You may request the records to be returned as a DataFrame.  The dtypes will
     be inferred as if you were reading the data from a CSV::
 
         factory.generate_all(output="df")
@@ -574,7 +675,17 @@ class RecordFactory:
         self.invalid_count = 0
         self._record_generator = self._get_record()
 
-    def generate_all(self, output: Optional[str] = None):
+    def generate_all(
+        self,
+        output: Optional[str] = None,
+        callback: Optional[callable] = None,
+        callback_interval: int = 30,
+    ):
+
+        progress_callback = None
+        if callback:
+            progress_callback = _GenerationCallback(callback, callback_interval)
+
         self.reset()
         if output is not None and output not in ("df",):
             raise ValueError("invalid output type")
@@ -586,8 +697,21 @@ class RecordFactory:
             try:
                 for rec in _iter:
                     buffer.add(rec)
+
+                    if progress_callback:
+                        progress_callback.update_progress(self.num_lines, self.valid_count, self.invalid_count)
+
             except (RuntimeError, StopIteration) as err:
                 logger.warning(f"Runtime error on iteration, returning current buffer, {str(err)}")
+
+            # send final progress update
+            if progress_callback:
+                progress_callback.update_progress(
+                    self.num_lines,
+                    self.valid_count,
+                    self.invalid_count,
+                    final_update=True,
+                )
 
             return buffer.df
 
