@@ -72,7 +72,7 @@ def test_record_factory_single_line(safecast_model_dir):
     factory = batcher.create_record_factory(num_lines=10)
     record = next(factory)
     assert "payload.service_handler" in record
-    assert factory.valid_count == 1
+    assert factory._counter.valid_count == 1
 
 
 def test_record_factory_exhaust_iter(safecast_model_dir):
@@ -80,7 +80,7 @@ def test_record_factory_exhaust_iter(safecast_model_dir):
     factory = batcher.create_record_factory(num_lines=10)
     records = list(factory)
     assert len(records) == 10
-    assert factory.valid_count == 10
+    assert factory._counter.valid_count == 10
     summary = factory.summary
     assert summary["num_lines"] == 10
     assert summary["max_invalid"] == 1000
@@ -105,7 +105,8 @@ def test_record_factory_generate_all(safecast_model_dir):
     assert str(df["payload.loc_lat"].dtype) == "float64"
 
 
-def test_record_factory_generate_all_with_callback(safecast_model_dir):
+@pytest.mark.parametrize("threading", [True, False])
+def test_record_factory_generate_all_with_callback(safecast_model_dir, threading):
     batcher = DataFrameBatch(mode="read", checkpoint_dir=safecast_model_dir)
 
     def _validator(rec: dict):
@@ -115,7 +116,7 @@ def test_record_factory_generate_all_with_callback(safecast_model_dir):
 
     callback_fn = Mock()
 
-    df = factory.generate_all(output="df", callback=callback_fn, callback_interval=1)
+    df = factory.generate_all(output="df", callback=callback_fn, callback_interval=1, callback_threading=threading)
     assert df.shape == (1000, 16)
     assert str(df["payload.loc_lat"].dtype) == "float64"
 
@@ -123,7 +124,7 @@ def test_record_factory_generate_all_with_callback(safecast_model_dir):
     # at least 1 call during generation and another one with final update
     assert callback_fn.call_count < 1000, "Progress update should be only called periodically"
 
-    args, _ = callback_fn.call_args
+    args, _ = callback_fn.call_args  # pylint: disable=unpacking-non-sequence
     last_update: GenerationProgress = args[0]
     assert last_update.current_valid_count == 1000
     assert last_update.completion_percent == 100
@@ -274,7 +275,7 @@ def test_record_factory_smart_seed(safecast_model_dir):
     )
 
     # list of seeds should reset num_lines
-    assert factory.num_lines == len(seeds) * 1000
+    assert factory._counter.num_lines == len(seeds) * 1000
 
     for seed, record in zip(seeds, factory):
         assert seed["payload.service_handler"] == record["payload.service_handler"]

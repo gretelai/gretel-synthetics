@@ -19,6 +19,8 @@ import json
 import glob
 import shutil
 import time
+import abc
+import threading
 
 import pandas as pd
 import numpy as np
@@ -70,6 +72,7 @@ class _BatchEpochCallback:
     Wrapper class to take a user supplied callback and inject the batch number.  The batch number
     is then available in the EpochState object when it is supplied to the callback.
     """
+
     def __init__(self, user_callback: callable, batch_number: int):
         self._batch_number = batch_number
         self._user_callback = user_callback
@@ -103,7 +106,7 @@ class Batch:
 
     @property
     def synthetic_df(self) -> pd.DataFrame:
-        """Get a DataFrame constructed from the generated lines """
+        """Get a DataFrame constructed from the generated lines"""
         if not self.gen_data_stream.getvalue():  # pragma: no cover
             return pd.DataFrame()
         self.gen_data_stream.seek(0)
@@ -120,7 +123,7 @@ class Batch:
                 fout.write(cloudpickle.dumps(fn))
 
     def load_validator_from_file(self):
-        """Load a saved validation object if it exists """
+        """Load a saved validation object if it exists"""
         p = Path(self.checkpoint_dir) / "validator.p.gz"
         if p.exists():
             with gzip.open(p, "r") as fin:
@@ -183,7 +186,9 @@ def _create_batch_from_dir(batch_dir: str):
     # Wrap the user supplied callback with a _BatchEpochCallback so we have the batch number too.
     if config.epoch_callback is not None:
         batch_count = int(Path(batch_dir).name.split("_")[-1])
-        config.epoch_callback = _BatchEpochCallback(config.epoch_callback, batch_count).callback
+        config.epoch_callback = _BatchEpochCallback(
+            config.epoch_callback, batch_count
+        ).callback
 
     batch = Batch(
         checkpoint_dir=batch_dir,
@@ -244,8 +249,10 @@ def _build_batch_dirs(
             config_class = CONFIG_MAP[config_class_str]
 
         # Wrap the user supplied callback with a _BatchEpochCallback so we have the batch number too.
-        if new_config.get('epoch_callback') is not None:
-            new_config['epoch_callback'] = _BatchEpochCallback(new_config.get('epoch_callback'), i).callback
+        if new_config.get("epoch_callback") is not None:
+            new_config["epoch_callback"] = _BatchEpochCallback(
+                new_config.get("epoch_callback"), i
+            ).callback
 
         out[i] = Batch(
             checkpoint_dir=checkpoint_dir,
@@ -307,7 +314,35 @@ def _validate_batch_seed_values(
         return seed_strings
 
 
-class _BufferedDataFrame:
+class _BufferedRecords(abc.ABC):
+    """Base class for all buffers used when
+    generating records
+    """
+
+    @abc.abstractmethod
+    def add(self, record: dict):
+        ...
+
+    @abc.abstractmethod
+    def get_records(self):
+        ...
+
+
+class _BufferedDicts(_BufferedRecords):
+
+    _records: List[dict]
+
+    def __init__(self):
+        self._records = []
+
+    def add(self, record: dict):
+        self._records.append(record)
+
+    def get_records(self):
+        return self._records
+
+
+class _BufferedDataFrame(_BufferedRecords):
     """Buffer dictionaries into a memory stream, then
     load it as a DataFrame and set the column order
     based on the provided list. This allows
@@ -336,6 +371,9 @@ class _BufferedDataFrame:
     def df(self) -> pd.DataFrame:
         self.buffer.seek(0)
         return pd.read_csv(self.buffer, sep=self.delim)[self.columns]
+
+    def get_records(self) -> pd.DataFrame:
+        return self.df
 
 
 @dataclass
@@ -409,7 +447,7 @@ class _GenerationCallback:
         valid_count: int,
         invalid_count: int,
         *,
-        final_update=False,
+        force_update=False,
     ):
 
         """
@@ -425,18 +463,50 @@ class _GenerationCallback:
         """
         now = int(time.monotonic())
 
-        if now - self._last_update_time >= self._update_interval or final_update:
+        if now - self._last_update_time >= self._update_interval or force_update:
             current_progress = GenerationProgress(
                 current_valid_count=valid_count,
                 current_invalid_count=invalid_count,
                 new_valid_count=valid_count - self._last_progress.current_valid_count,
-                new_invalid_count=invalid_count - self._last_progress.current_invalid_count,
-                completion_percent=0 if num_lines == 0 else round(valid_count/num_lines * 100, 2),
+                new_invalid_count=invalid_count
+                - self._last_progress.current_invalid_count,
+                completion_percent=0
+                if num_lines == 0
+                else round(valid_count / num_lines * 100, 2),
             )
 
             self._callback_fn(current_progress)
             self._last_update_time = now
             self._last_progress = current_progress
+
+
+@dataclass
+class _FactoryCounter:
+    num_lines: int = 0
+    """The target number of lines to generate when
+    iterating or generating all records.
+    """
+
+    max_invalid: int = MAX_INVALID
+    """The number of max invalid lines to tolerate before
+    stopping generation and raising a ``RunTimeError.``
+    """
+
+    valid_count: int = 0
+    """The number of valid records / lines that have been generated
+    """
+
+    invalid_count: int = 0
+    """The number of invalid records / lines that were generated
+    """
+
+
+def _threading_generation_callback(
+    counter: _FactoryCounter, callback: _GenerationCallback, event: threading.Event
+):
+    while not event.is_set():
+        callback.update_progress(counter.num_lines, counter.valid_count, counter.invalid_count)
+        time.sleep(1)
 
 
 class RecordFactory:
@@ -499,24 +569,6 @@ class RecordFactory:
         When using ``generate_all``, the factory states will be reset automatically.
     """
 
-    num_lines: int
-    """The target number of lines to generate when
-    iterating or generating all records.
-    """
-
-    max_invalid: int
-    """The number of max invalid lines to tolerate before
-    stopping generation and raising a ``RunTimeError.``
-    """
-
-    valid_count: int
-    """The number of valid records / lines that have been generated
-    """
-
-    invalid_count: int
-    """The number of invalid records / lines that were generated
-    """
-
     validator: Callable
     """An optional callable that will receive a fully constructed record for one
     final validation before returning or yielding a single record. Records that
@@ -529,6 +581,7 @@ class RecordFactory:
     _record_generator: IteratorType[dict]
     _delimiter: str
     _parallelism: int
+    _counter = _FactoryCounter
 
     def __init__(
         self,
@@ -540,9 +593,10 @@ class RecordFactory:
         seed_fields: Union[dict, list] = None,
         max_invalid=MAX_INVALID,
         validator: Optional[Callable] = None,
-        parallelism: int = 4
+        parallelism: int = 4,
     ):
-        self.num_lines = num_lines
+        self._counter = _FactoryCounter()
+        self._counter.num_lines = num_lines
         self.max_invalid = max_invalid
         self._batches = batches
         self._header_list = header_list
@@ -563,7 +617,7 @@ class RecordFactory:
                 len(self._seed_fields),
             )  # noqa
             self._parallelism = 1
-            self.num_lines = len(self._seed_fields)
+            self._counter.num_lines = len(self._seed_fields)
 
     def _get_record(self) -> IteratorType[dict]:
         # our actual batch line generators
@@ -577,7 +631,7 @@ class RecordFactory:
                 self._batches[0].config,
                 seed_list=self._seed_fields,
                 line_validator=self._batches[0].get_validator(),
-                max_invalid=self.max_invalid * 10000
+                max_invalid=self.max_invalid * 10000,
             )
             generators.append((self._batches[0], seed_generator))
 
@@ -600,7 +654,7 @@ class RecordFactory:
                         batch.config,
                         line_validator=batch.get_validator(),
                         max_invalid=self.max_invalid * 10000,
-                        num_lines=self.num_lines * 10000,
+                        num_lines=self._counter.num_lines * 10000,
                         start_string=start_string,
                         parallelism=self._parallelism,
                     ),
@@ -613,11 +667,11 @@ class RecordFactory:
 
         # keep looping as long as our target line count is less than
         # our total line count
-        while self.valid_count < self.num_lines:
+        while self._counter.valid_count < self._counter.num_lines:
             # loop over each batch line generater and attempt
             # to construct a full line, we'll only count a
             # full line once we get through each generator
-            if self.invalid_count >= self.max_invalid:
+            if self._counter.invalid_count >= self.max_invalid:
                 raise RuntimeError("Invalid record count exceeded during generation")
 
             seed_cache = None
@@ -633,9 +687,11 @@ class RecordFactory:
                 while True:
                     line = next(gen)  # type:  GenText
                     if line.valid is False:
-                        self.invalid_count += 1
-                        if self.invalid_count > self.max_invalid:
-                            raise RuntimeError("Invalid record count exceeded during generation")
+                        self._counter.invalid_count += 1
+                        if self._counter.invalid_count > self.max_invalid:
+                            raise RuntimeError(
+                                "Invalid record count exceeded during generation"
+                            )
                         continue
                     partial_rec = dict(zip(batch.headers, line.values_as_list()))
                     record.update(partial_rec)
@@ -656,12 +712,12 @@ class RecordFactory:
                     valid = False
 
             if not valid:
-                self.invalid_count += 1
+                self._counter.invalid_count += 1
                 if seed_cache:
                     seed_generator.settings.start_string.insert(0, seed_cache)
                 continue  # back to the while start
 
-            self.valid_count += 1
+            self._counter.valid_count += 1
             yield record
 
     def __iter__(self):
@@ -671,8 +727,8 @@ class RecordFactory:
         return next(self._record_generator)
 
     def reset(self):
-        self.valid_count = 0
-        self.invalid_count = 0
+        self._counter.valid_count = 0
+        self._counter.invalid_count = 0
         self._record_generator = self._get_record()
 
     def generate_all(
@@ -680,8 +736,31 @@ class RecordFactory:
         output: Optional[str] = None,
         callback: Optional[callable] = None,
         callback_interval: int = 30,
+        callback_threading: bool = False
     ):
+        """Attempt to generate the full number of records that was set when
+        creating the ``RecordFactory.``  This method will create a buffer
+        that holds all records and then returns the the buffer once
+        generation is complete.
 
+        Args:
+            output: How the records should be returned. If ``None``, which is the
+                default, then a list of record dicts will be returned. Other options
+                that are supported are: 'df' for a DataFrame.
+            callback: An optional callable that will periodically be called with
+                a ``GenerationProgress`` instance as the single argument while
+                records are being generated.
+            callback_interval: If using a callback, the minimum number of seconds that
+                should occur between callbacks.
+            callback_threading: If enabled, a watchdog thread will be used to execute
+                the callback. This will ensure that the callback is called regardless
+                of invalid or valid counts. If callback threading is disabled, the callback
+                will only be called after valid records are generated.
+
+        Returns:
+            Generated records in an object that is dependent on the ``output`` param.  By default
+            this will be a list of dicts.
+        """
         progress_callback = None
         if callback:
             progress_callback = _GenerationCallback(callback, callback_interval)
@@ -690,40 +769,69 @@ class RecordFactory:
         if output is not None and output not in ("df",):
             raise ValueError("invalid output type")
 
-        _iter = tqdm(self._record_generator, total=self.num_lines)
+        _iter = tqdm(self._record_generator, total=self._counter.num_lines)
+
+        buffer = None  # type: _BufferedRecords
 
         if output == "df":
             buffer = _BufferedDataFrame(self._delimiter, self._header_list)
-            try:
-                for rec in _iter:
-                    buffer.add(rec)
 
-                    if progress_callback:
-                        progress_callback.update_progress(self.num_lines, self.valid_count, self.invalid_count)
+        if not buffer:
+            buffer = _BufferedDicts()
 
-            except (RuntimeError, StopIteration) as err:
-                logger.warning(f"Runtime error on iteration, returning current buffer, {str(err)}")
+        thread_event = None
+        callback_thread = None
+        if callback_threading:
+            if not progress_callback:
+                raise ValueError("Cannot use callback_threading without a progress callback")
+            thread_event = threading.Event()
+            callback_thread = threading.Thread(
+                target=_threading_generation_callback,
+                args=(self._counter, progress_callback, thread_event)
+            )
+            callback_thread.start()
 
-            # send final progress update
-            if progress_callback:
-                progress_callback.update_progress(
-                    self.num_lines,
-                    self.valid_count,
-                    self.invalid_count,
-                    final_update=True,
-                )
+        try:
+            for rec in _iter:
+                # NOTE: This iterator will block while no records are being
+                # succesfully generated. If callbacks need to occur in this
+                # situattion, ensure the callback threading option is enabled
+                buffer.add(rec)
 
-            return buffer.df
+                if progress_callback and not callback_threading:
+                    progress_callback.update_progress(
+                        self._counter.num_lines,
+                        self._counter.valid_count,
+                        self._counter.invalid_count,
+                    )
 
-        return list(_iter)
+        except (RuntimeError, StopIteration) as err:
+            logger.warning(
+                f"Runtime error on iteration, returning current buffer, {str(err)}"
+            )
+        finally:
+            if callback_threading:
+                thread_event.set()
+                callback_thread.join()
+
+        # send final progress update
+        if progress_callback:
+            progress_callback.update_progress(
+                self._counter.num_lines,
+                self._counter.valid_count,
+                self._counter.invalid_count,
+                force_update=True,
+            )
+
+        return buffer.get_records()
 
     @property
     def summary(self):
         return {
-            "num_lines": self.num_lines,
-            "max_invalid": self.max_invalid,
-            "valid_count": self.valid_count,
-            "invalid_count": self.invalid_count,
+            "num_lines": self._counter.num_lines,
+            "max_invalid": self._counter.max_invalid,
+            "valid_count": self._counter.valid_count,
+            "invalid_count": self._counter.invalid_count,
         }
 
 
@@ -1073,7 +1181,7 @@ class DataFrameBatch:
         max_invalid: int = MAX_INVALID,
         validator: Callable = None,
         seed_fields: Union[dict, List[dict]] = None,
-        parallellism: int = 4
+        parallellism: int = 4,
     ) -> RecordFactory:
         if validator is not None:
             if not callable(validator):
@@ -1086,7 +1194,7 @@ class DataFrameBatch:
             seed_fields=seed_fields,
             max_invalid=max_invalid,
             validator=validator,
-            parallelism=parallellism
+            parallelism=parallellism,
         )
 
     def generate_all_batch_lines(
