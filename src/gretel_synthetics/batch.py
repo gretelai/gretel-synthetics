@@ -740,7 +740,7 @@ class RecordFactory:
     ):
         """Attempt to generate the full number of records that was set when
         creating the ``RecordFactory.``  This method will create a buffer
-        that holds all records and then returns the the buffer once
+        that holds all records and then returns the buffer once
         generation is complete.
 
         Args:
@@ -795,7 +795,7 @@ class RecordFactory:
             for rec in _iter:
                 # NOTE: This iterator will block while no records are being
                 # succesfully generated. If callbacks need to occur in this
-                # situattion, ensure the callback threading option is enabled
+                # situation, ensure the callback threading option is enabled
                 buffer.add(rec)
 
                 if progress_callback and not callback_threading:
