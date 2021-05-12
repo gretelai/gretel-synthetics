@@ -582,6 +582,9 @@ class RecordFactory:
     _delimiter: str
     _parallelism: int
     _counter = _FactoryCounter
+    _invalid_cache_size: int
+
+    invalid_cache: List[dict]
 
     def __init__(
         self,
@@ -594,6 +597,7 @@ class RecordFactory:
         max_invalid=MAX_INVALID,
         validator: Optional[Callable] = None,
         parallelism: int = 4,
+        invalid_cache_size: int = 100
     ):
         self._counter = _FactoryCounter()
         self._counter.num_lines = num_lines
@@ -604,6 +608,7 @@ class RecordFactory:
         self._delimiter = delimiter
         self._parallelism = parallelism
         self.validator = validator
+        self._invalid_cache_size = invalid_cache_size
         self.reset()
 
         if self._seed_fields is not None:
@@ -618,6 +623,10 @@ class RecordFactory:
             )  # noqa
             self._parallelism = 1
             self._counter.num_lines = len(self._seed_fields)
+
+    def _cache_invalid(self, line: GenText):
+        self.invalid_cache.append(line.as_dict())
+        self.invalid_cache = self.invalid_cache[:self._invalid_cache_size]
 
     def _get_record(self) -> IteratorType[dict]:
         # our actual batch line generators
@@ -687,6 +696,7 @@ class RecordFactory:
                 while True:
                     line = next(gen)  # type:  GenText
                     if line.valid is False:
+                        self._cache_invalid(line)
                         self._counter.invalid_count += 1
                         if self._counter.invalid_count > self.max_invalid:
                             raise RuntimeError(
@@ -730,6 +740,7 @@ class RecordFactory:
         self._counter.valid_count = 0
         self._counter.invalid_count = 0
         self._record_generator = self._get_record()
+        self.invalid_cache = []
 
     def generate_all(
         self,
@@ -1182,6 +1193,7 @@ class DataFrameBatch:
         validator: Callable = None,
         seed_fields: Union[dict, List[dict]] = None,
         parallellism: int = 4,
+        **kwargs
     ) -> RecordFactory:
         if validator is not None:
             if not callable(validator):
@@ -1195,6 +1207,7 @@ class DataFrameBatch:
             max_invalid=max_invalid,
             validator=validator,
             parallelism=parallellism,
+            **kwargs
         )
 
     def generate_all_batch_lines(

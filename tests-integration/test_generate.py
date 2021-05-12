@@ -112,12 +112,19 @@ def test_record_factory_generate_all_with_callback(safecast_model_dir, threading
     def _validator(rec: dict):
         assert float(rec["payload.loc_lat"])
 
-    factory = batcher.create_record_factory(num_lines=1000, validator=_validator)
+    factory = batcher.create_record_factory(
+        num_lines=1000,
+        validator=_validator,
+        invalid_cache_size=5
+    )
 
     callback_fn = Mock()
 
     df = factory.generate_all(output="df", callback=callback_fn, callback_interval=1, callback_threading=threading)
     assert df.shape == (1000, 16)
+
+    # assuming we get at least 5 bad records
+    assert len(factory.invalid_cache) == 5
     assert str(df["payload.loc_lat"].dtype) == "float64"
 
     assert callback_fn.call_count >= 2
