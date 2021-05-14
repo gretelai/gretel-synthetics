@@ -168,7 +168,7 @@ def train_rnn(params: TrainingParams):
 
     This will annotate the training data and create a new file that
     will be used to actually train on. The updated training data, model,
-    checkkpoints, etc will all be saved in the location specified
+    checkpoints, etc will all be saved in the location specified
     by your config.
 
     Args:
