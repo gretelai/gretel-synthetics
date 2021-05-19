@@ -505,7 +505,11 @@ def _threading_generation_callback(
     counter: _FactoryCounter, callback: _GenerationCallback, event: threading.Event
 ):
     while not event.is_set():
-        callback.update_progress(counter.num_lines, counter.valid_count, counter.invalid_count)
+        try:
+            callback.update_progress(counter.num_lines, counter.valid_count, counter.invalid_count)
+        except Exception:
+            event.set()
+            break
         time.sleep(1)
 
 
@@ -583,6 +587,7 @@ class RecordFactory:
     _parallelism: int
     _counter = _FactoryCounter
     _invalid_cache_size: int
+    _thread_event: threading.Event = None
 
     invalid_cache: List[dict]
 
@@ -680,6 +685,9 @@ class RecordFactory:
             # loop over each batch line generater and attempt
             # to construct a full line, we'll only count a
             # full line once we get through each generator
+            if self._thread_event and self._thread_event.is_set():
+                break
+
             if self._counter.invalid_count >= self.max_invalid:
                 raise RuntimeError("Invalid record count exceeded during generation")
 
@@ -694,6 +702,8 @@ class RecordFactory:
             batch: Batch
             for batch, gen in generators:
                 while True:
+                    if self._thread_event and self._thread_event.is_set():
+                        break
                     line = next(gen)  # type:  GenText
                     if line.valid is False:
                         self._cache_invalid(line)
@@ -740,6 +750,7 @@ class RecordFactory:
         self._counter.valid_count = 0
         self._counter.invalid_count = 0
         self._record_generator = self._get_record()
+        self._thread_event = None
         self.invalid_cache = []
 
     def generate_all(
@@ -790,15 +801,14 @@ class RecordFactory:
         if not buffer:
             buffer = _BufferedDicts()
 
-        thread_event = None
         callback_thread = None
         if callback_threading:
             if not progress_callback:
                 raise ValueError("Cannot use callback_threading without a progress callback")
-            thread_event = threading.Event()
+            self._thread_event = threading.Event()
             callback_thread = threading.Thread(
                 target=_threading_generation_callback,
-                args=(self._counter, progress_callback, thread_event)
+                args=(self._counter, progress_callback, self._thread_event)
             )
             callback_thread.start()
 
@@ -822,7 +832,7 @@ class RecordFactory:
             )
         finally:
             if callback_threading:
-                thread_event.set()
+                self._thread_event.set()
                 callback_thread.join()
 
         # send final progress update
