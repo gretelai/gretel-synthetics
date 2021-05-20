@@ -5,6 +5,7 @@ import random
 from copy import deepcopy
 from dataclasses import asdict
 import json
+from itertools import zip_longest
 
 import pytest
 import pandas as pd
@@ -393,3 +394,20 @@ def test_buffered_df():
     df = buffer.df
     assert list(df.columns) == ["foo", "bar", "baz"]
     assert str(df.bar.dtype) == "float64"
+
+
+# bugfix: incomplete records
+def test_buffered_df_incomplete_first_record():
+    buffer = _BufferedDataFrame(
+        ",", ["foo", "bar", "baz"]
+    )
+    buffer.add(dict(
+        zip_longest(["bar", "foo", "baz"], ["33.4", "hello"], fillvalue="")
+    ))
+    buffer.add(
+        {"bar": "35.4", "foo": "world", "baz": "2021-02-08T16:32:27.828956"}
+    )
+    df = buffer.df
+    assert list(df.columns) == ["foo", "bar", "baz"]
+    assert str(df.bar.dtype) == "float64"
+
