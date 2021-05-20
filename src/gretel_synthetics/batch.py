@@ -826,7 +826,11 @@ class RecordFactory:
             for rec in _iter:
                 # NOTE: This iterator will block while no records are being
                 # succesfully generated. If callbacks need to occur in this
-                # situattion, ensure the callback threading option is enabled
+                # situation, ensure the callback threading option is enabled
+                #
+                # If threading is enabled, and the callback encounters an exception,
+                # a threading event will be set and the generator will break out of its
+                # loop and generation will cease.
                 buffer.add(rec)
 
                 if progress_callback and not callback_threading:
