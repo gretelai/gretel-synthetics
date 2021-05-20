@@ -21,6 +21,7 @@ import shutil
 import time
 import abc
 import threading
+from itertools import zip_longest
 
 import pandas as pd
 import numpy as np
@@ -685,6 +686,10 @@ class RecordFactory:
             # loop over each batch line generater and attempt
             # to construct a full line, we'll only count a
             # full line once we get through each generator
+
+            # if we are using a watchdog thread to monitor generation
+            # and it throws an exception, a threading event will be set
+            # that signals generation should stop
             if self._thread_event and self._thread_event.is_set():
                 break
 
@@ -702,8 +707,11 @@ class RecordFactory:
             batch: Batch
             for batch, gen in generators:
                 while True:
+
+                    # see above usage for watchdog thread exception handling
                     if self._thread_event and self._thread_event.is_set():
                         break
+
                     line = next(gen)  # type:  GenText
                     if line.valid is False:
                         self._cache_invalid(line)
@@ -713,7 +721,7 @@ class RecordFactory:
                                 "Invalid record count exceeded during generation"
                             )
                         continue
-                    partial_rec = dict(zip(batch.headers, line.values_as_list()))
+                    partial_rec = dict(zip_longest(batch.headers, line.values_as_list(), fillvalue=""))
                     record.update(partial_rec)
                     break
 
@@ -777,7 +785,9 @@ class RecordFactory:
             callback_threading: If enabled, a watchdog thread will be used to execute
                 the callback. This will ensure that the callback is called regardless
                 of invalid or valid counts. If callback threading is disabled, the callback
-                will only be called after valid records are generated.
+                will only be called after valid records are generated. If the callback
+                raises and exception, then a threading event will be set which will trigger
+                the stopping of generation.
 
         Returns:
             Generated records in an object that is dependent on the ``output`` param.  By default
@@ -816,7 +826,11 @@ class RecordFactory:
             for rec in _iter:
                 # NOTE: This iterator will block while no records are being
                 # succesfully generated. If callbacks need to occur in this
-                # situattion, ensure the callback threading option is enabled
+                # situation, ensure the callback threading option is enabled
+                #
+                # If threading is enabled, and the callback encounters an exception,
+                # a threading event will be set and the generator will break out of its
+                # loop and generation will cease.
                 buffer.add(rec)
 
                 if progress_callback and not callback_threading:
