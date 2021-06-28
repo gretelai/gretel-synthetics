@@ -173,7 +173,9 @@ def test_epoch_callback(train_df, tmp_path):
         checkpoint_dir=tmp_path,
         input_data_path=PATH_HOLDER,
         learning_rate=.01,
-        epoch_callback=epoch_callback
+        epoch_callback=epoch_callback,
+        dp=True,
+        dp_microbatches=1,
     )
     tokenizer = SentencePieceTokenizerTrainer(
         vocab_size=10000,
