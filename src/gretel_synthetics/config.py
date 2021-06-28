@@ -211,7 +211,7 @@ class TensorFlowConfig(BaseConfig):
         dp_microbatches (optional): Each batch of data is split into smaller units called micro-batches.
             Computational overhead can be reduced by increasing the size of micro-batches to include
             more than one training example. The number of micro-batches should divide evenly into
-            the overall ``batch_size``. Default is ``1``.
+            the overall ``batch_size``. Default is ``64``.
         gen_temp (optional): Controls the randomness of predictions by scaling the logits before
             applying softmax. Low temperatures result in more predictable text. Higher temperatures
             result in more surprising text. Experiment to find the best setting. Default is ``1.0``.
@@ -249,7 +249,7 @@ class TensorFlowConfig(BaseConfig):
     dp: bool = False
     dp_noise_multiplier: float = 0.1
     dp_l2_norm_clip: float = 3.0
-    dp_microbatches: int = 1
+    dp_microbatches: int = 64
 
     # Generation settings
     gen_temp: float = 1.0
