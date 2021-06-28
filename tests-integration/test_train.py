@@ -155,7 +155,7 @@ def test_train_small_df(train_df, tmp_path):
 def test_epoch_callback(train_df, tmp_path):
     def epoch_callback(s: EpochState):
         with open(tmp_path / 'callback_dump.txt', 'a') as f:
-            f.write(f'{s.epoch},{s.accuracy},{s.loss},{s.val_accuracy},{s.val_loss},{s.batch}\n')
+            f.write(f'{s.epoch},{s.accuracy},{s.loss},{s.val_accuracy},{s.val_loss},{s.epsilon},{s.delta},{s.batch}\n')
     config = TensorFlowConfig(
         epochs=5,
         field_delimiter=",",
@@ -187,5 +187,7 @@ def test_epoch_callback(train_df, tmp_path):
             assert(float(fields[2]))
             assert(float(fields[3]))
             assert(float(fields[4]))
-            assert int(fields[5]) == i // 5
+            assert(float(fields[5]))
+            assert(float(fields[6]))
+            assert int(fields[7]) == i // 5
     os.remove(tmp_path / 'callback_dump.txt')
