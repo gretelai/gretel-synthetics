@@ -283,6 +283,10 @@ class TensorFlowConfig(BaseConfig):
                                           const.METRIC_ACCURACY):
             raise AttributeError("Invalid value for best_model_metric")
 
+        if self.epoch_callback is not None:
+            if not callable(self.epoch_callback):
+                raise ValueError("epoch_callback must be a callable!")
+
         super().__post_init__()
 
     def get_generator_class(self):
