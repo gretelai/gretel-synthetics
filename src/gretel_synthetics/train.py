@@ -43,6 +43,8 @@ class EpochState:
     val_accuracy: Optional[float] = None
     val_loss: Optional[float] = None
     batch: Optional[int] = None
+    epsilon: Optional[float] = None
+    delta: Optional[float] = None
 
 
 def _create_default_tokenizer(store: BaseConfig) -> BaseTokenizerTrainer:
