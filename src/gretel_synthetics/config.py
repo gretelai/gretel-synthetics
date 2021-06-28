@@ -211,7 +211,7 @@ class TensorFlowConfig(BaseConfig):
         dp_microbatches (optional): Each batch of data is split into smaller units called micro-batches.
             Computational overhead can be reduced by increasing the size of micro-batches to include
             more than one training example. The number of micro-batches should divide evenly into
-            the overall ``batch_size``. Default is ``64``.
+            the overall ``batch_size``. Default is ``1``.
         gen_temp (optional): Controls the randomness of predictions by scaling the logits before
             applying softmax. Low temperatures result in more predictable text. Higher temperatures
             result in more surprising text. Experiment to find the best setting. Default is ``1.0``.
@@ -249,7 +249,7 @@ class TensorFlowConfig(BaseConfig):
     dp: bool = False
     dp_noise_multiplier: float = 0.1
     dp_l2_norm_clip: float = 3.0
-    dp_microbatches: int = 64
+    dp_microbatches: int = 1
 
     # Generation settings
     gen_temp: float = 1.0
@@ -270,6 +270,8 @@ class TensorFlowConfig(BaseConfig):
                     "Running in differential privacy mode requires TensorFlow 2.4.x or greater. "
                     "Please see the README for details"
                 )
+            if self.batch_size % self.dp_microbatches != 0:
+                raise ValueError('Number of microbatches should divide evenly batch_size')
 
         if self.best_model_metric is None:
             if self.validation_split:
