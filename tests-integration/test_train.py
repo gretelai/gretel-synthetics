@@ -192,7 +192,7 @@ def test_epoch_callback(train_df, tmp_path):
         assert len(lines) == 20
         for i, line in enumerate(lines):
             fields = line.strip().split(',')
-            assert len(fields) == 6
+            assert len(fields) == 8
             assert int(fields[0]) == i % 5
             assert(float(fields[1]))
             assert(float(fields[2]))
