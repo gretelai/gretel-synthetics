@@ -27,6 +27,17 @@ def train_df():
 # Basic training only, we don't care about generation
 ########################################################
 
+def test_bad_epoch_callback(tmp_path):
+    with pytest.raises(ValueError) as err:
+        config = TensorFlowConfig(
+            epochs=1,
+            field_delimiter=",",
+            checkpoint_dir=tmp_path,
+            input_data_path=PATH_HOLDER,
+            epoch_callback=1
+        )
+    assert "must be a callable" in str(err)
+
 def test_train_batch_sp_regression(train_df, tmp_path):
     """Batch mode with default SentencePiece tokenizer. Using the backwards
     compat mode for <= 0.14.0.
