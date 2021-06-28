@@ -17,7 +17,14 @@ from tqdm import tqdm
 
 from gretel_synthetics.tensorflow.model import build_model, load_model
 from gretel_synthetics.tensorflow.dp_model import compute_epsilon
-from gretel_synthetics.const import METRIC_ACCURACY, METRIC_LOSS, METRIC_VAL_LOSS, METRIC_VAL_ACCURACY
+from gretel_synthetics.const import (
+    METRIC_ACCURACY,
+    METRIC_LOSS,
+    METRIC_VAL_LOSS,
+    METRIC_VAL_ACCURACY,
+    METRIC_EPSILON,
+    METRIC_DELTA
+)
 from gretel_synthetics.tokenizers import BaseTokenizer
 from gretel_synthetics.train import EpochState
 
@@ -63,16 +70,15 @@ class _ModelHistory(tf.keras.callbacks.Callback):
             # Account for tf-privacy library writing to stdout
             with redirect_stdout(io.StringIO()):
                 eps, _ = compute_epsilon(self.total_token_count, self.config, epoch)
-                self.epsilon.append(eps)
+                logs[METRIC_EPSILON] = eps
 
             # NOTE: this is just a list of the same value, but
             # is simpler for creating the history csv
-            self.delta.append(1 / float(self.total_token_count))
-        else:
-            # Append 0,0 for epsilon and delta. These will be dropped afterwards anyway in
-            # non-DP mode.
-            self.epsilon.append(0)
-            self.delta.append(0)
+            delta = 1 / float(self.total_token_count)
+            logs[METRIC_DELTA] = delta
+
+        self.epsilon.append(logs.get(METRIC_EPSILON, 0))
+        self.delta.append(logs.get(METRIC_DELTA, 0))
 
         # NOTE: When we do the final history saving, one of these items
         # will flip to 1 to denote the actual best model that is saved
@@ -94,7 +100,9 @@ class _EpochCallbackWrapper(tf.keras.callbacks.Callback):
             accuracy=logs.get(METRIC_ACCURACY),
             loss=logs.get(METRIC_LOSS),
             val_accuracy=logs.get(METRIC_VAL_ACCURACY, 0),
-            val_loss=logs.get(METRIC_VAL_LOSS, 0)
+            val_loss=logs.get(METRIC_VAL_LOSS, 0),
+            epsilon=logs.get(METRIC_EPSILON, 0),
+            delta=logs.get(METRIC_DELTA, 0)
         )
         self.epoch_callable(epoch_state)
 
@@ -121,7 +129,7 @@ def _save_history_csv(
             history.best,
         ),
         columns=["epoch", METRIC_LOSS, METRIC_ACCURACY, METRIC_VAL_LOSS,
-                 METRIC_VAL_ACCURACY, "epsilon", "delta", "best"]
+                 METRIC_VAL_ACCURACY, METRIC_EPSILON, METRIC_DELTA, "best"]
     ).round(4)
 
     # Grab that last idx in case we need to use it in lieu of finding
