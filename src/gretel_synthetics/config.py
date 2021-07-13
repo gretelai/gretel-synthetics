@@ -271,7 +271,15 @@ class TensorFlowConfig(BaseConfig):
                     "Please see the README for details"
                 )
             if self.batch_size % self.dp_microbatches != 0:
-                raise ValueError('Number of microbatches should divide evenly batch_size')
+                raise ValueError('Number of micro-batches should divide evenly batch_size')
+
+            # TODO: To enable micro-batch size greater than 1, we need to update the differential privacy
+            #  optimizer loss function to compute the vector of per-example losses, rather than the mean
+            #  over a mini-batch.
+            if self.dp_microbatches != 1:
+                logging.warning("***** Currently only a differential privacy micro-batch size of 1 is supported. "
+                                "Setting micro-batch size to 1. *****")
+                self.dp_microbatches = 1
 
         if self.best_model_metric is None:
             if self.validation_split:
