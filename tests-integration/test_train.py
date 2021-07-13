@@ -38,7 +38,7 @@ def test_bad_microbatch_size(tmp_path):
             dp=True,
             dp_microbatches=65000
         )
-    assert "Number of microbatches should divide evenly batch_size" in str(err)
+    assert "Number of dp_microbatches should divide evenly into batch_size" in str(err)
 
 
 def test_train_batch_sp_regression(train_df, tmp_path):
