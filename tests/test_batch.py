@@ -41,7 +41,7 @@ config_template = {
     "learning_rate": 0.015,
     "dp_noise_multiplier": 1.1,
     "dp_l2_norm_clip": 1.0,
-    "dp_microbatches": 256,
+    "dp_microbatches": 64,
     "field_delimiter": "|",
     "overwrite": True,
     "checkpoint_dir": checkpoint_dir,
