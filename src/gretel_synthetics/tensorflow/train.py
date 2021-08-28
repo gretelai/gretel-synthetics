@@ -288,7 +288,7 @@ def _create_dataset(
     logging.info("Shuffling input data")
     char_dataset = tf.data.Dataset.from_tensor_slices(ids)
     sequences = char_dataset.batch(store.seq_length + 1, drop_remainder=True)
-    full_dataset = sequences.map(_split_input_target).shuffle(store.buffer_size).batch(
+    full_dataset = sequences.map(_split_input_target,num_parallel_calls=tf.data.AUTOTUNE).shuffle(store.buffer_size).batch(
         store.batch_size, drop_remainder=True
     )
 
@@ -306,11 +306,11 @@ def _create_dataset(
         logging.info("Creating validation dataset")
         validation_dataset = full_dataset.enumerate() \
             .filter(is_validation) \
-            .map(recover)
+            .map(recover,num_parallel_calls=tf.data.AUTOTUNE)
         logging.info("Creating training dataset")
         train_dataset = full_dataset.enumerate() \
             .filter(is_train) \
-            .map(recover)
+            .map(recover,num_parallel_calls=tf.data.AUTOTUNE)
         return total_token_count, validation_dataset, train_dataset
     else:
         return total_token_count, None, full_dataset
