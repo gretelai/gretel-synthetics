@@ -235,6 +235,7 @@ class TensorFlowConfig(BaseConfig):
     epochs: int = 100
     early_stopping: bool = True
     early_stopping_patience: int = 5
+    early_stopping_min_delta: float = 0.001
     best_model_metric: str = None
     batch_size: int = 64
     buffer_size: int = 10000
