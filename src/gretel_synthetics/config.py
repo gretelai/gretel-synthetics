@@ -93,7 +93,7 @@ class BaseConfig:
     """
 
     max_training_time_seconds: Optional[int] = None
-    """If set, training will cease after the the number of seconds
+    """If set, training will cease after the number of seconds
     specified elapses. This timeout will be evaluated after each
     epoch.
     """

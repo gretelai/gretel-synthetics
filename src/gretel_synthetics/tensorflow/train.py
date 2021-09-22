@@ -117,17 +117,17 @@ class _MaxTrainTimeCallback(tf.keras.callbacks.Callback):
     """
 
     _duration_seconds: int
-    _elapsed: int
+    _start_time: int
 
     def __init__(self, duration_seconds: int):
         self._duration_seconds = duration_seconds
 
     def on_train_begin(self, _):
-        self._elapsed = time.monotonic()
+        self._start_time = time.monotonic()
 
     def on_epoch_end(self, *args):
-        self._elapsed = time.monotonic()
-        if self._elapsed >= self._duration_seconds:
+        elapsed = time.monotonic() - self._start_time
+        if elapsed >= self._duration_seconds:
             self.model.stop_training = True
 
 
