@@ -103,4 +103,3 @@ def test_bad_max_train_time(mkdir):
         TensorFlowConfig(checkpoint_dir="foo", input_data_path="bar", max_training_time_seconds=0)
     with pytest.raises(ValueError):
         TensorFlowConfig(checkpoint_dir="foo", input_data_path="bar", max_training_time_seconds="foo")
-    

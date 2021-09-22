@@ -112,8 +112,8 @@ class _EpochCallbackWrapper(tf.keras.callbacks.Callback):
 
 class _MaxTrainTimeCallback(tf.keras.callbacks.Callback):
     """
-    Call back that still stop training after a maximum number
-    of seconds as elapsed.
+    Callback that will stop training after a maximum number
+    of seconds has elapsed.
     """
 
     _duration_seconds: int
