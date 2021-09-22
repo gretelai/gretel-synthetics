@@ -172,6 +172,8 @@ class TensorFlowConfig(BaseConfig):
         best_model_metric (optional). Defaults to "val_loss" or "loss" if a validation set is not used.
             The metric to use to track when a model is no longer improving. Alternative options are "val_acc"
             or "acc". A error will be raised if a valid value is not specified.
+        early_stopping_min_delta (optional). Defaults to 0.001.  Minimum change in ``best_model_metric`` to qualify 
+            as an improvement, i.e. an absolute change of less than min_delta will count as no improvement.
         batch_size (optional): Number of samples per gradient update. Using larger batch sizes can help
             make more efficient use of CPU/GPU parallelization, at the cost of memory.
             If unspecified, batch_size will default to ``64``.
@@ -235,8 +237,8 @@ class TensorFlowConfig(BaseConfig):
     epochs: int = 100
     early_stopping: bool = True
     early_stopping_patience: int = 5
-    early_stopping_min_delta: float = 0.001
     best_model_metric: str = None
+    early_stopping_min_delta: float = 0.001
     batch_size: int = 64
     buffer_size: int = 10000
     seq_length: int = 100
