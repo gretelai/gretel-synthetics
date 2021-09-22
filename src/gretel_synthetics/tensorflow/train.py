@@ -229,6 +229,7 @@ def train_rnn(params: TrainingParams):
         early_stopping_callback = tf.keras.callbacks.EarlyStopping(
             monitor=store.best_model_metric,
             patience=store.early_stopping_patience,
+            min_delta=store.early_stopping_min_delta,
             restore_best_weights=store.save_best_model,
         )
         _callbacks.append(early_stopping_callback)
