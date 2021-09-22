@@ -87,9 +87,9 @@ class BaseConfig:
     """
 
     epoch_callback: Optional[Callable] = None
-    """Callback to be invoked at the end of each epoch.  It will be invoked with a EpochState instance
+    """Callback to be invoked at the end of each epoch.  It will be invoked with an EpochState instance
     as its only parameter.  NOTE that the callback is deleted when save_model_params is called, we do not
-    attempt to serialize it to json.
+    attempt to serialize it to JSON.
     """
 
     max_training_time_seconds: Optional[int] = None
