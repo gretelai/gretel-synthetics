@@ -32,6 +32,7 @@ def test_local_config_settings(mkdir):
         "epochs": 100,
         "epoch_callback": None,
         "early_stopping": True,
+        'early_stopping_min_delta': 0.001,
         "early_stopping_patience": 5,
         "validation_split": True,
         "best_model_metric": METRIC_VAL_LOSS,
