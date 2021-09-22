@@ -64,7 +64,8 @@ def test_local_config_settings(mkdir):
         "predict_batch_size": 64,
         "reset_states": True,
         "training_data_path": "foo/training_data.txt",
-        "model_type": "TensorFlowConfig"
+        "model_type": "TensorFlowConfig",
+        "max_training_time_seconds": None
     }
 
 
@@ -94,3 +95,12 @@ def test_local_config_save_model_params():
     check = lc.save_model_params()
     assert json.loads(open(check).read())
     shutil.rmtree(target)
+
+
+@patch("gretel_synthetics.config.Path.mkdir")
+def test_bad_max_train_time(mkdir):
+    with pytest.raises(ValueError):
+        TensorFlowConfig(checkpoint_dir="foo", input_data_path="bar", max_training_time_seconds=0)
+    with pytest.raises(ValueError):
+        TensorFlowConfig(checkpoint_dir="foo", input_data_path="bar", max_training_time_seconds="foo")
+    

@@ -3,6 +3,7 @@ E2E Tests for training and generating data
 """
 import json
 import os
+from pathlib import Path
 
 import pytest
 import pandas as pd
@@ -30,7 +31,7 @@ def train_df():
 
 def test_bad_microbatch_size(tmp_path):
     with pytest.raises(ValueError) as err:
-        config = TensorFlowConfig(
+        TensorFlowConfig(
             epochs=1,
             field_delimiter=",",
             checkpoint_dir=tmp_path,
@@ -44,7 +45,7 @@ def test_bad_microbatch_size(tmp_path):
 
 def test_bad_epoch_callback(tmp_path):
     with pytest.raises(ValueError) as err:
-        config = TensorFlowConfig(
+        TensorFlowConfig(
             epochs=1,
             field_delimiter=",",
             checkpoint_dir=tmp_path,
@@ -177,6 +178,47 @@ def test_train_small_df(train_df, tmp_path):
     with pytest.raises(RuntimeError) as excinfo:
         batcher.train_all_batches()
     assert "Model training failed" in str(excinfo.value)
+
+
+class SimpleLogger:
+    log_file: Path
+
+    def __init__(self, log_file: Path):
+        self.log_file = log_file
+
+    def callback(self, _):
+        self.log_file.write_text("epoch end\n")
+
+    @property
+    def num_lines(self) -> int:
+        return len(self.log_file.read_text().splitlines())
+
+
+def test_train_max_runtime(train_df, tmp_path):
+    counter = SimpleLogger(Path(tmp_path) / "logs.txt")
+
+    # Here we'll stop training after 1 second. Realistically
+    # the first epoch will always complete, before the evaluation
+    # of the max run time.
+    #
+    # So we want to assert that only one epoch was done.
+    config = TensorFlowConfig(
+        epochs=5,
+        field_delimiter=",",
+        checkpoint_dir=tmp_path,
+        input_data_path=PATH_HOLDER,
+        max_training_time_seconds=1,
+        epoch_callback=counter.callback
+    )
+    batcher = DataFrameBatch(
+        df=train_df,
+        config=config
+    )
+    batcher.create_training_data()
+    batcher.train_all_batches()
+
+    # We should have stopped early after the timeout
+    assert counter.num_lines == 1
 
 
 def test_epoch_callback(train_df, tmp_path):

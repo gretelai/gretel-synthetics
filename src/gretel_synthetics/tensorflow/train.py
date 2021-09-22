@@ -10,6 +10,7 @@ from contextlib import redirect_stdout
 import logging
 from pathlib import Path
 from typing import Tuple, Optional, TYPE_CHECKING, Iterator, Callable
+import time
 
 import pandas as pd
 import tensorflow as tf
@@ -23,7 +24,7 @@ from gretel_synthetics.const import (
     METRIC_VAL_LOSS,
     METRIC_VAL_ACCURACY,
     METRIC_EPSILON,
-    METRIC_DELTA
+    METRIC_DELTA,
 )
 from gretel_synthetics.tokenizers import BaseTokenizer
 from gretel_synthetics.train import EpochState
@@ -69,7 +70,9 @@ class _ModelHistory(tf.keras.callbacks.Callback):
         if self.config.dp:
             # Account for tf-privacy library writing to stdout
             with redirect_stdout(io.StringIO()):
-                eps, _ = compute_epsilon(self.total_token_count, self.config, epoch)
+                eps, _ = compute_epsilon(
+                    self.total_token_count, self.config, epoch
+                )
                 logs[METRIC_EPSILON] = eps
 
             # NOTE: this is just a list of the same value, but
@@ -102,17 +105,38 @@ class _EpochCallbackWrapper(tf.keras.callbacks.Callback):
             val_accuracy=logs.get(METRIC_VAL_ACCURACY, 0),
             val_loss=logs.get(METRIC_VAL_LOSS, 0),
             epsilon=logs.get(METRIC_EPSILON, 0),
-            delta=logs.get(METRIC_DELTA, 0)
+            delta=logs.get(METRIC_DELTA, 0),
         )
         self.epoch_callable(epoch_state)
 
 
+class _MaxTrainTimeCallback(tf.keras.callbacks.Callback):
+    """
+    Call back that still stop training after a maximum number
+    of seconds as elapsed.
+    """
+
+    _duration_seconds: int
+    _elapsed: int
+
+    def __init__(self, duration_seconds: int):
+        self._duration_seconds = duration_seconds
+
+    def on_train_begin(self, _):
+        self._elapsed = time.monotonic()
+
+    def on_epoch_end(self, *args):
+        self._elapsed = time.monotonic()
+        if self._elapsed >= self._duration_seconds:
+            self.model.stop_training = True
+
+
 def _save_history_csv(
-        history: _ModelHistory,
-        save_dir: str,
-        dp: bool,
-        best_col: str,
-        best_val: Optional[float] = None,
+    history: _ModelHistory,
+    save_dir: str,
+    dp: bool,
+    best_col: str,
+    best_val: Optional[float] = None,
 ):
     """
     Save model training history to CSV format
@@ -128,8 +152,16 @@ def _save_history_csv(
             history.delta,
             history.best,
         ),
-        columns=["epoch", METRIC_LOSS, METRIC_ACCURACY, METRIC_VAL_LOSS,
-                 METRIC_VAL_ACCURACY, METRIC_EPSILON, METRIC_DELTA, "best"]
+        columns=[
+            "epoch",
+            METRIC_LOSS,
+            METRIC_ACCURACY,
+            METRIC_VAL_LOSS,
+            METRIC_VAL_ACCURACY,
+            METRIC_EPSILON,
+            METRIC_DELTA,
+            "best",
+        ],
     ).round(4)
 
     # Grab that last idx in case we need to use it in lieu of finding
@@ -139,7 +171,8 @@ def _save_history_csv(
     except IndexError as err:
         raise RuntimeError(
             "An error occurred when saving model history, this could be because training "
-            "was stopped before the first epoch could finish") from err  # noqa
+            "was stopped before the first epoch could finish"
+        ) from err  # noqa
 
     # Here we want to find the row that contains the value "best_val" within
     # the specified row by "best_col". We are looking for the first occurance
@@ -158,10 +191,12 @@ def _save_history_csv(
 
     if dp:
         # Log differential privacy settings from best training checkpoint
-        epsilon = df.at[best_idx, 'epsilon']
-        delta = df.at[best_idx, 'delta']
-        logging.warning(f"Model satisfies differential privacy with epsilon ε={epsilon:.2f} "
-                        f"and delta δ={delta:.6f}")
+        epsilon = df.at[best_idx, "epsilon"]
+        delta = df.at[best_idx, "delta"]
+        logging.warning(
+            f"Model satisfies differential privacy with epsilon ε={epsilon:.2f} "
+            f"and delta δ={delta:.6f}"
+        )
     else:
         df.drop(["epsilon", "delta"], axis=1, inplace=True)
 
@@ -204,10 +239,14 @@ def train_rnn(params: TrainingParams):
                 "overwrite mode or delete the checkpoints first."
             )
 
-    total_token_count, validation_dataset, training_dataset = _create_dataset(store, text_iter, num_lines, tokenizer)
+    total_token_count, validation_dataset, training_dataset = _create_dataset(
+        store, text_iter, num_lines, tokenizer
+    )
     logging.info("Initializing synthetic model")
     model = build_model(
-        vocab_size=tokenizer.total_vocab_size, batch_size=store.batch_size, store=store
+        vocab_size=tokenizer.total_vocab_size,
+        batch_size=store.batch_size,
+        store=store,
     )
 
     # Save checkpoints during training
@@ -236,13 +275,23 @@ def train_rnn(params: TrainingParams):
     if store.epoch_callback:
         _callbacks.append(_EpochCallbackWrapper(store.epoch_callback))
 
+    # NOTE: This callback should go last, so any other specific
+    # handling for a completed epoch would be run first before
+    # stopping training.
+    if store.max_training_time_seconds is not None:
+        max_timeout_calback = _MaxTrainTimeCallback(
+            store.max_training_time_seconds
+        )
+        _callbacks.append(max_timeout_calback)
+
     best_val = None
     try:
-        model.fit(training_dataset,
-                  epochs=store.epochs,
-                  callbacks=_callbacks,
-                  validation_data=validation_dataset
-                  )
+        model.fit(
+            training_dataset,
+            epochs=store.epochs,
+            callbacks=_callbacks,
+            validation_data=validation_dataset,
+        )
 
         if store.save_best_model:
             best_val = checkpoint_callback.best
@@ -255,8 +304,10 @@ def train_rnn(params: TrainingParams):
             except AttributeError:
                 best_val = None
     except (ValueError, IndexError):
-        raise RuntimeError("Model training failed. Your training data may have too few records in it. "
-                           "Please try increasing your training rows and try again")
+        raise RuntimeError(
+            "Model training failed. Your training data may have too few records in it. "
+            "Please try increasing your training rows and try again"
+        )
     except KeyboardInterrupt:
         ...
     _save_history_csv(
@@ -266,11 +317,16 @@ def train_rnn(params: TrainingParams):
         store.best_model_metric,
         best_val,
     )
-    logging.info(f"Saving model to {tf.train.latest_checkpoint(store.checkpoint_dir)}")
+    logging.info(
+        f"Saving model to {tf.train.latest_checkpoint(store.checkpoint_dir)}"
+    )
 
 
 def _create_dataset(
-        store: TensorFlowConfig, text_iter: Iterator[str], num_lines: int, tokenizer: BaseTokenizer
+    store: TensorFlowConfig,
+    text_iter: Iterator[str],
+    num_lines: int,
+    tokenizer: BaseTokenizer,
 ) -> Tuple[int, tf.data.Dataset, tf.data.Dataset]:
     """
     Before training, we need to map strings to a numerical representation.
@@ -288,8 +344,10 @@ def _create_dataset(
     logging.info("Shuffling input data")
     char_dataset = tf.data.Dataset.from_tensor_slices(ids)
     sequences = char_dataset.batch(store.seq_length + 1, drop_remainder=True)
-    full_dataset = sequences.map(_split_input_target).shuffle(store.buffer_size).batch(
-        store.batch_size, drop_remainder=True
+    full_dataset = (
+        sequences.map(_split_input_target)
+        .shuffle(store.buffer_size)
+        .batch(store.batch_size, drop_remainder=True)
     )
 
     # Compile as Lambda functions for compatibility with AutoGraph
@@ -304,13 +362,11 @@ def _create_dataset(
 
     if store.validation_split:
         logging.info("Creating validation dataset")
-        validation_dataset = full_dataset.enumerate() \
-            .filter(is_validation) \
-            .map(recover)
+        validation_dataset = (
+            full_dataset.enumerate().filter(is_validation).map(recover)
+        )
         logging.info("Creating training dataset")
-        train_dataset = full_dataset.enumerate() \
-            .filter(is_train) \
-            .map(recover)
+        train_dataset = full_dataset.enumerate().filter(is_train).map(recover)
         return total_token_count, validation_dataset, train_dataset
     else:
         return total_token_count, None, full_dataset
