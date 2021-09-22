@@ -87,9 +87,15 @@ class BaseConfig:
     """
 
     epoch_callback: Optional[Callable] = None
-    """Callback to be invoked at the end of each epoch.  It will be invoked with a EpochState instance 
+    """Callback to be invoked at the end of each epoch.  It will be invoked with an EpochState instance
     as its only parameter.  NOTE that the callback is deleted when save_model_params is called, we do not
-    attempt to serialize it to json.
+    attempt to serialize it to JSON.
+    """
+
+    max_training_time_seconds: Optional[int] = None
+    """If set, training will cease after the number of seconds
+    specified elapses. This timeout will be evaluated after each
+    epoch.
     """
 
     # Default SP tokenizer settings. This are kept here for
@@ -150,6 +156,12 @@ class BaseConfig:
         self.training_data_path = Path(
             self.checkpoint_dir, const.TRAINING_DATA
         ).as_posix()
+
+        if self.max_training_time_seconds is not None:
+            if not isinstance(self.max_training_time_seconds, int):
+                raise ValueError("max_training_time_seconds must be an int")
+            if self.max_training_time_seconds <= 0:
+                raise ValueError("max_training_time_seconds must be greater than 0")
 
         # assign the model type for serialization
         self.model_type = self.__class__.__name__
