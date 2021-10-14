@@ -22,6 +22,7 @@ import time
 import abc
 import threading
 from itertools import zip_longest
+import tempfile
 
 import pandas as pd
 import numpy as np
@@ -57,6 +58,8 @@ CHECKPOINT_DIR = "checkpoint_dir"
 CONFIG_FILE = "model_params.json"
 TRAIN_FILE = "train.csv"
 PATH_HOLDER = "___path_holder___"
+FILE = "file"
+MEMORY = "memory"
 
 
 @dataclass
@@ -328,6 +331,9 @@ class _BufferedRecords(abc.ABC):
     def get_records(self):
         ...
 
+    def cleanup(self):
+        pass
+
 
 class _BufferedDicts(_BufferedRecords):
 
@@ -344,18 +350,29 @@ class _BufferedDicts(_BufferedRecords):
 
 
 class _BufferedDataFrame(_BufferedRecords):
-    """Buffer dictionaries into a memory stream, then
+    """Buffer dictionaries into a memory or file, then
     load it as a DataFrame and set the column order
     based on the provided list. This allows
     datatypes to be inferred as if the values were
     being read from a CSV on disk.
+
+    NOTE: The cleanup() method must be called when done
+    with this class.
     """
 
-    def __init__(self, delim: str, columns: List[str]):
+    def __init__(self, delim: str, columns: List[str], method: str = FILE):
         self.delim = delim
         self.columns = columns
         self.headers_set = False
-        self.buffer = io.StringIO()
+        self.method = method
+
+        # Create our actual buffer file-like object
+        if self.method == FILE:
+            self.buffer = tempfile.TemporaryFile(mode="w+")
+        elif self.method == MEMORY:
+            self.buffer = io.StringIO()
+        else:
+            raise ValueError("Invalid method")
 
     def add(self, record: dict):
         # write the columns names into the buffer, we
@@ -375,6 +392,10 @@ class _BufferedDataFrame(_BufferedRecords):
 
     def get_records(self) -> pd.DataFrame:
         return self.df
+
+    def cleanup(self):
+        if self.method == FILE:
+            self.buffer.close()
 
 
 @dataclass
@@ -858,7 +879,9 @@ class RecordFactory:
                 force_update=True,
             )
 
-        return buffer.get_records()
+        out_records = buffer.get_records()
+        buffer.cleanup()
+        return out_records
 
     @property
     def summary(self):

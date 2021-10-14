@@ -346,9 +346,10 @@ def _create_dataset(
     char_dataset = tf.data.Dataset.from_tensor_slices(ids)
     sequences = char_dataset.batch(store.seq_length + 1, drop_remainder=True)
     full_dataset = (
-        sequences.map(_split_input_target)
+        sequences.map(_split_input_target, num_parallel_calls=tf.data.AUTOTUNE, deterministic=False)
         .shuffle(store.buffer_size)
         .batch(store.batch_size, drop_remainder=True)
+        .prefetch(tf.data.AUTOTUNE)
     )
 
     # Compile as Lambda functions for compatibility with AutoGraph
@@ -364,17 +365,17 @@ def _create_dataset(
     if store.validation_split:
         logging.info("Creating validation dataset")
         validation_dataset = (
-            full_dataset.enumerate().filter(is_validation).map(recover)
+            full_dataset.enumerate().filter(is_validation).map(recover, num_parallel_calls=tf.data.AUTOTUNE)
         )
         logging.info("Creating training dataset")
-        train_dataset = full_dataset.enumerate().filter(is_train).map(recover)
+        train_dataset = full_dataset.enumerate().filter(is_train).map(recover, num_parallel_calls=tf.data.AUTOTUNE)
         return total_token_count, validation_dataset, train_dataset
     else:
         return total_token_count, None, full_dataset
 
 
 @tf.autograph.experimental.do_not_convert
-def _split_input_target(chunk: str) -> Tuple[str, str]:
+def _split_input_target(chunk: tf.Tensor) -> Tuple[tf.Tensor, tf.Tensor]:
     """
     For each sequence, duplicate and shift it to form the input and target text
     by using the map method to apply a simple function to each batch:

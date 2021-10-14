@@ -302,10 +302,13 @@ class CharTokenizerTrainer(BaseTokenizerTrainer):
     newline_str: str = "\n"
 
     def _train(self):
-        text = open(
-            self.config.training_data_path, "rb"
-        ).read().decode()
-        vocab = sorted(set(text))
+        vocab = set()
+        with open(self.config.training_data_path, "rb") as fin:
+            for line in fin:
+                line = line.decode()
+                _vocab = set(line)
+                vocab = vocab.union(_vocab)
+        vocab = sorted(vocab)
         if self.vocab_size is not None:
             vocab = vocab[:self.vocab_size]
         char2idx = {u: i for i, u in enumerate(vocab)}
