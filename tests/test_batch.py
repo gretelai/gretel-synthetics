@@ -402,9 +402,9 @@ def test_buffered_df(buffermode):
 
 # bugfix: incomplete records
 @pytest.mark.parametrize("buffermode",[MEMORY, FILE])
-def test_buffered_df_incomplete_first_record():
+def test_buffered_df_incomplete_first_record(buffermode):
     buffer = _BufferedDataFrame(
-        ",", ["foo", "bar", "baz"]
+        ",", ["foo", "bar", "baz"], method= buffermode
     )
     buffer.add(dict(
         zip_longest(["bar", "foo", "baz"], ["33.4", "hello"], fillvalue="")
