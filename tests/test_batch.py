@@ -17,6 +17,8 @@ from gretel_synthetics.batch import (
     ORIG_HEADERS,
     _validate_batch_seed_values,
     _BufferedDataFrame,
+    FILE,
+    MEMORY
 )
 from gretel_synthetics.generate import GenText
 from gretel_synthetics.errors import TooManyInvalidError
@@ -381,9 +383,10 @@ def test_validate_seed_lines_ok_two_field(test_data):
     )
     assert check == "foo|1|"
 
-def test_buffered_df():
+@pytest.mark.parametrize("buffermode",[MEMORY, FILE])
+def test_buffered_df(buffermode):
     buffer = _BufferedDataFrame(
-        ",", ["foo", "bar", "baz"]
+        ",", ["foo", "bar", "baz"], method=buffermode
     )
     buffer.add(
         {"bar": "33.4", "foo": "hello", "baz": "2021-02-07T16:32:27.828956"}
@@ -394,12 +397,14 @@ def test_buffered_df():
     df = buffer.df
     assert list(df.columns) == ["foo", "bar", "baz"]
     assert str(df.bar.dtype) == "float64"
+    buffer.cleanup()
 
 
 # bugfix: incomplete records
-def test_buffered_df_incomplete_first_record():
+@pytest.mark.parametrize("buffermode",[MEMORY, FILE])
+def test_buffered_df_incomplete_first_record(buffermode):
     buffer = _BufferedDataFrame(
-        ",", ["foo", "bar", "baz"]
+        ",", ["foo", "bar", "baz"], method= buffermode
     )
     buffer.add(dict(
         zip_longest(["bar", "foo", "baz"], ["33.4", "hello"], fillvalue="")
@@ -410,4 +415,4 @@ def test_buffered_df_incomplete_first_record():
     df = buffer.df
     assert list(df.columns) == ["foo", "bar", "baz"]
     assert str(df.bar.dtype) == "float64"
-
+    buffer.cleanup()
