@@ -80,7 +80,7 @@ def test_single_char_small_vocab(input_data_path, tmpdir):
     with pytest.raises(tok.TokenizerError):
         tokenizer.decode_from_ids([11])
 
-
+"""
 def test_sp(input_data_path, tmpdir):
     config = SimpleConfig(input_data_path=input_data_path, checkpoint_dir=tmpdir)
     trainer = tok.SentencePieceTokenizerTrainer(config=config)
@@ -96,6 +96,21 @@ def test_sp(input_data_path, tmpdir):
     ids = [41, 54, 8, 5, 11, 36, 10, 14, 16, 13, 17, 16, 22, 20, 15, 5, 13, 25, 32, 7, 6, 51, 42, 9, 8, 5, 23, 5, 36, 13, 48, 13, 6, 49, 62, 10, 28, 49, 25, 7, 6, 3]
     assert tokenizer.encode_to_ids("Once upon a midnight dreary, while I pondered, weak and weary,<n>\n") == ids
     assert tokenizer.decode_from_ids(ids) == "Once upon a midnight dreary, while I pondered, weak and weary,<n>"
+"""
+
+def test_raw_sp(input_data_path):
+    import sentencepiece as spm
+    spm.SentencePieceTrainer.Train(
+        input=input_data_path,
+        model_prefix="m",
+        user_defined_symbols=["<n>", "<d>"],
+        vocab_size=20000,
+        hard_vocab_limit=False,
+        max_sentence_length=2048,
+        input_sentence_size=1000000,
+        shuffle_input_sentence=True,
+        character_coverage=1.0
+    )
 
 
 def test_sp_field_delim(input_data_path, tmpdir):
