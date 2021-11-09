@@ -18,6 +18,7 @@ Modules
    api/train.rst
    api/generate.rst
    api/batch.rst
+   utils/index.rst
 
 
 Indices and tables
