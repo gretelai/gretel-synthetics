@@ -1,6 +1,8 @@
-import pytest
-from pathlib import Path
 import shutil
+
+from pathlib import Path
+
+import pytest
 
 from gretel_synthetics.config import TensorFlowConfig
 

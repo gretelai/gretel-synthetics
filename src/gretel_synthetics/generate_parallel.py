@@ -3,14 +3,16 @@ Functionality for generating data using multiple CPUs. The functions in this mod
 not have to be used directly. They are used automatically by the ``generate.py`` module based
 on the parallelization settings configured for text generation.
 """
-from typing import List, Optional, Union, Set, Tuple, TYPE_CHECKING
 import os
 import sys
-import loky
+
 from concurrent import futures
+from typing import List, Optional, Set, Tuple, TYPE_CHECKING, Union
+
+import loky
 
 if TYPE_CHECKING:
-    from gretel_synthetics.generate import Settings, GenText, BaseGenerator
+    from gretel_synthetics.generate import BaseGenerator, GenText, Settings
 else:
     Settings = None
     GenText = None
@@ -19,7 +21,9 @@ else:
 from gretel_synthetics.errors import TooManyInvalidError
 
 
-def get_num_workers(parallelism: Union[int, float], total_lines: int, chunk_size: int = 5) -> int:
+def get_num_workers(
+    parallelism: Union[int, float], total_lines: int, chunk_size: int = 5
+) -> int:
     """
     Given a parallelism setting and a number of total lines, compute the number of parallel workers to be used.
 
@@ -54,10 +58,7 @@ def get_num_workers(parallelism: Union[int, float], total_lines: int, chunk_size
 
 
 def generate_parallel(
-    settings: Settings,
-    num_lines: int,
-    num_workers: int,
-    chunk_size: int = 5
+    settings: Settings, num_lines: int, num_workers: int, chunk_size: int = 5
 ):
     """
     Runs text generation in parallel mode.
@@ -77,16 +78,16 @@ def generate_parallel(
 
     # Create a pool of workers that will instantiate a generator upon initialization.
     worker_pool = loky.ProcessPoolExecutor(
-        max_workers=num_workers,
-        initializer=_loky_init_worker,
-        initargs=(settings,)
+        max_workers=num_workers, initializer=_loky_init_worker, initargs=(settings,)
     )
 
     # How many valid lines we still need to generate
     remaining_lines = num_lines
 
     # This set tracks the currently outstanding invocations to _loky_worker_process_chunk.
-    pending_tasks: Set[futures.Future[Tuple[int, List[GenText], int]]] = set()  # pylint: disable=unsubscriptable-object  # noqa
+    pending_tasks: Set[
+        futures.Future[Tuple[int, List[GenText], int]]
+    ] = set()  # pylint: disable=unsubscriptable-object  # noqa
 
     # How many tasks can be pending at once. While a lower factor saves memory, it increases the
     # risk that workers sit idle because the main process is blocked on processing data and
@@ -113,27 +114,39 @@ def generate_parallel(
         while remaining_lines > 0:
             # If we have capacity to add new pending tasks, do so until we are at capacity or there are
             # no more lines that can be assigned to workers.
-            while len(pending_tasks) < max_pending_tasks and assigned_lines < remaining_lines:
+            while (
+                len(pending_tasks) < max_pending_tasks
+                and assigned_lines < remaining_lines
+            ):
                 next_chunk = min(chunk_size, remaining_lines - assigned_lines)
-                pending_tasks.add(worker_pool.submit(_loky_worker_process_chunk, next_chunk, hard_limit))
+                pending_tasks.add(
+                    worker_pool.submit(
+                        _loky_worker_process_chunk, next_chunk, hard_limit
+                    )
+                )
                 assigned_lines += next_chunk
 
             # Wait for at least one worker to complete its current task (or fail with an exception).
             completed_tasks, pending_tasks = futures.wait(
-                pending_tasks, return_when=futures.FIRST_COMPLETED)
+                pending_tasks, return_when=futures.FIRST_COMPLETED
+            )
 
             for task in completed_tasks:
                 requested_chunk_size, lines, num_invalid = task.result(timeout=0)
 
                 assigned_lines -= requested_chunk_size
-                remaining_lines -= len(lines) - num_invalid  # Calculate number of _valid_ lines
+                remaining_lines -= (
+                    len(lines) - num_invalid
+                )  # Calculate number of _valid_ lines
 
                 # Emit lines in the output
                 for line in lines:
                     if line.valid is not None and not line.valid:
                         total_invalid += 1
                     if total_invalid > settings.max_invalid:
-                        raise TooManyInvalidError("Maximum number of invalid lines reached!")
+                        raise TooManyInvalidError(
+                            "Maximum number of invalid lines reached!"
+                        )
                     yield line
 
     finally:
@@ -165,11 +178,11 @@ def _loky_init_worker(settings: Settings):
     """
     try:
         # Workers should be using CPU only (note, this has no effect on the parent process)
-        os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+        os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
         # Suppress stdout and stderr in worker threads. Do so on a best-effort basis only.
         try:
-            devnull = open(os.devnull, 'w')
+            devnull = open(os.devnull, "w")
             try:
                 os.dup2(devnull.fileno(), sys.stdout.fileno())
                 os.dup2(devnull.fileno(), sys.stderr.fileno())
@@ -193,7 +206,9 @@ def _loky_init_worker(settings: Settings):
         # Simply return without raising, to keep the worker alive.
 
 
-def _loky_worker_process_chunk(chunk_size: int, hard_limit: Optional[int] = None) -> Tuple[int, List[GenText], int]:
+def _loky_worker_process_chunk(
+    chunk_size: int, hard_limit: Optional[int] = None
+) -> Tuple[int, List[GenText], int]:
     """
     Processes a single chunk by attempting to generate the given number of lines.
 

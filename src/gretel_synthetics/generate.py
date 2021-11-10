@@ -2,14 +2,14 @@
 Abstract module for generating data.  The ``generate_text`` function is the primary entrypoint for
 creating text.
 """
-from collections import namedtuple
-from dataclasses import dataclass, asdict
-from typing import TYPE_CHECKING, Optional, Callable, List, Union, Iterator
 from abc import ABC, abstractmethod
+from collections import namedtuple
 from collections.abc import Iterator as IteratorClass
+from dataclasses import asdict, dataclass
+from typing import Callable, Iterator, List, Optional, TYPE_CHECKING, Union
 
-from gretel_synthetics.generate_parallel import get_num_workers, generate_parallel
 from gretel_synthetics.errors import GenerationError
+from gretel_synthetics.generate_parallel import generate_parallel, get_num_workers
 from gretel_synthetics.tokenizers import BaseTokenizer, tokenizer_from_model_dir
 
 if TYPE_CHECKING:
@@ -222,7 +222,7 @@ def generate_text(
         line_validator=line_validator,
         max_invalid=max_invalid,
         tokenizer=tokenizer,
-        generator=generator_class
+        generator=generator_class,
     )
 
     if num_lines is not None:

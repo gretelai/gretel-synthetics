@@ -4,19 +4,19 @@ confguration parameters for training a model and generating data.
 
 For example usage please see our Jupyter Notebooks.
 """
-from dataclasses import dataclass, asdict
-from abc import abstractmethod
-from typing import Callable, TYPE_CHECKING, Optional
-from pathlib import Path
 import json
 import logging
-import tensorflow as tf
 
+from abc import abstractmethod
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import Callable, Optional, TYPE_CHECKING
 
 import gretel_synthetics.const as const
-from gretel_synthetics.tensorflow.train import train_rnn
-from gretel_synthetics.tensorflow.generator import TensorFlowGenerator
+import tensorflow as tf
 
+from gretel_synthetics.tensorflow.generator import TensorFlowGenerator
+from gretel_synthetics.tensorflow.train import train_rnn
 
 logging.basicConfig(
     format="%(asctime)s : %(threadName)s : %(levelname)s : %(message)s",
@@ -106,8 +106,7 @@ class BaseConfig:
     max_line_len: int = 2048
 
     def as_dict(self):
-        """Serialize the config attrs to a dict
-        """
+        """Serialize the config attrs to a dict"""
         d = asdict(self)
         return d
 
@@ -116,8 +115,8 @@ class BaseConfig:
         # logging.info(f"Saving model history to {save_path.name}")
         out_dict = self.as_dict()
         # Do not attempt to serialize Callable to json, just delete it.
-        if out_dict.get('epoch_callback') is not None:
-            del out_dict['epoch_callback']
+        if out_dict.get("epoch_callback") is not None:
+            del out_dict["epoch_callback"]
         with open(save_path, "w") as f:
             json.dump(out_dict, f, indent=2)
         return save_path
@@ -184,7 +183,7 @@ class TensorFlowConfig(BaseConfig):
         best_model_metric (optional). Defaults to "val_loss" or "loss" if a validation set is not used.
             The metric to use to track when a model is no longer improving. Alternative options are "val_acc"
             or "acc". A error will be raised if a valid value is not specified.
-        early_stopping_min_delta (optional). Defaults to 0.001.  Minimum change in ``best_model_metric`` to qualify 
+        early_stopping_min_delta (optional). Defaults to 0.001.  Minimum change in ``best_model_metric`` to qualify
             as an improvement, i.e. an absolute change of less than min_delta will count as no improvement.
         batch_size (optional): Number of samples per gradient update. Using larger batch sizes can help
             make more efficient use of CPU/GPU parallelization, at the cost of memory.
@@ -286,14 +285,18 @@ class TensorFlowConfig(BaseConfig):
                     "Please see the README for details"
                 )
             if self.batch_size % self.dp_microbatches != 0:
-                raise ValueError('Number of dp_microbatches should divide evenly into batch_size')
+                raise ValueError(
+                    "Number of dp_microbatches should divide evenly into batch_size"
+                )
 
             # TODO: To enable micro-batch size greater than 1, we need to update the differential privacy
             #  optimizer loss function to compute the vector of per-example losses, rather than the mean
             #  over a mini-batch.
             if self.dp_microbatches != 1:
-                logging.warning("***** Currently only a differential privacy micro-batch size of 1 is supported. "
-                                "Setting micro-batch size to 1. *****")
+                logging.warning(
+                    "***** Currently only a differential privacy micro-batch size of 1 is supported. "
+                    "Setting micro-batch size to 1. *****"
+                )
                 self.dp_microbatches = 1
 
         if self.best_model_metric is None:
@@ -302,10 +305,12 @@ class TensorFlowConfig(BaseConfig):
             else:
                 self.best_model_metric = const.METRIC_LOSS
 
-        if self.best_model_metric not in (const.METRIC_VAL_LOSS,
-                                          const.METRIC_VAL_ACCURACY,
-                                          const.METRIC_LOSS,
-                                          const.METRIC_ACCURACY):
+        if self.best_model_metric not in (
+            const.METRIC_VAL_LOSS,
+            const.METRIC_VAL_ACCURACY,
+            const.METRIC_LOSS,
+            const.METRIC_ACCURACY,
+        ):
             raise AttributeError("Invalid value for best_model_metric")
 
         if self.epoch_callback is not None:
@@ -356,12 +361,12 @@ def config_from_model_dir(model_dir: str) -> BaseConfig:
     # location of the model dir does not match the one that was
     # used for training originally
     params_dict["checkpoint_dir"] = model_dir
-    old_dp_learning_rate = params_dict.pop("dp_learning_rate", .001)
+    old_dp_learning_rate = params_dict.pop("dp_learning_rate", 0.001)
 
     # backwards compat with <= 0.14.0
     if model_type is None:
         config = TensorFlowConfig(**params_dict)
-        config.learning_rate = old_dp_learning_rate if config.dp else .01
+        config.learning_rate = old_dp_learning_rate if config.dp else 0.01
         return config
     cls = CONFIG_MAP[model_type]
     return cls(**params_dict)

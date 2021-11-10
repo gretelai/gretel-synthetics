@@ -26,19 +26,20 @@ Now you will use the ``load()`` class method from an actual tokenizer class to l
 trained model in and now you can use it on input data.
 
 """
-from abc import ABC, abstractmethod
-from typing import List, Any, Dict, TYPE_CHECKING, Iterator, Optional
-import logging
 import json
-from pathlib import Path
+import logging
 import shutil
 
-from smart_open import open as smart_open
-import sentencepiece as spm
-import cloudpickle
-import numpy as np
+from abc import ABC, abstractmethod
+from pathlib import Path
+from typing import Any, Dict, Iterator, List, Optional, TYPE_CHECKING
 
+import cloudpickle
 import gretel_synthetics.const as const
+import numpy as np
+import sentencepiece as spm
+
+from smart_open import open as smart_open
 
 if TYPE_CHECKING:
     from gretel_synthetics.config import BaseConfig
@@ -82,8 +83,7 @@ class Base(ABC):
 
 
 class BaseTokenizerTrainer(Base):
-    """Base class for training tokenizers. Should not be used directly.
-    """
+    """Base class for training tokenizers. Should not be used directly."""
 
     vocab_size: int
     """The max size of the vocab (tokens) to be extracted from
@@ -129,7 +129,10 @@ class BaseTokenizerTrainer(Base):
             with open(output_path, "w") as fout:
                 for line in infile:
                     self.num_lines += 1
-                    if self.config.max_lines and self.num_lines >= self.config.max_lines:
+                    if (
+                        self.config.max_lines
+                        and self.num_lines >= self.config.max_lines
+                    ):
                         break
 
                     # Tokenizer specific line processing
@@ -289,6 +292,7 @@ class BaseTokenizer(Base):
 # Single Char
 ##################
 
+
 class CharTokenizerTrainer(BaseTokenizerTrainer):
     """Train a simple tokenizer that maps every single character
     to a unique ID.  If ``vocab_size`` is not specified, the learned
@@ -310,19 +314,21 @@ class CharTokenizerTrainer(BaseTokenizerTrainer):
                 vocab = vocab.union(_vocab)
         vocab = sorted(vocab)
         if self.vocab_size is not None:
-            vocab = vocab[:self.vocab_size]
+            vocab = vocab[: self.vocab_size]
         char2idx = {u: i for i, u in enumerate(vocab)}
         idx2char = np.array(vocab)
         self._save_model(char2idx, idx2char)
 
     def _save_model(self, char2idx, idx2char):
-        cloudpickle.dump(char2idx, open(Path(self.config.checkpoint_dir) / "char2idx.p", "wb"))
-        cloudpickle.dump(idx2char, open(Path(self.config.checkpoint_dir) / "idx2char.p", "wb"))
+        cloudpickle.dump(
+            char2idx, open(Path(self.config.checkpoint_dir) / "char2idx.p", "wb")
+        )
+        cloudpickle.dump(
+            idx2char, open(Path(self.config.checkpoint_dir) / "idx2char.p", "wb")
+        )
 
     def _get_save_settings(self):
-        return {
-            "vocab_size": self.vocab_size
-        }
+        return {"vocab_size": self.vocab_size}
 
 
 class CharTokenizer(BaseTokenizer):
@@ -341,33 +347,33 @@ class CharTokenizer(BaseTokenizer):
             model_dir: The path to the model directory
         """
         model = {
-            "char2idx": cloudpickle.load(
-                open(Path(model_dir) / "char2idx.p", "rb")
-            ),
-            "idx2char": cloudpickle.load(
-                open(Path(model_dir) / "idx2char.p", "rb")
-            )
+            "char2idx": cloudpickle.load(open(Path(model_dir) / "char2idx.p", "rb")),
+            "idx2char": cloudpickle.load(open(Path(model_dir) / "idx2char.p", "rb")),
         }
         return cls(model, model_dir)
 
     @property
     def total_vocab_size(self):
-        """Get the number of unique characters (tokens)
-        """
+        """Get the number of unique characters (tokens)"""
         return len(self._model["idx2char"])
 
     def _encode_to_ids(self, data: str) -> List[int]:
         try:
             return [self._model["char2idx"][char] for char in data]
         except KeyError as err:
-            raise TokenizerError("Some characters in the input string are not part of the vocab") from err
+            raise TokenizerError(
+                "Some characters in the input string are not part of the vocab"
+            ) from err
 
     def _decode_from_ids(self, ids: List[int]) -> str:
         try:
             chars = [self._model["idx2char"][id] for id in ids]
             return "".join(chars)
         except IndexError as err:
-            raise TokenizerError("Some IDs do not have mappings to chars in the vocab") from err
+            raise TokenizerError(
+                "Some IDs do not have mappings to chars in the vocab"
+            ) from err
+
 
 #################
 # Sentence Piece
@@ -375,8 +381,7 @@ class CharTokenizer(BaseTokenizer):
 
 
 class SentencePieceTokenizerTrainer(BaseTokenizerTrainer):
-    """Train a tokenizer using Google SentencePiece.
-    """
+    """Train a tokenizer using Google SentencePiece."""
 
     vocab_size: int
     """Pre-determined maximum vocabulary size prior to neural model training, based
@@ -412,7 +417,7 @@ class SentencePieceTokenizerTrainer(BaseTokenizerTrainer):
         character_coverage: float = 1.0,
         pretrain_sentence_count: int = 1000000,
         max_line_len: int = 2048,
-        **kwargs
+        **kwargs,
     ):
         self.character_coverage = character_coverage
         self.pretrain_sentence_count = pretrain_sentence_count
@@ -447,7 +452,7 @@ class SentencePieceTokenizerTrainer(BaseTokenizerTrainer):
             max_sentence_length=self.max_line_line,
             input_sentence_size=self.pretrain_sentence_count,
             shuffle_input_sentence=True,
-            character_coverage=self.character_coverage
+            character_coverage=self.character_coverage,
         )
 
         # The training automatically saves to disk,
@@ -466,7 +471,7 @@ class SentencePieceTokenizerTrainer(BaseTokenizerTrainer):
             "vocab_size": self.vocab_size,
             "character_coverage": self.character_coverage,
             "pretrain_sentence_count": self.pretrain_sentence_count,
-            "max_line_len": self.max_line_line
+            "max_line_len": self.max_line_line,
         }
 
 
@@ -517,8 +522,7 @@ class SentencePieceTokenizer(BaseTokenizer):
 
     @property
     def total_vocab_size(self):
-        """The number of unique tokens in the model
-        """
+        """The number of unique tokens in the model"""
         return len(self._model)
 
     def _encode_to_ids(self, data: str) -> List[int]:
@@ -530,8 +534,7 @@ class SentencePieceTokenizer(BaseTokenizer):
     def _replace_decoded_tokens(self, decoded_line: str) -> str:
         if self.field_delimiter is not None:
             decoded_line = decoded_line.replace(
-                self.field_delimiter_token,
-                self.field_delimiter
+                self.field_delimiter_token, self.field_delimiter
             )
         return decoded_line
 

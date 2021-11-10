@@ -3,18 +3,20 @@ Train models for creating synthetic data.  This module is the primary entrypoint
 a model. It depends on having created a engine specifc configuration and optionally a tokenizer
 to be used.
 """
-from dataclasses import dataclass
 import logging
-from typing import TYPE_CHECKING, Optional
 
+from dataclasses import dataclass
+from typing import Optional, TYPE_CHECKING
 
-from gretel_synthetics.tokenizers import SentencePieceTokenizerTrainer, tokenizer_from_model_dir
-from gretel_synthetics.tokenizers import CharTokenizerTrainer
-
+from gretel_synthetics.tokenizers import (
+    CharTokenizerTrainer,
+    SentencePieceTokenizerTrainer,
+    tokenizer_from_model_dir,
+)
 
 if TYPE_CHECKING:
     from gretel_synthetics.config import BaseConfig
-    from gretel_synthetics.tokenizers import BaseTokenizerTrainer, BaseTokenizer
+    from gretel_synthetics.tokenizers import BaseTokenizer, BaseTokenizerTrainer
 else:
     BaseConfig = None
     BaseTokenizerTrainer = None
@@ -27,6 +29,7 @@ class TrainingParams:
     entrypoint. All engine-specific training entrypoints should expect to receive
     this object and process accordingly.
     """
+
     tokenizer_trainer: BaseTokenizerTrainer
     tokenizer: BaseTokenizer
     config: BaseConfig
@@ -37,6 +40,7 @@ class EpochState:
     """
     Training state passed to the epoch callback on BaseConfig at the end of each epoch.
     """
+
     epoch: int
     accuracy: Optional[float] = None
     loss: Optional[float] = None
@@ -54,9 +58,7 @@ def _create_default_tokenizer(store: BaseConfig) -> BaseTokenizerTrainer:
     """
     if store.vocab_size == 0:
         logging.info("Loading CharTokenizerTrainer")
-        trainer = CharTokenizerTrainer(
-            config=store
-        )
+        trainer = CharTokenizerTrainer(config=store)
     else:
         logging.info("Loading SentencePieceTokenizerTrainer")
         trainer = SentencePieceTokenizerTrainer(
@@ -87,9 +89,7 @@ def train(store: BaseConfig, tokenizer_trainer: Optional[BaseTokenizerTrainer] =
     tokenizer_trainer.train()
     tokenizer = tokenizer_from_model_dir(store.checkpoint_dir)
     params = TrainingParams(
-        tokenizer_trainer=tokenizer_trainer,
-        tokenizer=tokenizer,
-        config=store
+        tokenizer_trainer=tokenizer_trainer, tokenizer=tokenizer, config=store
     )
     train_fn = store.get_training_callable()
     store.save_model_params()

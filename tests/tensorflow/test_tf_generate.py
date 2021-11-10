@@ -1,14 +1,15 @@
-from unittest.mock import MagicMock, patch, Mock
 import json
+
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 import tensorflow as tf
 
-from gretel_synthetics.tensorflow.generator import _predict_chars
 from gretel_synthetics.generate import generate_text, PredString
-
+from gretel_synthetics.tensorflow.generator import _predict_chars
 
 NEWLINE = "<n>"
+
 
 @pytest.fixture
 def random_cat():
@@ -32,7 +33,7 @@ def test_predict_chars(mock_cat, tf_config, random_cat):
     # sp.DecodeIds.side_effect = ["this", " ", "is", " ", "the", " ", "end", "<n>"]
     line = next(_predict_chars(mock_model, tokenizer, NEWLINE, config))
     assert line == PredString(data="this is the end")
- 
+
     config = tf_config
     mock_tensor = MagicMock()
     mock_tensor[-1, 0].numpy.side_effect = [0, 1, 2, 3, 4, 5, 6, 7, 8]
@@ -41,7 +42,11 @@ def test_predict_chars(mock_cat, tf_config, random_cat):
     tokenizer = Mock()
     tokenizer.newline_str = NEWLINE
     tokenizer.encode_to_ids.return_value = [3]
-    ret_data = [partial_rep for partial in ["a", "ab", "abc", "abcd"] for partial_rep in [partial] * config.predict_batch_size]
+    ret_data = [
+        partial_rep
+        for partial in ["a", "ab", "abc", "abcd"]
+        for partial_rep in [partial] * config.predict_batch_size
+    ]
     tokenizer.decode_from_ids.side_effect = ret_data
     # sp.DecodeIds.side_effect = ["a", "b", "c", "d"]
     line = next(_predict_chars(mock_model, tokenizer, NEWLINE, config))
@@ -107,7 +112,9 @@ def test_generate_text(_open, pickle, prepare, predict, spm, tf_config):
     ]
     out = []
     try:
-        for rec in generate_text(tf_config, line_validator=json.loads, max_invalid=2, parallelism=1):
+        for rec in generate_text(
+            tf_config, line_validator=json.loads, max_invalid=2, parallelism=1
+        ):
             out.append(rec.as_dict())
     except RuntimeError as err:
         assert "Maximum number" in str(err)
@@ -130,7 +137,9 @@ def test_generate_text(_open, pickle, prepare, predict, spm, tf_config):
     ]
     out = []
     try:
-        for rec in generate_text(tf_config, line_validator=_val, max_invalid=2, parallelism=1):
+        for rec in generate_text(
+            tf_config, line_validator=_val, max_invalid=2, parallelism=1
+        ):
             out.append(rec.as_dict())
     except RuntimeError as err:
         assert "Maximum number" in str(err)

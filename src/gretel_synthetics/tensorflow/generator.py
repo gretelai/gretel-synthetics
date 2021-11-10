@@ -1,19 +1,12 @@
-from typing import (
-    TYPE_CHECKING,
-    Callable,
-    Generator as GeneratorType,
-    List,
-    Iterator,
-    Optional,
-    Tuple,
-    Union
-)
+from typing import Callable
+from typing import Generator as GeneratorType
+from typing import Iterator, List, Optional, Tuple, TYPE_CHECKING, Union
 
 import tensorflow as tf
 
-from gretel_synthetics.tensorflow.model import load_model
-from gretel_synthetics.generate import PredString, GenText, Settings, BaseGenerator
 from gretel_synthetics.errors import TooManyInvalidError
+from gretel_synthetics.generate import BaseGenerator, GenText, PredString, Settings
+from gretel_synthetics.tensorflow.model import load_model
 
 if TYPE_CHECKING:
     from gretel_synthetics.config import TensorFlowConfig
@@ -108,7 +101,9 @@ class TensorFlowGenerator(BaseGenerator):
                     text=rec, valid=False, explain=str(err), delimiter=self.delim
                 )
             else:
-                if (self.settings.line_validator and _valid) or not self.settings.line_validator:
+                if (
+                    self.settings.line_validator and _valid
+                ) or not self.settings.line_validator:
                     valid_lines_generated += 1
                     if self.settings.multi_seed:
                         self.settings.start_string.pop(0)
@@ -142,9 +137,7 @@ class TensorFlowGenerator(BaseGenerator):
             )
 
 
-def _replace_prefix(
-    batch_decoded, prefix: str = None
-) -> List[Tuple[int, str]]:
+def _replace_prefix(batch_decoded, prefix: str = None) -> List[Tuple[int, str]]:
     """Given a decoded predicted string, that contains special tokens for things like field
     delimiters, we restore those tokens back to the original char they were previously.
 

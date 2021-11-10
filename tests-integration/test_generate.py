@@ -20,19 +20,19 @@ TOK:
     - char
     - sp
 """
-from unittest.mock import Mock
-
-import pytest
-import pandas as pd
 import gzip
+import random
 import tarfile
 import tempfile
-import random
 
-from smart_open import open as smart_open
+from unittest.mock import Mock
 
-from gretel_synthetics.generate_utils import DataFileGenerator
+import pandas as pd
+import pytest
+
 from gretel_synthetics.batch import DataFrameBatch, GenerationProgress
+from gretel_synthetics.generate_utils import DataFileGenerator
+from smart_open import open as smart_open
 
 BATCH_MODELS = [
     "https://gretel-public-website.s3-us-west-2.amazonaws.com/tests/synthetics/models/safecast-batch-sp-0-14.tar.gz",
@@ -113,14 +113,17 @@ def test_record_factory_generate_all_with_callback(safecast_model_dir, threading
         assert float(rec["payload.loc_lat"])
 
     factory = batcher.create_record_factory(
-        num_lines=1000,
-        validator=_validator,
-        invalid_cache_size=5
+        num_lines=1000, validator=_validator, invalid_cache_size=5
     )
 
     callback_fn = Mock()
 
-    df = factory.generate_all(output="df", callback=callback_fn, callback_interval=1, callback_threading=threading)
+    df = factory.generate_all(
+        output="df",
+        callback=callback_fn,
+        callback_interval=1,
+        callback_threading=threading,
+    )
     assert df.shape == (1000, 16)
 
     # assuming we get at least 5 bad records
@@ -129,7 +132,9 @@ def test_record_factory_generate_all_with_callback(safecast_model_dir, threading
 
     assert callback_fn.call_count >= 2
     # at least 1 call during generation and another one with final update
-    assert callback_fn.call_count < 1000, "Progress update should be only called periodically"
+    assert (
+        callback_fn.call_count < 1000
+    ), "Progress update should be only called periodically"
 
     args, _ = callback_fn.call_args  # pylint: disable=unpacking-non-sequence
     last_update: GenerationProgress = args[0]
@@ -173,7 +178,9 @@ def test_record_factory_bool_fail_validator(safecast_model_dir):
     def _validator(rec: dict):
         return False
 
-    factory = batcher.create_record_factory(num_lines=10, validator=_validator, max_invalid=10)
+    factory = batcher.create_record_factory(
+        num_lines=10, validator=_validator, max_invalid=10
+    )
     with pytest.raises(RuntimeError):
         list(factory)
 
@@ -184,14 +191,14 @@ def test_record_factory_exc_fail_validator(safecast_model_dir):
     def _validator(rec: dict):
         raise ValueError
 
-    factory = batcher.create_record_factory(num_lines=10, validator=_validator, max_invalid=10)
+    factory = batcher.create_record_factory(
+        num_lines=10, validator=_validator, max_invalid=10
+    )
     with pytest.raises(RuntimeError):
         list(factory)
 
 
-@pytest.mark.parametrize(
-    "model_path", BATCH_MODELS
-)
+@pytest.mark.parametrize("model_path", BATCH_MODELS)
 def test_generate_batch(model_path, tmp_path):
     gen = DataFileGenerator(model_path)
     out_file = str(tmp_path / "outdata")
@@ -201,7 +208,7 @@ def test_generate_batch(model_path, tmp_path):
         for _ in fin:
             count += 1
     # account for the header
-    assert count-1 == 100
+    assert count - 1 == 100
 
 
 def scooter_val(line):
@@ -213,18 +220,22 @@ def scooter_val(line):
         float(rec[2])
         int(rec[0])
     else:
-        raise Exception('record not 6 parts')
+        raise Exception("record not 6 parts")
 
 
 SIMPLE_MODELS = [
-    ("https://gretel-public-website.s3-us-west-2.amazonaws.com/tests/synthetics/models/scooter-simple-sp-0-14.tar.gz", scooter_val),  # noqa
-    ("https://gretel-public-website.s3-us-west-2.amazonaws.com/tests/synthetics/models/scooter-simple-char-0-15.tar.gz", scooter_val)  # noqa
+    (
+        "https://gretel-public-website.s3-us-west-2.amazonaws.com/tests/synthetics/models/scooter-simple-sp-0-14.tar.gz",
+        scooter_val,
+    ),  # noqa
+    (
+        "https://gretel-public-website.s3-us-west-2.amazonaws.com/tests/synthetics/models/scooter-simple-char-0-15.tar.gz",
+        scooter_val,
+    ),  # noqa
 ]
 
 
-@pytest.mark.parametrize(
-    "model_path,validator_fn", SIMPLE_MODELS
-)
+@pytest.mark.parametrize("model_path,validator_fn", SIMPLE_MODELS)
 def test_generate_simple(model_path, validator_fn, tmp_path):
     gen = DataFileGenerator(model_path)
     out_file = str(tmp_path / "outdata")
@@ -237,9 +248,13 @@ def test_generate_simple(model_path, validator_fn, tmp_path):
 
 
 @pytest.mark.parametrize(
-    "model_path,seed", [
-        ("https://gretel-public-website.s3-us-west-2.amazonaws.com/tests/synthetics/models/safecast-batch-sp-0-14.tar.gz", {"payload.service_handler": "i-051a2a353509414f0"})  # noqa
-    ]
+    "model_path,seed",
+    [
+        (
+            "https://gretel-public-website.s3-us-west-2.amazonaws.com/tests/synthetics/models/safecast-batch-sp-0-14.tar.gz",
+            {"payload.service_handler": "i-051a2a353509414f0"},
+        )  # noqa
+    ],
 )
 def test_generate_batch_smart_seed(model_path, seed, tmp_path):
     gen = DataFileGenerator(model_path)
@@ -253,33 +268,39 @@ def test_generate_batch_smart_seed(model_path, seed, tmp_path):
 
 
 @pytest.mark.parametrize(
-    "model_path,seed", [
-        ("https://gretel-public-website.s3-us-west-2.amazonaws.com/tests/synthetics/models/safecast-batch-sp-0-14.tar.gz",  # noqa
-            [{"payload.service_handler": "i-051a2a353509414f0"},
-             {"payload.service_handler": "i-051a2a353509414f1"},
-             {"payload.service_handler": "i-051a2a353509414f2"},
-             {"payload.service_handler": "i-051a2a353509414f3"}])  # noqa
-    ]
+    "model_path,seed",
+    [
+        (
+            "https://gretel-public-website.s3-us-west-2.amazonaws.com/tests/synthetics/models/safecast-batch-sp-0-14.tar.gz",  # noqa
+            [
+                {"payload.service_handler": "i-051a2a353509414f0"},
+                {"payload.service_handler": "i-051a2a353509414f1"},
+                {"payload.service_handler": "i-051a2a353509414f2"},
+                {"payload.service_handler": "i-051a2a353509414f3"},
+            ],
+        )  # noqa
+    ],
 )
 def test_generate_batch_smart_seed_multi(model_path, seed, tmp_path):
     gen = DataFileGenerator(model_path)
     out_file = str(tmp_path / "outdata")
     fname = gen.generate(100, out_file, seed=seed)
     df = pd.read_csv(fname)
-    assert list(df["payload.service_handler"]) == list(pd.DataFrame(seed)["payload.service_handler"])
+    assert list(df["payload.service_handler"]) == list(
+        pd.DataFrame(seed)["payload.service_handler"]
+    )
 
 
 def test_record_factory_smart_seed(safecast_model_dir):
-    seeds = [{"payload.service_handler": "i-051a2a353509414f0"},
-             {"payload.service_handler": "i-051a2a353509414f1"},
-             {"payload.service_handler": "i-051a2a353509414f2"},
-             {"payload.service_handler": "i-051a2a353509414f3"}]
+    seeds = [
+        {"payload.service_handler": "i-051a2a353509414f0"},
+        {"payload.service_handler": "i-051a2a353509414f1"},
+        {"payload.service_handler": "i-051a2a353509414f2"},
+        {"payload.service_handler": "i-051a2a353509414f3"},
+    ]
 
     batcher = DataFrameBatch(mode="read", checkpoint_dir=safecast_model_dir)
-    factory = batcher.create_record_factory(
-        num_lines=1000,
-        seed_fields=seeds*1000
-    )
+    factory = batcher.create_record_factory(num_lines=1000, seed_fields=seeds * 1000)
 
     # list of seeds should reset num_lines
     assert factory._counter.num_lines == len(seeds) * 1000
@@ -300,10 +321,12 @@ class MyValidator:
 
 
 def test_record_factory_smart_seed_buffer(safecast_model_dir):
-    seeds = [{"payload.service_handler": "i-051a2a353509414f0"},
-             {"payload.service_handler": "i-051a2a353509414f1"},
-             {"payload.service_handler": "i-051a2a353509414f2"},
-             {"payload.service_handler": "i-051a2a353509414f3"}] * 2
+    seeds = [
+        {"payload.service_handler": "i-051a2a353509414f0"},
+        {"payload.service_handler": "i-051a2a353509414f1"},
+        {"payload.service_handler": "i-051a2a353509414f2"},
+        {"payload.service_handler": "i-051a2a353509414f3"},
+    ] * 2
 
     batcher = DataFrameBatch(mode="read", checkpoint_dir=safecast_model_dir)
 
@@ -311,7 +334,7 @@ def test_record_factory_smart_seed_buffer(safecast_model_dir):
         num_lines=100,  # doesn't matter w/ smart seed
         seed_fields=seeds,
         validator=MyValidator(),
-        max_invalid=5000
+        max_invalid=5000,
     )
 
     df = factory.generate_all(output="df")
@@ -323,10 +346,7 @@ def test_record_factory_smart_seed_buffer(safecast_model_dir):
 def test_record_factory_multi_batch(hr_model_dir):
     batcher = DataFrameBatch(mode="read", checkpoint_dir=hr_model_dir)
 
-    factory = batcher.create_record_factory(
-        num_lines=50,
-        max_invalid=5000
-    )
+    factory = batcher.create_record_factory(num_lines=50, max_invalid=5000)
 
     df = factory.generate_all(output="df")
     assert len(df) == 50
@@ -341,7 +361,7 @@ def test_record_factory_multi_batch_seed_list(hr_model_dir):
         num_lines=50,  # doesn't matter w/ smart seed
         max_invalid=5000,
         seed_fields=age_seeds,
-        validator=MyValidator()
+        validator=MyValidator(),
     )
 
     df = factory.generate_all(output="df")
@@ -353,10 +373,7 @@ def test_record_factory_multi_batch_seed_static(hr_model_dir):
     batcher = DataFrameBatch(mode="read", checkpoint_dir=hr_model_dir)
 
     factory = batcher.create_record_factory(
-        num_lines=10,
-        max_invalid=5000,
-        seed_fields={"age": 5},
-        validator=MyValidator()
+        num_lines=10, max_invalid=5000, seed_fields={"age": 5}, validator=MyValidator()
     )
 
     df = factory.generate_all(output="df")

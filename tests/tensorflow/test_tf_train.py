@@ -1,16 +1,16 @@
-import pytest
 from copy import deepcopy
+from unittest.mock import Mock, patch
 
-from unittest.mock import patch, Mock
 import pandas as pd
+import pytest
 
 from gretel_synthetics.tensorflow.train import (
     _ModelHistory,
     _save_history_csv,
-    METRIC_LOSS,
     METRIC_ACCURACY,
-    METRIC_VAL_LOSS,
+    METRIC_LOSS,
     METRIC_VAL_ACCURACY,
+    METRIC_VAL_LOSS,
 )
 from gretel_synthetics.train import train
 

@@ -1,11 +1,15 @@
-from typing import Tuple, TYPE_CHECKING
-import logging
 import importlib
+import logging
+
+from typing import Tuple, TYPE_CHECKING
 
 import tensorflow as tf
+
 from tensorflow.keras.optimizers import RMSprop
 from tensorflow_privacy.privacy.analysis import compute_dp_sgd_privacy
-from tensorflow_privacy.privacy.optimizers.dp_optimizer_keras import make_keras_optimizer_class
+from tensorflow_privacy.privacy.optimizers.dp_optimizer_keras import (
+    make_keras_optimizer_class,
+)
 
 if TYPE_CHECKING:
     from gretel_synthetics.config import TensorFlowConfig
@@ -14,7 +18,9 @@ else:
 
 
 def loss(labels, logits):
-    return tf.keras.losses.sparse_categorical_crossentropy(labels, logits, from_logits=True)
+    return tf.keras.losses.sparse_categorical_crossentropy(
+        labels, logits, from_logits=True
+    )
 
 
 def build_dp_model(store, batch_size, vocab_size) -> tf.keras.Sequential:
@@ -32,13 +38,20 @@ def build_dp_model(store, batch_size, vocab_size) -> tf.keras.Sequential:
     logging.warning("Experimental: Differentially private training enabled")
 
     try:
-        recurrent_v2 = importlib.import_module("tensorflow.python.keras.layers.recurrent_v2")
+        recurrent_v2 = importlib.import_module(
+            "tensorflow.python.keras.layers.recurrent_v2"
+        )
         # NOTE: This patches the LSTMs to use the new Keras 2.4.x code paths
         # and will have no effect when the module function is removed
         use_new_code = getattr(recurrent_v2, "_use_new_code", None)
         if use_new_code is not None:
-            logging.warning("******* Patching TensorFlow to utilize new Keras code paths, see: %s", "https://github.com/tensorflow/tensorflow/issues/44917 *******")  # noqa
-            recurrent_v2._use_new_code = lambda: True  # pylint: disable=protected-access
+            logging.warning(
+                "******* Patching TensorFlow to utilize new Keras code paths, see: %s",
+                "https://github.com/tensorflow/tensorflow/issues/44917 *******",
+            )  # noqa
+            recurrent_v2._use_new_code = (
+                lambda: True
+            )  # pylint: disable=protected-access
     except ModuleNotFoundError:
         pass
 
@@ -46,32 +59,43 @@ def build_dp_model(store, batch_size, vocab_size) -> tf.keras.Sequential:
         l2_norm_clip=store.dp_l2_norm_clip,
         noise_multiplier=store.dp_noise_multiplier,
         num_microbatches=store.dp_microbatches,
-        learning_rate=store.learning_rate
+        learning_rate=store.learning_rate,
     )
 
-    model = tf.keras.Sequential([
-        tf.keras.layers.Embedding(vocab_size, store.embedding_dim,
-                                  batch_input_shape=[batch_size, None]),
-        tf.keras.layers.Dropout(store.dropout_rate),
-        tf.keras.layers.LSTM(store.rnn_units,
-                             return_sequences=True,
-                             stateful=True,
-                             recurrent_initializer=store.rnn_initializer),
-        tf.keras.layers.Dropout(store.dropout_rate),
-        tf.keras.layers.LSTM(store.rnn_units,
-                             return_sequences=True,
-                             stateful=True,
-                             recurrent_initializer=store.rnn_initializer),
-        tf.keras.layers.Dropout(store.dropout_rate),
-        tf.keras.layers.Dense(vocab_size)
-    ])
+    model = tf.keras.Sequential(
+        [
+            tf.keras.layers.Embedding(
+                vocab_size, store.embedding_dim, batch_input_shape=[batch_size, None]
+            ),
+            tf.keras.layers.Dropout(store.dropout_rate),
+            tf.keras.layers.LSTM(
+                store.rnn_units,
+                return_sequences=True,
+                stateful=True,
+                recurrent_initializer=store.rnn_initializer,
+            ),
+            tf.keras.layers.Dropout(store.dropout_rate),
+            tf.keras.layers.LSTM(
+                store.rnn_units,
+                return_sequences=True,
+                stateful=True,
+                recurrent_initializer=store.rnn_initializer,
+            ),
+            tf.keras.layers.Dropout(store.dropout_rate),
+            tf.keras.layers.Dense(vocab_size),
+        ]
+    )
 
-    logging.info(f"Using {optimizer._keras_api_names[0]} optimizer in differentially private mode")
+    logging.info(
+        f"Using {optimizer._keras_api_names[0]} optimizer in differentially private mode"
+    )
     model.compile(optimizer=optimizer, loss=loss, metrics=["accuracy"])
     return model
 
 
-def compute_epsilon(steps: int, store: TensorFlowConfig, epoch_number: int = None) -> Tuple[float, float]:
+def compute_epsilon(
+    steps: int, store: TensorFlowConfig, epoch_number: int = None
+) -> Tuple[float, float]:
     """
     Calculate epsilon and delta values for differential privacy
 

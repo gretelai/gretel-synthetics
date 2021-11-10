@@ -7,40 +7,42 @@ Then we can concat each sub-DF back into one final synthetic dataset.
 
 For example usage, please see our Jupyter Notebook.
 """
-from dataclasses import dataclass, field
-from pathlib import Path
+import abc
+import glob
 import gzip
-from math import ceil
-from typing import List, Type, Callable, Dict, Union, Iterator as IteratorType, Optional
-from copy import deepcopy
-import logging
 import io
 import json
-import glob
+import logging
 import shutil
-import time
-import abc
-import threading
-from itertools import zip_longest
 import tempfile
+import threading
+import time
 
-import pandas as pd
-import numpy as np
-from tqdm.auto import tqdm
+from copy import deepcopy
+from dataclasses import dataclass, field
+from itertools import zip_longest
+from math import ceil
+from pathlib import Path
+from typing import Callable, Dict
+from typing import Iterator as IteratorType
+from typing import List, Optional, Type, Union
+
 import cloudpickle
+import gretel_synthetics.const as const
+import numpy as np
+import pandas as pd
 
 from gretel_synthetics.config import (
-    LocalConfig,
     BaseConfig,
     config_from_model_dir,
     CONFIG_MAP,
+    LocalConfig,
 )
-import gretel_synthetics.const as const
-from gretel_synthetics.generate import GenText, generate_text, SeedingGenerator
 from gretel_synthetics.errors import TooManyInvalidError
-from gretel_synthetics.train import train
+from gretel_synthetics.generate import generate_text, GenText, SeedingGenerator
 from gretel_synthetics.tokenizers import BaseTokenizerTrainer
-
+from gretel_synthetics.train import train
+from tqdm.auto import tqdm
 
 logging.basicConfig()
 logger = logging.getLogger(__name__)
@@ -528,7 +530,9 @@ def _threading_generation_callback(
 ):
     while not event.is_set():
         try:
-            callback.update_progress(counter.num_lines, counter.valid_count, counter.invalid_count)
+            callback.update_progress(
+                counter.num_lines, counter.valid_count, counter.invalid_count
+            )
         except Exception:
             event.set()
             break
@@ -624,7 +628,7 @@ class RecordFactory:
         max_invalid=MAX_INVALID,
         validator: Optional[Callable] = None,
         parallelism: int = 4,
-        invalid_cache_size: int = 100
+        invalid_cache_size: int = 100,
     ):
         self._counter = _FactoryCounter()
         self._counter.num_lines = num_lines
@@ -653,7 +657,7 @@ class RecordFactory:
 
     def _cache_invalid(self, line: GenText):
         self.invalid_cache.append(line.as_dict())
-        self.invalid_cache = self.invalid_cache[:self._invalid_cache_size]
+        self.invalid_cache = self.invalid_cache[: self._invalid_cache_size]
 
     def _get_record(self) -> IteratorType[dict]:
         # our actual batch line generators
@@ -742,7 +746,9 @@ class RecordFactory:
                                 "Invalid record count exceeded during generation"
                             )
                         continue
-                    partial_rec = dict(zip_longest(batch.headers, line.values_as_list(), fillvalue=""))
+                    partial_rec = dict(
+                        zip_longest(batch.headers, line.values_as_list(), fillvalue="")
+                    )
                     record.update(partial_rec)
                     break
 
@@ -787,7 +793,7 @@ class RecordFactory:
         output: Optional[str] = None,
         callback: Optional[callable] = None,
         callback_interval: int = 30,
-        callback_threading: bool = False
+        callback_threading: bool = False,
     ):
         """Attempt to generate the full number of records that was set when
         creating the ``RecordFactory.``  This method will create a buffer
@@ -835,11 +841,13 @@ class RecordFactory:
         callback_thread = None
         if callback_threading:
             if not progress_callback:
-                raise ValueError("Cannot use callback_threading without a progress callback")
+                raise ValueError(
+                    "Cannot use callback_threading without a progress callback"
+                )
             self._thread_event = threading.Event()
             callback_thread = threading.Thread(
                 target=_threading_generation_callback,
-                args=(self._counter, progress_callback, self._thread_event)
+                args=(self._counter, progress_callback, self._thread_event),
             )
             callback_thread.start()
 
@@ -1240,7 +1248,7 @@ class DataFrameBatch:
         validator: Callable = None,
         seed_fields: Union[dict, List[dict]] = None,
         parallellism: int = 4,
-        **kwargs
+        **kwargs,
     ) -> RecordFactory:
         if validator is not None:
             if not callable(validator):
@@ -1254,7 +1262,7 @@ class DataFrameBatch:
             max_invalid=max_invalid,
             validator=validator,
             parallelism=parallellism,
-            **kwargs
+            **kwargs,
         )
 
     def generate_all_batch_lines(

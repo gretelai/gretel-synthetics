@@ -71,7 +71,7 @@ html_theme_options = {
 
 
 def monkeypatch(cls):
-    """ decorator to monkey-patch methods """
+    """decorator to monkey-patch methods"""
 
     def decorator(f):
         method = f.__name__

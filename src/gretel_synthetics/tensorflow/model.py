@@ -16,7 +16,9 @@ else:
     BaseTokenizer = None
 
 
-def build_model(vocab_size: int, batch_size: int, store: BaseConfig) -> tf.keras.Sequential:
+def build_model(
+    vocab_size: int, batch_size: int, store: BaseConfig
+) -> tf.keras.Sequential:
     """
     Utilizing tf.keras.Sequential model
     """

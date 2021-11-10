@@ -1,19 +1,19 @@
 """
 Misc utils for generating data
 """
-from pathlib import Path
-from tempfile import TemporaryDirectory, NamedTemporaryFile
-import gzip
-import tarfile
-import logging
 import glob
-from typing import Optional, Union, Callable
+import gzip
+import logging
+import tarfile
 
-from smart_open import open as smart_open
+from pathlib import Path
+from tempfile import NamedTemporaryFile, TemporaryDirectory
+from typing import Callable, Optional, Union
 
 from gretel_synthetics.batch import DataFrameBatch, MAX_INVALID
 from gretel_synthetics.config import config_from_model_dir
 from gretel_synthetics.generate import generate_text
+from smart_open import open as smart_open
 
 logging.basicConfig()
 logger = logging.getLogger(__name__)
@@ -75,7 +75,7 @@ class DataFileGenerator:
         *,
         seed: Optional[Union[str, dict]] = None,
         validator: Optional[Callable] = None,
-        parallelism: int = 1
+        parallelism: int = 1,
     ):
         if self.model_path.is_dir():
             return self._generate(self.model_path, count, file_name, seed, validator, 1)
@@ -88,7 +88,9 @@ class DataFileGenerator:
                             logging.info("Extracting archive to temp dir...")
                             tar_in.extractall(tmpdir)
 
-                return self._generate(Path(tmpdir), count, file_name, seed, validator, parallelism)
+                return self._generate(
+                    Path(tmpdir), count, file_name, seed, validator, parallelism
+                )
 
     def _generate(
         self, model_dir: Path, count: int, file_name: str, seed, validator, parallelism
@@ -103,7 +105,7 @@ class DataFileGenerator:
                 num_lines=count,
                 max_invalid=max(count, MAX_INVALID),
                 parallelism=parallelism,
-                seed_fields=seed
+                seed_fields=seed,
             )
             out_df = batcher.batches_to_df()
             out_df.to_csv(out_fname, index=False)
@@ -122,7 +124,7 @@ class DataFileGenerator:
                 line_validator=validator,
                 max_invalid=max(count, MAX_INVALID),
                 parallelism=parallelism,
-                start_string=seed
+                start_string=seed,
             ):
                 if data.valid or data.valid is None:
                     out.append(data.text)

@@ -1,8 +1,9 @@
-from unittest.mock import patch
-from pathlib import Path
-import uuid
 import json
 import shutil
+import uuid
+
+from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -15,7 +16,9 @@ def test_local_config(mkdir):
     target = uuid.uuid4().hex
     test_data_dir = Path(__file__).parent
     test_data_file = test_data_dir / "data" / "smol.txt"
-    lc = TensorFlowConfig(checkpoint_dir=target, input_data_path=test_data_file.as_posix())
+    lc = TensorFlowConfig(
+        checkpoint_dir=target, input_data_path=test_data_file.as_posix()
+    )
 
     mkdir.assert_called
     assert lc.epochs == 100
@@ -32,7 +35,7 @@ def test_local_config_settings(mkdir):
         "epochs": 100,
         "epoch_callback": None,
         "early_stopping": True,
-        'early_stopping_min_delta': 0.001,
+        "early_stopping_min_delta": 0.001,
         "early_stopping_patience": 5,
         "validation_split": True,
         "best_model_metric": METRIC_VAL_LOSS,
@@ -66,14 +69,17 @@ def test_local_config_settings(mkdir):
         "reset_states": True,
         "training_data_path": "foo/training_data.txt",
         "model_type": "TensorFlowConfig",
-        "max_training_time_seconds": None
+        "max_training_time_seconds": None,
     }
 
 
 def test_local_config_no_validation_split():
-    lc = TensorFlowConfig(checkpoint_dir="foo", input_data_path="bar", validation_split=False)
+    lc = TensorFlowConfig(
+        checkpoint_dir="foo", input_data_path="bar", validation_split=False
+    )
     check = lc.as_dict()
-    assert check['best_model_metric'] == METRIC_LOSS
+    assert check["best_model_metric"] == METRIC_LOSS
+
 
 def test_local_config_missing_attrs():
     with pytest.raises(AttributeError):
@@ -101,6 +107,10 @@ def test_local_config_save_model_params():
 @patch("gretel_synthetics.config.Path.mkdir")
 def test_bad_max_train_time(mkdir):
     with pytest.raises(ValueError):
-        TensorFlowConfig(checkpoint_dir="foo", input_data_path="bar", max_training_time_seconds=0)
+        TensorFlowConfig(
+            checkpoint_dir="foo", input_data_path="bar", max_training_time_seconds=0
+        )
     with pytest.raises(ValueError):
-        TensorFlowConfig(checkpoint_dir="foo", input_data_path="bar", max_training_time_seconds="foo")
+        TensorFlowConfig(
+            checkpoint_dir="foo", input_data_path="bar", max_training_time_seconds="foo"
+        )

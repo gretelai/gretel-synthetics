@@ -6,28 +6,29 @@ In order to use this module you must first create a config and then pass that co
 to the ``train_rnn`` function.
 """
 import io
-from contextlib import redirect_stdout
 import logging
-from pathlib import Path
-from typing import Tuple, Optional, TYPE_CHECKING, Iterator, Callable
 import time
+
+from contextlib import redirect_stdout
+from pathlib import Path
+from typing import Callable, Iterator, Optional, Tuple, TYPE_CHECKING
 
 import pandas as pd
 import tensorflow as tf
-from tqdm import tqdm
 
-from gretel_synthetics.tensorflow.model import build_model, load_model
-from gretel_synthetics.tensorflow.dp_model import compute_epsilon
 from gretel_synthetics.const import (
     METRIC_ACCURACY,
-    METRIC_LOSS,
-    METRIC_VAL_LOSS,
-    METRIC_VAL_ACCURACY,
-    METRIC_EPSILON,
     METRIC_DELTA,
+    METRIC_EPSILON,
+    METRIC_LOSS,
+    METRIC_VAL_ACCURACY,
+    METRIC_VAL_LOSS,
 )
+from gretel_synthetics.tensorflow.dp_model import compute_epsilon
+from gretel_synthetics.tensorflow.model import build_model, load_model
 from gretel_synthetics.tokenizers import BaseTokenizer
 from gretel_synthetics.train import EpochState
+from tqdm import tqdm
 
 if TYPE_CHECKING:
     from gretel_synthetics.config import TensorFlowConfig
@@ -70,9 +71,7 @@ class _ModelHistory(tf.keras.callbacks.Callback):
         if self.config.dp:
             # Account for tf-privacy library writing to stdout
             with redirect_stdout(io.StringIO()):
-                eps, _ = compute_epsilon(
-                    self.total_token_count, self.config, epoch
-                )
+                eps, _ = compute_epsilon(self.total_token_count, self.config, epoch)
                 logs[METRIC_EPSILON] = eps
 
             # NOTE: this is just a list of the same value, but
@@ -280,9 +279,7 @@ def train_rnn(params: TrainingParams):
     # handling for a completed epoch would be run first before
     # stopping training.
     if store.max_training_time_seconds is not None:
-        max_timeout_calback = _MaxTrainTimeCallback(
-            store.max_training_time_seconds
-        )
+        max_timeout_calback = _MaxTrainTimeCallback(store.max_training_time_seconds)
         _callbacks.append(max_timeout_calback)
 
     best_val = None
@@ -318,9 +315,7 @@ def train_rnn(params: TrainingParams):
         store.best_model_metric,
         best_val,
     )
-    logging.info(
-        f"Saving model to {tf.train.latest_checkpoint(store.checkpoint_dir)}"
-    )
+    logging.info(f"Saving model to {tf.train.latest_checkpoint(store.checkpoint_dir)}")
 
 
 def _create_dataset(
@@ -346,7 +341,11 @@ def _create_dataset(
     char_dataset = tf.data.Dataset.from_tensor_slices(ids)
     sequences = char_dataset.batch(store.seq_length + 1, drop_remainder=True)
     full_dataset = (
-        sequences.map(_split_input_target, num_parallel_calls=tf.data.AUTOTUNE, deterministic=False)
+        sequences.map(
+            _split_input_target,
+            num_parallel_calls=tf.data.AUTOTUNE,
+            deterministic=False,
+        )
         .shuffle(store.buffer_size)
         .batch(store.batch_size, drop_remainder=True)
         .prefetch(tf.data.AUTOTUNE)
@@ -365,10 +364,16 @@ def _create_dataset(
     if store.validation_split:
         logging.info("Creating validation dataset")
         validation_dataset = (
-            full_dataset.enumerate().filter(is_validation).map(recover, num_parallel_calls=tf.data.AUTOTUNE)
+            full_dataset.enumerate()
+            .filter(is_validation)
+            .map(recover, num_parallel_calls=tf.data.AUTOTUNE)
         )
         logging.info("Creating training dataset")
-        train_dataset = full_dataset.enumerate().filter(is_train).map(recover, num_parallel_calls=tf.data.AUTOTUNE)
+        train_dataset = (
+            full_dataset.enumerate()
+            .filter(is_train)
+            .map(recover, num_parallel_calls=tf.data.AUTOTUNE)
+        )
         return total_token_count, validation_dataset, train_dataset
     else:
         return total_token_count, None, full_dataset
