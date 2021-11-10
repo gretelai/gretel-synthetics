@@ -1,5 +1,6 @@
 m2r
 sphinx==3.0.3
+docutils==0.17.1
 sphinx-rtd-theme
 -r ../requirements.txt
 -r ../utils-requirements.txt
