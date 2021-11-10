@@ -11,12 +11,10 @@ jobs:
       uses: actions/setup-python@v1
       with:
         python-version: 3.6
-    - name: Install TF 
+    - name: Install TF
       run:  pip install tensorflow==2.4
     - name: Install gretel-synthetics
-      run: pip install -e .
-    - name: Install Test Requirements
-      run: pip install -r test-requirements.txt
+      run: pip install -e .[all,test]
     - name: Lint
       run: |
         # stop the build if there are Python syntax errors or undefined names
