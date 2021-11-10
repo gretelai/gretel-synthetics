@@ -30,16 +30,16 @@ Check out additional examples [here](https://github.com/gretelai/gretel-syntheti
 ## Getting Started
 
 By default, we do not install Tensorflow via pip as many developers and cloud services such as Google Colab are
-running customized versions for their hardware. 
+running customized versions for their hardware.
 
 ```
-pip install -U .                    
+pip install -U .
 ```
 
 _or_
 
 ```
-pip install gretel-synthetics        
+pip install gretel-synthetics
 ```
 
 _then..._
@@ -53,7 +53,7 @@ When the UI launches in your browser, navigate to `examples/synthetic_records.ip
 
 If you want to install `gretel-synthetics` locally and use a GPU (recommended):
 
-1. Create a virtual environment (e.g. using `conda`) 
+1. Create a virtual environment (e.g. using `conda`)
 
 ```
 $ conda create --name tf --python=3.8
@@ -67,12 +67,12 @@ $ conda activate tf
 
 3. Run the setup script `./setup-utils/setup-gretel-synthetics-tensorflow24-with-gpu.sh`
 
-The last step will install all the necessary software packages for GPU usage, `tensorflow=2.4` and `gretel-synthetics`. 
+The last step will install all the necessary software packages for GPU usage, `tensorflow=2.4` and `gretel-synthetics`.
 Note that this script works only for Ubuntu 18.04. You might need to modify it for other OS versions.
 
 ## Overview
 
-This package allows developers to quickly get immersed with synthetic data generation through the use of neural networks. The more complex pieces of working with libraries like Tensorflow and differential privacy are bundled into friendly Python classes and functions.  There are two high level modes that can be utilized.  
+This package allows developers to quickly get immersed with synthetic data generation through the use of neural networks. The more complex pieces of working with libraries like Tensorflow and differential privacy are bundled into friendly Python classes and functions.  There are two high level modes that can be utilized.
 
 ### Simple Mode
 
@@ -88,11 +88,23 @@ There are four primary components to be aware of when using this library.
 
 1) Configurations. Configurations are classes that are specific to an underlying ML engine used to train and generate data.  An example would be using `TensorFlowConfig` to create all the necessary parameters to train a model based on TF. `LocalConfig` is aliased to `TensorFlowConfig` for backwards compatability with older versions of the library.  A model is saved to a designated directory, which can optionally be archived and utilized later.
 
-2) Tokenizers. Tokenizers convert input text into integer based IDs that are used by the underlying ML engine. These tokenizers can be created and sent to the training input. This is optional, and if no specific tokenizer is specified then a default one will be used. You can find [an example](https://github.com/gretelai/gretel-synthetics/blob/master/examples/tensorflow/batch-df-char-tokenizer.ipynb) here that uses a simple char-by-char tokenizer to build a model from an input CSV. When training in a non-differentially private mode, we suggest using the default `SentencePiece` tokenizer, an unsupervised tokenizer that learns subword units (e.g., **byte-pair-encoding (BPE)** [[Sennrich et al.](http://www.aclweb.org/anthology/P16-1162)]) and **unigram language model** [[Kudo.](https://arxiv.org/abs/1804.10959)]) for faster training and increased accuracy of the synthetic model. 
+2) Tokenizers. Tokenizers convert input text into integer based IDs that are used by the underlying ML engine. These tokenizers can be created and sent to the training input. This is optional, and if no specific tokenizer is specified then a default one will be used. You can find [an example](https://github.com/gretelai/gretel-synthetics/blob/master/examples/tensorflow/batch-df-char-tokenizer.ipynb) here that uses a simple char-by-char tokenizer to build a model from an input CSV. When training in a non-differentially private mode, we suggest using the default `SentencePiece` tokenizer, an unsupervised tokenizer that learns subword units (e.g., **byte-pair-encoding (BPE)** [[Sennrich et al.](http://www.aclweb.org/anthology/P16-1162)]) and **unigram language model** [[Kudo.](https://arxiv.org/abs/1804.10959)]) for faster training and increased accuracy of the synthetic model.
 
 3) Training.  Training a model combines the configuration and tokenizer and builds a model, which is stored in the designated directory, that can be used to generate new records.
 
 4) Generation. Once a model is trained, any number of new lines or records can be generated. Optionally, a record validator can be provided to ensure that the generated data meets any constraints that are necessary.  See our notebooks for examples on validators.
+
+#### Utilities
+
+In addition to the four primary components, the `gretel-synthetics` package also ships with a set of utilities that are helpful for training advanced synthetics models and evaluating synthetic datasets.
+
+Some of this functionality carries large dependencies, so they are shipped as an extra called `utils`. To install these dependencies, you may run
+
+```
+pip install gretel-synthetics[utils]
+```
+
+For additional details, please refer to the [Utility module API docs](https://synthetics.docs.gretel.ai/en/latest/utils/index.html).
 
 ## Differential Privacy
 
