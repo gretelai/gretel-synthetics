@@ -18,7 +18,7 @@ from sklearn.preprocessing import StandardScaler
 
 _DEFAULT_JOB_COUNT = 4
 _DEFAULT_REPLACE_VALUE = 0.0
-_UNIQUENESS_THRESHOLD = 0.1
+UNIQUENESS_THRESHOLD = 0.1
 
 
 def count_memorized_lines(df1: pd.DataFrame, df2: pd.DataFrame) -> int:
@@ -288,7 +288,7 @@ def calculate_correlation(
     for c in nominal:
         if df[c].nunique() / df_rows == 1:
             completely_unique_nominal.append(c)
-        elif df[c].nunique() / df_rows > _UNIQUENESS_THRESHOLD:
+        elif df[c].nunique() / df_rows > UNIQUENESS_THRESHOLD:
             high_unique_nominal.append(c)
         else:
             not_high_unique_nominal.append(c)
