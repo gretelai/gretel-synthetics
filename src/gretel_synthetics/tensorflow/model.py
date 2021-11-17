@@ -1,5 +1,5 @@
 """
-Tensorflow - Keras Sequential RNN (GRU)
+Tensorflow - Keras Sequential RNN
 """
 from typing import TYPE_CHECKING
 
