@@ -1,7 +1,6 @@
-"""
-This module enables the clustering of DataFrame headers into
-like clusters based on correlations between columns
-"""
+import copy
+
+from functools import reduce
 from typing import List
 
 import matplotlib.pyplot as plt
@@ -26,6 +25,25 @@ def _get_correlation_matrix(df, numeric_cat: List[str] = None):
     corr_matrix = stats.calculate_correlation(df, nominal_columns=nominal_columns)
 
     return corr_matrix
+
+
+def _average_record_length(data: pd.DataFrame) -> float:
+    """
+    Find the average record length of a dataset.
+
+    Args:
+        data: dataset used to calculate average record length.
+
+    Returns:
+        A float value that represents the average record length in a dataset.
+    """
+
+    def _get_row_len(elems: pd.Series) -> float:
+        return reduce(
+            lambda acc, val: acc + len(str(val)) if np.isscalar(val) else acc, elems, 0
+        )
+
+    return data.apply(_get_row_len, axis=1).mean() + len(data.columns) - 1
 
 
 def _get_leaves(tree, node, totcolcnt):
@@ -59,7 +77,15 @@ def _get_leaves(tree, node, totcolcnt):
     return return_list
 
 
-def _traverse_node(tree, node, maxsize, totcolcnt):
+def _traverse_node(
+    data,
+    columns,
+    tree,
+    node,
+    maxsize,
+    average_record_length_threshold,
+    totcolcnt,
+):
 
     stack = []
     node_list = []
@@ -75,6 +101,17 @@ def _traverse_node(tree, node, maxsize, totcolcnt):
 
         if child_size > maxsize:
             return idx
+
+        leaves = _get_leaves(tree, child, totcolcnt)
+        cols = [columns[index] for index in leaves]
+        arl = _average_record_length(data[cols])
+        if (
+            (arl > average_record_length_threshold)
+            and (len(cols) > 1)
+            and average_record_length_threshold
+        ):
+            return idx
+
         else:
             node_list.append(_get_leaves(tree, child, totcolcnt))
             return None
@@ -93,16 +130,30 @@ def _traverse_node(tree, node, maxsize, totcolcnt):
 
 
 def _merge_clusters(
-    clusters: List[List[int]], maxlen: int, columns: List[str], Lopt, plot=False
+    data: pd.DataFrame,
+    clusters: List[List[int]],
+    maxlen: int,
+    average_record_length_threshold: float,
+    columns: List[str],
+    Lopt,
+    plot: bool = False,
 ) -> List[List[str]]:
+
     out = []
     tmp = []
     cluster_map = {}  # maps a column name => cluster number
     cluster_number = 0
     for cluster in clusters:
+        helper = copy.deepcopy(tmp) + [columns[idx] for idx in cluster]
+        arl = (
+            _average_record_length(data[helper])
+            if average_record_length_threshold
+            else 0
+        )
+
         # if the size of adding the next cluster
         # exceeds the max size, flush
-        if len(tmp) + len(cluster) > maxlen:
+        if ((len(helper) > maxlen) or (arl > average_record_length_threshold)) and tmp:
             for column_name in tmp:
                 cluster_map[column_name] = cluster_number
             out.append(tmp)
@@ -132,19 +183,23 @@ def cluster(
     df: pd.DataFrame,
     header_prefix: List[str] = None,
     maxsize: int = 20,
+    average_record_length_threshold: float = 0,
     method: str = "single",
     numeric_cat: List[str] = None,
-    plot=False,
+    plot: bool = False,
 ) -> List[List[str]]:
     """
     Given an input dataframe, extract clusters of similar headers
     based on a set of heuristics.
-
     Args:
         df: The dataframe to cluster headers from.
         header_prefix: List of columns to remove before cluster generation.
         maxsize: The max number of header clusters to generate
             from the input dataframe.
+        average_record_length_threshold: Threshold for how long a clusters records can be
+            The default, 0, turns off the average record length (arl) logic. To use arl,
+            use a positive value. Based on our research we recommend setting this value
+            to 250.0
         method: Linkage method used to compute header cluster
             distances. For more information please refer to the scipy
             docs, https://docs.scipy.org/doc/scipy/reference/generated/scipy.cluster.hierarchy.linkage.html#scipy-cluster-hierarchy-linkage.
@@ -154,6 +209,9 @@ def cluster(
             may be used to define additional categorical fields that may
             not automatically get identified as such.
         plot: Plot header list as a dendogram.
+
+    Returns:
+        A list of lists of column names, each column name list being an identified cluster
     """
 
     def prepare_response(
@@ -196,10 +254,26 @@ def cluster(
     # Start at the top of the cluster hierachy with the final two clusters that were merged together
     # We will recursively work our way down, fetching the subclusters of a cluster if the current
     # cluster size > maxsize
-    clusters = _traverse_node(Lopt, start, maxsize, len(columns))
+    clusters = _traverse_node(
+        df,
+        columns,
+        Lopt,
+        start,
+        maxsize,
+        average_record_length_threshold,
+        len(columns),
+    )
 
     # At this point we have one list of column ids, where groups are seperated by -1, translate it into a list of
     # header lists, and if plot=True, plot the dendogram
-    col_list = _merge_clusters(clusters, maxsize, columns, Lopt, plot)
+    col_list = _merge_clusters(
+        df,
+        clusters,
+        maxsize,
+        average_record_length_threshold,
+        columns,
+        Lopt,
+        plot,
+    )
 
     return prepare_response(col_list, header_prefix)
