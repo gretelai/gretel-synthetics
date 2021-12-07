@@ -1,4 +1,4 @@
 category-encoders==2.2.2
 dython==0.5.1
 scikit-learn>=0.24
-scipy>=1.5
+scipy>=1.4.1
