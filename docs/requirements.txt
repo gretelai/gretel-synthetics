@@ -1,6 +1,7 @@
 m2r
 sphinx==3.0.3
 docutils==0.17.1
+mistune==0.8.4
 sphinx-rtd-theme
 -r ../requirements.txt
 -r ../utils-requirements.txt
