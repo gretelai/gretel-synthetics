@@ -202,7 +202,7 @@ def cluster(
             to 250.0
         method: Linkage method used to compute header cluster
             distances. For more information please refer to the scipy
-            docs, https://docs.scipy.org/doc/scipy/reference/generated/scipy.cluster.hierarchy.linkage.html#scipy-cluster-hierarchy-linkage.
+            docs, https://docs.scipy.org/doc/scipy/reference/generated/scipy.cluster.hierarchy.linkage.html#scipy-cluster-hierarchy-linkage.  # noqa
         numeric_cat: A list of fields to define as categorical. The header
             clustering code will automatically define pandas "object" and
             "category" columns as categorical. The ``numeric_cat`` parameter

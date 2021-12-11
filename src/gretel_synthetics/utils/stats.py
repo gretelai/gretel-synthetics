@@ -70,18 +70,18 @@ def get_numeric_distribution_bins(training: pd.Series, synthetic: pd.Series):
         bin_edges, numpy array of dtype float
 
     """
-    training = training.astype("float64")
-    synthetic = synthetic.astype("float64")
+    training = training.dropna().astype("float64")
+    synthetic = synthetic.dropna().astype("float64")
     # Numeric data. Want the same bins between both df's. We bin based on scrubbed data.
     if len(training) == 0:
-        min_value = min(synthetic)
-        max_value = max(synthetic)
+        min_value = np.nanmin(synthetic)
+        max_value = np.nanmax(synthetic)
     elif len(synthetic) == 0:
-        min_value = min(training)
-        max_value = max(training)
+        min_value = np.nanmin(training)
+        max_value = np.nanmax(training)
     else:
-        min_value = min(min(training), min(synthetic))
-        max_value = max(max(training), max(synthetic))
+        min_value = min(np.nanmin(training), np.nanmin(synthetic))
+        max_value = max(np.nanmax(training), np.nanmax(synthetic))
     try:
         # Use ‘fd’ (Freedman Diaconis Estimator) if we can.  This can produce MANY bins or MemoryErrors,
         # in that case use 'doane' instead (improved Sturges).
