@@ -35,9 +35,17 @@ from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, TYPE_CHECKING
 
 import cloudpickle
+from zmq import TYPE
 import gretel_synthetics.const as const
 import numpy as np
-import sentencepiece as spm
+
+class _spm:
+    SentencePieceProcessor = None
+
+try:
+    import sentencepiece as spm
+except ImportError:
+    spm = _spm
 
 from smart_open import open as smart_open
 
