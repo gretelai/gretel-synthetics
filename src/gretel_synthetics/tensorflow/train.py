@@ -51,8 +51,8 @@ class _ModelHistory(tf.keras.callbacks.Callback):
     Callback class to compute loss and accuracy during model training
     """
 
-    def __init__(self, total_token_count: int, config: TensorFlowConfig):
-        self.total_token_count = total_token_count
+    def __init__(self, num_examples_train: int, config: TensorFlowConfig):
+        self.num_examples_train = num_examples_train
         self.config = config
         self.loss = []
         self.accuracy = []
@@ -71,12 +71,12 @@ class _ModelHistory(tf.keras.callbacks.Callback):
         if self.config.dp:
             # Account for tf-privacy library writing to stdout
             with redirect_stdout(io.StringIO()):
-                eps, _ = compute_epsilon(self.total_token_count, self.config, epoch)
+                eps, _ = compute_epsilon(self.num_examples_train, self.config, epoch)
                 logs[METRIC_EPSILON] = eps
 
             # NOTE: this is just a list of the same value, but
             # is simpler for creating the history csv
-            delta = 1 / float(self.total_token_count)
+            delta = 1 / float(self.num_examples_train)
             logs[METRIC_DELTA] = delta
 
         self.epsilon.append(logs.get(METRIC_EPSILON, 0))
@@ -238,7 +238,7 @@ def train_rnn(params: TrainingParams):
                 "overwrite mode or delete the checkpoints first."
             )
 
-    total_token_count, validation_dataset, training_dataset = _create_dataset(
+    num_batches_train, validation_dataset, training_dataset = _create_dataset(
         store, text_iter, num_lines, tokenizer
     )
     logging.info("Initializing synthetic model")
@@ -259,7 +259,10 @@ def train_rnn(params: TrainingParams):
         monitor=store.best_model_metric,
         save_best_only=store.save_best_model,
     )
-    history_callback = _ModelHistory(total_token_count, store)
+
+    num_examples_train = store.batch_size * num_batches_train
+
+    history_callback = _ModelHistory(num_examples_train, store)
 
     _callbacks = [checkpoint_callback, history_callback]
 
@@ -331,11 +334,9 @@ def _create_dataset(
     """
     logging.info("Tokenizing input data")
     ids = []
-    total_token_count = 0
     for line in tqdm(text_iter, total=num_lines):
         _tokens = tokenizer.encode_to_ids(line)
         ids.extend(_tokens)
-        total_token_count += len(_tokens)
 
     logging.info("Shuffling input data")
     char_dataset = tf.data.Dataset.from_tensor_slices(ids)
@@ -374,9 +375,12 @@ def _create_dataset(
             .filter(is_train)
             .map(recover, num_parallel_calls=tf.data.AUTOTUNE)
         )
-        return total_token_count, validation_dataset, train_dataset
+
+        num_batches_train = len(list(train_dataset.as_numpy_iterator()))
+        return num_batches_train, validation_dataset, train_dataset
     else:
-        return total_token_count, None, full_dataset
+        num_batches_train = tf.data.experimental.cardinality(full_dataset).numpy()
+        return num_batches_train, None, full_dataset
 
 
 @tf.autograph.experimental.do_not_convert
