@@ -82,27 +82,28 @@ def get_numeric_distribution_bins(training: pd.Series, synthetic: pd.Series):
     else:
         min_value = min(np.nanmin(training), np.nanmin(synthetic))
         max_value = max(np.nanmax(training), np.nanmax(synthetic))
+    bins = np.array([], dtype=np.float)
     try:
         # Use ‘fd’ (Freedman Diaconis Estimator) if we can.  This can produce MANY bins or MemoryErrors,
         # in that case use 'doane' instead (improved Sturges).
         bins = np.histogram_bin_edges(training, bins="fd", range=(min_value, max_value))
-        if len(bins) > 500:
+    except Exception:
+        pass
+    if len(bins) == 0 or len(bins) > 500:
+        try:
             bins = np.histogram_bin_edges(
                 training, bins="doane", range=(min_value, max_value)
             )
-        # If 'doane' still doesn't do the trick just force 500 bins.
-        if len(bins) > 500:
+        except Exception:
+            pass
+    # If 'doane' still doesn't do the trick just force 500 bins.
+    if len(bins) == 0 or len(bins) > 500:
+        try:
             bins = np.histogram_bin_edges(
                 training, bins=500, range=(min_value, max_value)
             )
-    except MemoryError:
-        bins = np.histogram_bin_edges(
-            training, bins="doane", range=(min_value, max_value)
-        )
-        if len(bins) > 500:
-            bins = np.histogram_bin_edges(
-                training, bins=500, range=(min_value, max_value)
-            )
+        except Exception:
+            pass
     return bins
 
 
