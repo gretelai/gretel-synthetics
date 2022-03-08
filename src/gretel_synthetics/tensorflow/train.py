@@ -71,7 +71,9 @@ class _ModelHistory(tf.keras.callbacks.Callback):
         if self.config.dp:
             # Account for tf-privacy library writing to stdout
             with redirect_stdout(io.StringIO()):
-                eps, _ = compute_epsilon(self.num_examples_train, self.config, epoch)
+                eps, _ = compute_epsilon(
+                    self.num_examples_train, self.config, epoch + 1
+                )
                 logs[METRIC_EPSILON] = eps
 
             # NOTE: this is just a list of the same value, but
