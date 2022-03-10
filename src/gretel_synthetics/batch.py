@@ -1129,8 +1129,19 @@ class DataFrameBatch:
         """Train a model for each batch."""
         if self.mode == READ:  # pragma: no cover
             raise RuntimeError("Method cannot be used in read-only mode")
+
+        self._log_batches()
         for idx in self.batches.keys():
             self.train_batch(idx)
+
+    def _log_batches(self):
+        batch_sizes = ", ".join(str(len(b.headers)) for b in self.batches.values())
+        batch_sizes = f"[{batch_sizes}]"
+
+        logger.info(
+            f"Running training on {len(self.batches)} batches.",
+            extra={"user_log": True, "ctx": {"batch_sizes": batch_sizes}},
+        )
 
     def set_batch_validator(self, batch_idx: int, validator: Callable):
         """Set a validator for a specific batch. If a validator is configured

@@ -40,6 +40,8 @@ else:
 spm_logger = logging.getLogger("sentencepiece")
 spm_logger.setLevel(logging.INFO)
 
+logger = logging.getLogger(__name__)
+
 logging.basicConfig(
     format="%(asctime)s : %(threadName)s : %(levelname)s : %(message)s",
     level=logging.INFO,
@@ -194,7 +196,7 @@ def _save_history_csv(
         # Log differential privacy settings from best training checkpoint
         epsilon = df.at[best_idx, "epsilon"]
         delta = df.at[best_idx, "delta"]
-        logging.warning(
+        logger.warning(
             f"Model satisfies differential privacy with epsilon ε={epsilon:.2f} "
             f"and delta δ={delta:.6f}"
         )
@@ -202,7 +204,7 @@ def _save_history_csv(
         df.drop(["epsilon", "delta"], axis=1, inplace=True)
 
     save_path = Path(save_dir) / "model_history.csv"
-    logging.info(f"Saving model history to {save_path.name}")
+    logger.info(f"Saving model history to {save_path.name}")
     df.to_csv(save_path.as_posix(), index=False)
 
 
@@ -243,7 +245,7 @@ def train_rnn(params: TrainingParams):
     num_batches_train, validation_dataset, training_dataset = _create_dataset(
         store, text_iter, num_lines, tokenizer
     )
-    logging.info("Initializing synthetic model")
+    logger.info("Initializing synthetic model", extra={"user_log": True})
     model = build_model(
         vocab_size=tokenizer.total_vocab_size,
         batch_size=store.batch_size,
@@ -320,7 +322,7 @@ def train_rnn(params: TrainingParams):
         store.best_model_metric,
         best_val,
     )
-    logging.info(f"Saving model to {tf.train.latest_checkpoint(store.checkpoint_dir)}")
+    logger.info(f"Saving model to {tf.train.latest_checkpoint(store.checkpoint_dir)}")
 
 
 def _create_dataset(
@@ -334,13 +336,13 @@ def _create_dataset(
     Create two lookup tables: one mapping characters to numbers,
     and another for numbers to characters.
     """
-    logging.info("Tokenizing input data")
+    logger.info("Tokenizing input data", extra={"user_log": True})
     ids = []
     for line in tqdm(text_iter, total=num_lines):
         _tokens = tokenizer.encode_to_ids(line)
         ids.extend(_tokens)
 
-    logging.info("Shuffling input data")
+    logger.info("Shuffling input data", extra={"user_log": True})
     char_dataset = tf.data.Dataset.from_tensor_slices(ids)
     sequences = char_dataset.batch(store.seq_length + 1, drop_remainder=True)
     full_dataset = (
@@ -365,13 +367,13 @@ def _create_dataset(
         return y
 
     if store.validation_split:
-        logging.info("Creating validation dataset")
+        logger.info("Creating validation dataset", extra={"user_log": True})
         validation_dataset = (
             full_dataset.enumerate()
             .filter(is_validation)
             .map(recover, num_parallel_calls=tf.data.AUTOTUNE)
         )
-        logging.info("Creating training dataset")
+        logger.info("Creating training dataset", extra={"user_log": True})
         train_dataset = (
             full_dataset.enumerate()
             .filter(is_train)
