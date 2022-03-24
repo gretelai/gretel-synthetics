@@ -1,11 +1,15 @@
+import threading
+
+from typing import Iterator, List
 from unittest.mock import Mock
 
 import pytest
 
+from gretel_synthetics.batch import Batch, RecordFactory
 from gretel_synthetics.config import TensorFlowConfig
 from gretel_synthetics.const import NEWLINE
 from gretel_synthetics.errors import GenerationError
-from gretel_synthetics.generate import Settings
+from gretel_synthetics.generate import gen_text, Settings
 
 
 @pytest.fixture
@@ -57,3 +61,59 @@ def test_delim_single_field(tf_config, mock_tokenizer):
         config=tf_config, start_string="onlyonefield,", tokenizer=mock_tokenizer
     )
     assert check.start_string == "onlyonefield<d>"
+
+
+def test_generate_doesnt_return_partial_record_when_stopped(tmp_path):
+    """
+    Test for a case, when generation is stopped by the _thread_event signal.
+    Makes sure that we are not returning a partially generated records.
+    """
+    dummy_dir = str(tmp_path)
+    dummy_config = TensorFlowConfig(
+        checkpoint_dir=dummy_dir, input_data_path=dummy_dir, field_delimiter="|"
+    )
+
+    rf = RecordFactory(
+        num_lines=10, batches={}, header_list=["colA", "colB"], delimiter="|"
+    )
+    generators = [
+        (_dummy_batch(["colA"], dummy_config), _gen_and_set_thread_event(rf)),
+        (_dummy_batch(["colB"], dummy_config), _just_gen("123.33")),
+    ]
+
+    record = rf._generate_record(generators)
+    assert record == {"colA": "world", "colB": "123.33"}
+    assert rf._counter.invalid_count == 1
+
+    record = rf._generate_record(generators)
+    assert record is None
+
+
+def _gen_and_set_thread_event(factory: RecordFactory) -> Iterator[gen_text]:
+    """
+    This generator:
+    - yields an invalid text
+    - yields a valid text
+    - sets the _thread_event on the factory instance and yields a valid text
+    """
+    yield gen_text(valid=False, text="hello", delimiter="|")
+    yield gen_text(valid=True, text="world", delimiter="|")
+
+    event = threading.Event()
+    event.set()
+    factory._thread_event = event
+    yield gen_text(valid=True, text="world", delimiter="|")
+
+
+def _just_gen(value: str) -> Iterator[gen_text]:
+    while True:
+        yield gen_text(valid=True, text=value, delimiter="|")
+
+
+def _dummy_batch(headers: List[str], conf: TensorFlowConfig):
+    return Batch(
+        checkpoint_dir="dummy",
+        input_data_path="dummy",
+        headers=headers,
+        config=conf,
+    )

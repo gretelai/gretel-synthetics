@@ -25,7 +25,7 @@ from math import ceil
 from pathlib import Path
 from typing import Callable, Dict
 from typing import Iterator as IteratorType
-from typing import List, Optional, Type, Union
+from typing import List, Optional, Tuple, Type, Union
 
 import cloudpickle
 import gretel_synthetics.const as const
@@ -712,10 +712,7 @@ class RecordFactory:
             # to construct a full line, we'll only count a
             # full line once we get through each generator
 
-            # if we are using a watchdog thread to monitor generation
-            # and it throws an exception, a threading event will be set
-            # that signals generation should stop
-            if self._thread_event and self._thread_event.is_set():
+            if self._is_generation_stopped():
                 break
 
             if self._counter.invalid_count >= self.max_invalid:
@@ -728,29 +725,9 @@ class RecordFactory:
                 # the next record.
                 seed_cache = seed_generator.settings.start_string[0]
 
-            record = {}
-            batch: Batch
-            for batch, gen in generators:
-                while True:
-
-                    # see above usage for watchdog thread exception handling
-                    if self._thread_event and self._thread_event.is_set():
-                        break
-
-                    line = next(gen)  # type:  GenText
-                    if line.valid is False:
-                        self._cache_invalid(line)
-                        self._counter.invalid_count += 1
-                        if self._counter.invalid_count > self.max_invalid:
-                            raise RuntimeError(
-                                "Invalid record count exceeded during generation"
-                            )
-                        continue
-                    partial_rec = dict(
-                        zip_longest(batch.headers, line.values_as_list(), fillvalue="")
-                    )
-                    record.update(partial_rec)
-                    break
+            record = self._generate_record(generators)
+            if record is None:
+                continue
 
             # Do a final validation, if configured, on the fully constructed
             # record, if this validation fails, we'll still increment our
@@ -774,6 +751,53 @@ class RecordFactory:
 
             self._counter.valid_count += 1
             yield record
+
+    def _generate_record(
+        self, generators: List[Tuple[Batch, IteratorType]]
+    ) -> Optional[dict]:
+        """
+        Generates a single record, by generating data for each batch and merging it all
+        together.
+
+        Args:
+            generators: List of generators to use
+
+        Returns: Optional dict, it will be ``None`` if the record generation was
+            interrupted or full record otherwise.
+        """
+        record = {}
+        batch: Batch
+        for batch, gen in generators:
+            while True:
+
+                if self._is_generation_stopped():
+                    return None
+
+                line = next(gen)  # type:  GenText
+                if line.valid is False:
+                    self._cache_invalid(line)
+                    self._counter.invalid_count += 1
+                    if self._counter.invalid_count > self.max_invalid:
+                        raise RuntimeError(
+                            "Invalid record count exceeded during generation"
+                        )
+                    continue
+                partial_rec = dict(
+                    zip_longest(batch.headers, line.values_as_list(), fillvalue="")
+                )
+                record.update(partial_rec)
+                break
+
+        return record
+
+    def _is_generation_stopped(self):
+        """
+        If we are using a watchdog thread to monitor generation and it throws an
+        exception, a threading event will be set that signals generation should stop.
+
+        Returns: ``True`` if the generation was stopped by setting the _thread_event.
+        """
+        return self._thread_event and self._thread_event.is_set()
 
     def __iter__(self):
         return self
