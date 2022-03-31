@@ -395,6 +395,27 @@ def test_buffered_df(buffermode):
     buffer.cleanup()
 
 
+@pytest.mark.parametrize("buffermode", [MEMORY, FILE])
+def test_buffered_df_with_special_chars(buffermode):
+    """
+    Make sure special characters are handled correctly.
+    """
+    nl = "newline\n"
+    uni = "unic\U0001f499ode"
+    comma = "and, comma"
+
+    buffer = _BufferedDataFrame(",", [nl, "foo", uni, comma, "bar"], method=buffermode)
+    buffer.add({"foo": "A", nl: "B", uni: "C", comma: "D", "bar": "12.3"})
+    buffer.add({"foo": "A", nl: "B", uni: "C", comma: "D", "bar": "56.2"})
+
+    df = buffer.df
+    assert list(df.columns) == [nl, "foo", uni, comma, "bar"]
+    assert str(df.bar.dtype) == "float64"
+    assert len(df) == 2
+
+    buffer.cleanup()
+
+
 # bugfix: incomplete records
 @pytest.mark.parametrize("buffermode", [MEMORY, FILE])
 def test_buffered_df_incomplete_first_record(buffermode):

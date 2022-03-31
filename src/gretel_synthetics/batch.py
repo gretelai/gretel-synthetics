@@ -8,6 +8,7 @@ Then we can concat each sub-DF back into one final synthetic dataset.
 For example usage, please see our Jupyter Notebook.
 """
 import abc
+import csv
 import glob
 import gzip
 import io
@@ -376,21 +377,23 @@ class _BufferedDataFrame(_BufferedRecords):
         else:
             raise ValueError("Invalid method")
 
+        self.csv_writer = csv.writer(self.buffer, delimiter=self.delim)
+
     def add(self, record: dict):
         # write the columns names into the buffer, we
         # use the first dict to specify the order and
         # assume subsequent dicts have the same order
         if not self.headers_set:
-            _columns = self.delim.join(record.keys())
-            self.buffer.write(_columns + "\n")
+            self.csv_writer.writerow(record.keys())
             self.headers_set = True
-        _row = self.delim.join(record.values())
-        self.buffer.write(_row + "\n")
+
+        self.csv_writer.writerow(record.values())
 
     @property
     def df(self) -> pd.DataFrame:
         self.buffer.seek(0)
-        return pd.read_csv(self.buffer, sep=self.delim)[self.columns]
+        df = pd.read_csv(self.buffer, sep=self.delim)
+        return df[self.columns]
 
     def get_records(self) -> pd.DataFrame:
         return self.df
