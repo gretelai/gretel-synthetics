@@ -5,7 +5,7 @@ from setuptools import find_packages, setup
 
 this_dir = path.abspath(path.dirname(__file__))
 
-with open(path.join(this_dir, 'README.md'), encoding='utf-8') as f:
+with open(path.join(this_dir, "README.md"), encoding="utf-8") as f:
     long_description = f.read()
 
 
@@ -28,39 +28,35 @@ def reqs(file, without=None):
         ]
 
 
-compat_reqs = [
-    'dataclasses==0.7;python_version<"3.7"'
-]
+compat_reqs = ['dataclasses==0.7;python_version<"3.7"']
 
 utils_reqs = reqs("utils-requirements.txt")
 test_reqs = reqs("test-requirements.txt")
 
 setup(
-    name='gretel-synthetics',
-    author='Gretel Labs, Inc.',
-    author_email='open-source@gretel.ai',
+    name="gretel-synthetics",
+    author="Gretel Labs, Inc.",
+    author_email="open-source@gretel.ai",
     use_scm_version=True,
     setup_requires=["setuptools_scm"],
-    description='Synthetic Data Generation with optional Differential Privacy',
-    url='https://github.com/gretelai/gretel-synthetics',
-    license='http://www.apache.org/licenses/LICENSE-2.0',
+    description="Synthetic Data Generation with optional Differential Privacy",
+    url="https://github.com/gretelai/gretel-synthetics",
+    license="http://www.apache.org/licenses/LICENSE-2.0",
     long_description=long_description,
-    long_description_content_type='text/markdown',
-    package_dir={'': 'src'},
-    packages=find_packages('src'),
+    long_description_content_type="text/markdown",
+    package_dir={"": "src"},
+    packages=find_packages("src"),
     python_requires=">=3.6",
-    install_requires=reqs("requirements.txt", without=["tensorflow=="]) + compat_reqs,
-    extras_require={
-        'all': utils_reqs,
-        'utils': utils_reqs,
-        'test': test_reqs
-    },
+    install_requires=(
+        reqs("requirements.txt", without=["tensorflow==", "torch=="]) + compat_reqs
+    ),
+    extras_require={"all": utils_reqs, "utils": utils_reqs, "test": test_reqs},
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: Apache Software License",
         "Operating System :: POSIX :: Linux",
         "Operating System :: MacOS",
         "Operating System :: Microsoft :: Windows",
-        "Topic :: Scientific/Engineering :: Artificial Intelligence"
+        "Topic :: Scientific/Engineering :: Artificial Intelligence",
     ],
 )
