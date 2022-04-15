@@ -5,4 +5,5 @@ sentencepiece==0.1.91
 smart_open>=2.1.0,<3.0
 tensorflow==2.4.0
 tensorflow_privacy==0.5.1
+torch==1.11.0
 tqdm<5.0

@@ -3,5 +3,6 @@ sphinx==3.0.3
 docutils==0.17.1
 mistune==0.8.4
 sphinx-rtd-theme
+jinja2==3.0.3
 -r ../requirements.txt
 -r ../utils-requirements.txt

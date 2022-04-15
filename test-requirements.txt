@@ -1,5 +1,7 @@
 faker==4.1.1
 flake8==3.8.4
+numpy>=1.18.0
+pandas>=1.1.0
 pylint==2.7.2
 pytest==6.1.2
 pytest-cov==2.11.1
