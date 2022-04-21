@@ -157,18 +157,19 @@ def rescale(
         original: data in original space
         normalization: output range for scaling, ZERO_ONE or MINUSONE_ONE
         global_min: minimum to use for scaling, either a scalar or has same
-            dimension as original.shape[0] for scaling each time series
-            independently
+            shape as original
         global_max: maximum to use for scaling, either a scalar or has same
-            dimension as original.shape[0]
+            shape as original
 
     Returns:
         Data in transformed space
     """
+
+    range = np.maximum(global_max - global_min, 1e-6)
     if normalization == Normalization.ZERO_ONE:
-        return (original - global_min) / (global_max - global_min)
+        return (original - global_min) / range
     elif normalization == Normalization.MINUSONE_ONE:
-        return (2.0 * (original - global_min) / (global_max - global_min + 1e-6)) - 1.0
+        return (2.0 * (original - global_min) / range) - 1.0
 
 
 def rescale_inverse(
@@ -191,10 +192,11 @@ def rescale_inverse(
     Returns:
         Data in original space
     """
+    range = global_max - global_min
     if normalization == Normalization.ZERO_ONE:
-        return transformed * (global_max - global_min) + global_min
+        return transformed * range + global_min
     elif normalization == Normalization.MINUSONE_ONE:
-        return ((transformed + 1) / 2) * (global_max - global_min) + global_min
+        return ((transformed + 1.0) / 2.0) * range + global_min
 
 
 def transform(
@@ -219,8 +221,8 @@ def transform(
     Returns:
         Internal representation of data. A single numpy array if the input was a
         2d array or if no outputs have apply_example_scaling=True. A tuple of
-        additional_attributes, features is returned when transforming features
-        (a 3d numpy array) and example scaling is usd.
+        features, additional_attributes is returned when transforming features
+        (a 3d numpy array) and example scaling is used.
     """
 
     additional_attribute_parts = []
