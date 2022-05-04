@@ -45,6 +45,8 @@ Sample usage:
 """
 
 
+from __future__ import annotations
+
 import logging
 
 from typing import List, Optional, Tuple, Union
@@ -133,6 +135,9 @@ class DGAN:
             raise RuntimeError(
                 "feature_outputs and attribute_ouputs must either both be given or both be None"
             )
+
+        self.attribute_column_names = None
+        self.feature_column_names = None
 
     def train_numpy(
         self,
@@ -821,3 +826,71 @@ class DGAN:
         features = np.expand_dims(features_df.to_numpy(), axis=-1)
 
         return attributes, features
+
+    def save(self, file_name: str, **kwargs):
+        """Save DGAN model to a file.
+
+        Args:
+            file_name: location to save serialized model
+            kwargs: additional parameters passed to torch.save
+        """
+        state = {
+            "config": self.config.to_dict(),
+            "attribute_outputs": self.attribute_outputs,
+            "feature_outputs": self.feature_outputs,
+        }
+        state["generate_state_dict"] = self.generator.state_dict()
+        state[
+            "feature_discriminator_state_dict"
+        ] = self.feature_discriminator.state_dict()
+        if self.attribute_discriminator is not None:
+            state[
+                "attribute_discriminator_state_dict"
+            ] = self.attribute_discriminator.state_dict()
+
+        if self.attribute_column_names is not None:
+            state["attribute_column_names"] = self.attribute_column_names
+            state["feature_column_names"] = self.feature_column_names
+
+        torch.save(state, file_name, **kwargs)
+
+    @classmethod
+    def load(cls, file_name: str, **kwargs) -> DGAN:
+        """Load DGAN model instance from a file.
+
+        Args:
+            file_name: location to load from
+            kwargs: additional parameters passed to torch.load, for example, use
+                map_location=torch.device("cpu") to load a model saved for GPU on
+                a machine without cuda
+
+        Returns:
+            DGAN model instance
+        """
+
+        state = torch.load(file_name, **kwargs)
+
+        config = DGANConfig(**state["config"])
+        dgan = DGAN(config)
+
+        dgan._build(state["attribute_outputs"], state["feature_outputs"])
+
+        dgan.generator.load_state_dict(state["generate_state_dict"])
+        dgan.feature_discriminator.load_state_dict(
+            state["feature_discriminator_state_dict"]
+        )
+        if "attribute_discriminator_state_dict" in state:
+            if dgan.attribute_discriminator is None:
+                raise RuntimeError(
+                    "Error deserializing model: found unexpected attribute discriminator state in file"
+                )
+
+            dgan.attribute_discriminator.load_state_dict(
+                state["attribute_discriminator_state_dict"]
+            )
+
+        if "attribute_column_names" in state and "feature_column_names" in state:
+            dgan.attribute_column_names = state["attribute_column_names"]
+            dgan.feature_column_names = state["feature_column_names"]
+
+        return dgan

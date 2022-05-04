@@ -260,3 +260,57 @@ def test_extract_from_dataframe(config):
 
     assert attributes.shape == (6, 0)
     assert features.shape == (6, 4, 1)
+
+
+@pytest.mark.parametrize(
+    "use_attribute_discriminator,apply_example_scaling,noise_dim,sample_len",
+    itertools.product([False, True], [False, True], [10, 25], [2, 5]),
+)
+def test_save_and_load(
+    attribute_data,
+    feature_data,
+    config: DGANConfig,
+    tmp_path,
+    use_attribute_discriminator,
+    apply_example_scaling,
+    noise_dim,
+    sample_len,
+):
+    attributes, attribute_types = attribute_data
+    features, feature_types = feature_data
+
+    config.epochs = 1
+    config.use_attribute_discriminator = use_attribute_discriminator
+    config.apply_example_scaling = apply_example_scaling
+    config.attribute_noise_dim = noise_dim
+    config.feature_noise_dim = noise_dim
+    config.sample_len = sample_len
+
+    dg = DGAN(config=config)
+
+    dg.train_numpy(
+        attributes=attributes,
+        features=features,
+        attribute_types=attribute_types,
+        feature_types=feature_types,
+    )
+
+    n = 25
+    attribute_noise = dg.attribute_noise_func(n)
+    feature_noise = dg.feature_noise_func(n)
+
+    expected_attributes, expected_features = dg.generate_numpy(
+        attribute_noise=attribute_noise, feature_noise=feature_noise
+    )
+
+    file_name = str(tmp_path / "model.pt")
+    dg.save(file_name)
+
+    loaded_dg = DGAN.load(file_name)
+
+    attributes, features = loaded_dg.generate_numpy(
+        attribute_noise=attribute_noise, feature_noise=feature_noise
+    )
+
+    np.testing.assert_allclose(attributes, expected_attributes)
+    np.testing.assert_allclose(features, expected_features)

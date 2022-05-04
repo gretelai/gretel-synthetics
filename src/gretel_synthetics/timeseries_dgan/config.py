@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from enum import Enum
 
 
@@ -122,3 +122,12 @@ class DGANConfig:
     generator_rounds: int = 1
 
     cuda: bool = True
+
+    def to_dict(self):
+        """Return dictionary representation of DGANConfig.
+
+        Returns:
+            Dictionary of member variables, usable to initialize a new config
+            object, e.g., `DGANConfig(**config.to_dict())`
+        """
+        return asdict(self)
