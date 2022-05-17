@@ -56,7 +56,7 @@ If you want to install `gretel-synthetics` locally and use a GPU (recommended):
 1. Create a virtual environment (e.g. using `conda`)
 
 ```
-$ conda create --name tf --python=3.8
+$ conda create --name tf python=3.8
 ```
 
 2. Activate the virtual environment
