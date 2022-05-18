@@ -16,9 +16,9 @@ jobs:
     - name: Setup Python
       uses: actions/setup-python@v1
       with:
-        python-version: 3.7
+        python-version: 3.9
     - name: Install TF
-      run:  pip install tensorflow==2.4
+      run:  pip install tensorflow==2.8
     - name: Install gretel-synthetics
       run: pip install -e .[all,test]
     - name: Test
