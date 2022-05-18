@@ -46,7 +46,7 @@ setup(
     long_description_content_type="text/markdown",
     package_dir={"": "src"},
     packages=find_packages("src"),
-    python_requires=">=3.6",
+    python_requires=">=3.7",
     install_requires=(
         reqs("requirements.txt", without=["tensorflow==", "torch=="]) + compat_reqs
     ),
