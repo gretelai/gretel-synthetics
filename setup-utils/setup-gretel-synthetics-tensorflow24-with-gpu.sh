@@ -1,5 +1,5 @@
 #NOTE: Initialize conda (pyenv or virtualenv) before running the script!!!
-#conda create --name tf --yes python=3.8
+#conda create --name tf --yes python=3.9
 #conda activate tf
 
 echo 'Adding NVIDIA package repositories'
@@ -35,7 +35,7 @@ sudo apt-get install -y --no-install-recommends libnvinfer7=7.1.3-1+cuda11.0 \
 
 echo 'Installing tensorflow=2.4 and gretel-synthetics'
 pip3 install --upgrade pip
-pip3 install tensorflow==2.4 gretel-synthetics
+pip3 install tensorflow==2.8 gretel-synthetics
 
 echo 'Check if tensorflow with gpu support is installed'
 python -c "import tensorflow as tf; tf.test.gpu_device_name()"
