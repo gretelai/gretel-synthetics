@@ -1,4 +1,5 @@
 import copy
+import re
 
 from functools import reduce
 from typing import List
@@ -12,6 +13,53 @@ from gretel_synthetics.utils import stats
 
 LEFT = 0
 RIGHT = 1
+COMPLEX_ID_PERC_UNIQ = 0.85
+COMPLEX_ID_LEN = 16
+TEXT_COL_LIMIT = 1500
+
+
+def _is_field_complex(field: pd.Series) -> bool:
+    """
+    Function to determine if field is a complex ID requiring special handling.
+
+    Args:
+        field: column values that are being evaluated to determine if field is complex
+
+    Returns:
+        A boolean value that signifies whether the field is complex or not.
+    """
+
+    # Return False if field has no valid values
+
+    field = field.dropna()
+    if len(field) == 0:
+        return False
+
+    # Return False if field is less than 85% unique
+
+    perc_unique = field.nunique() / len(field)
+    if perc_unique < COMPLEX_ID_PERC_UNIQ:
+        return False
+
+    # Return False if field has avg len less than 16 characters
+
+    textcol = field.to_csv(header=False, index=False)
+    avg_len = (len(textcol) - 2 * len(field)) / len(field)
+
+    if avg_len < COMPLEX_ID_LEN:
+        return False
+
+    # Return False if values do not contain numbers
+
+    contains_digit = any(map(str.isdigit, textcol[0:TEXT_COL_LIMIT]))
+    if not contains_digit:
+        return False
+
+    # Return True if field contains only numbers, letters, underscore or hyphen, else return False
+
+    return bool(
+        re.match("^[a-zA-Z0-9\-\_]+$", textcol[0:TEXT_COL_LIMIT].replace("\n", ""))
+    )
 
 
 def _get_correlation_matrix(df, numeric_cat: List[str] = None):
@@ -187,6 +235,7 @@ def cluster(
     method: str = "single",
     numeric_cat: List[str] = None,
     plot: bool = False,
+    isolate_complex_field: bool = True,
 ) -> List[List[str]]:
     """
     Given an input dataframe, extract clusters of similar headers
@@ -209,6 +258,7 @@ def cluster(
             may be used to define additional categorical fields that may
             not automatically get identified as such.
         plot: Plot header list as a dendogram.
+        isolate_complex_field: Enables isolation of complex fields when clustering
 
     Returns:
         A list of lists of column names, each column name list being an identified cluster
@@ -234,6 +284,16 @@ def cluster(
     # we just return that single column
     if df.shape[1] == 1:
         return prepare_response([list(df.columns)], header_prefix)
+
+    # Check for complex fields which will require their own batch
+    single_batch_columns = []
+    if isolate_complex_field:
+        cluster_columns = list(df.columns)
+        for col in cluster_columns:
+            if _is_field_complex(df[col]):
+                single_batch_columns.append(col)
+                cluster_columns.remove(col)
+        df = df.filter(cluster_columns)
 
     # Start by getting the correlation matrix
     corr_matrix = _get_correlation_matrix(df, numeric_cat)
@@ -275,5 +335,9 @@ def cluster(
         Lopt,
         plot,
     )
+
+    # Re add columns that were isolated, as individual batches
+    for col in single_batch_columns:
+        col_list.append([col])
 
     return prepare_response(col_list, header_prefix)
