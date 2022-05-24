@@ -3,7 +3,7 @@ numpy>=1.18.0
 pandas>=1.1.0
 sentencepiece==0.1.96
 smart_open>=2.1.0,<6.0
-tensorflow==2.8.0
+tensorflow==2.8.1
 tensorflow_privacy==0.7.3
 torch==1.11.0
 tqdm<5.0
