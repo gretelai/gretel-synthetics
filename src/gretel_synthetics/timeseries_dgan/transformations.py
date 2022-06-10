@@ -37,7 +37,7 @@ class ContinuousOutput(Output):
 
 
 def create_outputs_from_data(
-    attributes: np.ndarray,
+    attributes: Optional[np.ndarray],
     features: np.ndarray,
     attribute_types: Optional[List[OutputType]],
     feature_types: Optional[List[OutputType]],
@@ -60,13 +60,28 @@ def create_outputs_from_data(
             attributes for each feature and scale per example, improves
             performance when time series ranges are highly variable
     """
-    if attribute_types is None:
-        attribute_types = [OutputType.CONTINUOUS] * attributes.shape[1]
-    elif len(attribute_types) != attributes.shape[1]:
-        raise RuntimeError(
-            "attribute_types must be the same length as the 2nd (last) dimension of attributes"
-        )
-    attribute_types = cast(List[OutputType], attribute_types)
+    attribute_outputs = None
+    if attributes is not None:
+        if attribute_types is None:
+            attribute_types = [OutputType.CONTINUOUS] * attributes.shape[1]
+        elif len(attribute_types) != attributes.shape[1]:
+            raise RuntimeError(
+                "attribute_types must be the same length as the 2nd (last) dimension of attributes"
+            )
+        attribute_types = cast(List[OutputType], attribute_types)
+        attribute_outputs = [
+            create_output(
+                index,
+                t,
+                attributes[:, index],
+                normalization=normalization,
+                apply_feature_scaling=apply_feature_scaling,
+                # Attributes can never be normalized per example since there's
+                # only 1 value for each variable per example.
+                apply_example_scaling=False,
+            )
+            for index, t in enumerate(attribute_types)
+        ]
 
     if feature_types is None:
         feature_types = [OutputType.CONTINUOUS] * features.shape[2]
@@ -75,20 +90,6 @@ def create_outputs_from_data(
             "feature_types must be the same length as the 3rd (last) dimemnsion of features"
         )
     feature_types = cast(List[OutputType], feature_types)
-
-    attribute_outputs = [
-        create_output(
-            index,
-            t,
-            attributes[:, index],
-            normalization=normalization,
-            apply_feature_scaling=apply_feature_scaling,
-            # Attributes can never be normalized per example since there's
-            # only 1 value for each variable per example.
-            apply_example_scaling=False,
-        )
-        for index, t in enumerate(attribute_types)
-    ]
 
     feature_outputs = [
         create_output(
@@ -200,7 +201,10 @@ def rescale_inverse(
 
 
 def transform(
-    original_data: np.ndarray, outputs: List[Output], variable_dim_index: int
+    original_data: np.ndarray,
+    outputs: List[Output],
+    variable_dim_index: int,
+    num_examples: Optional[int] = None,
 ) -> Union[Tuple[np.ndarray, np.ndarray], np.ndarray]:
     """Transform data to internal representation expected by DoppelGANger.
 
@@ -217,16 +221,25 @@ def transform(
         outputs: Output metadata for each variable
         variable_dim_index: dimension of numpy array that contains the
             variables, for 2d numpy arrays this should be 1, for 3d should be 2
+        num_examples: dimension of feature output array. If the original
+            data is None, we want the empty/none torch array to match the first
+            dimension of the feature output array. This makes sure that the
+            TensorDataset module works smoothly. If the first dimensions are different,
+            torch will give an error.
 
     Returns:
         Internal representation of data. A single numpy array if the input was a
         2d array or if no outputs have apply_example_scaling=True. A tuple of
         features, additional_attributes is returned when transforming features
-        (a 3d numpy array) and example scaling is used.
+        (a 3d numpy array) and example scaling is used. If the input data is a
+        nan-filled tensor, then a single numpy array filled with nan's that has
+        the first dimension shape of the number examples of the feature vector is returned.
     """
-
     additional_attribute_parts = []
     parts = []
+    if original_data is None:
+        return np.full((num_examples, 1), np.nan)
+
     for index, output in enumerate(outputs):
         # NOTE: isinstance(output, DiscreteOutput) does not work consistently
         #       with all import styles in jupyter notebooks, using string
@@ -341,11 +354,15 @@ def inverse_transform(
             apply_example_scaling=True
 
     Returns:
-        numpy array of data in original space
+        If the input data provided is a numpy array with no-nans, then a numpy array of
+        data in original space is returned. If the input data is nan-filled, the function
+        returns None.
     """
     parts = []
     transformed_index = 0
     additional_attribute_index = 0
+    if np.isnan(transformed_data).any():
+        return None
     for output in outputs:
         if "DiscreteOutput" in str(output.__class__):
             output = cast(DiscreteOutput, output)

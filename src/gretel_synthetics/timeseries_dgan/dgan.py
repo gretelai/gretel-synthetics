@@ -141,10 +141,10 @@ class DGAN:
 
     def train_numpy(
         self,
-        attributes: Optional[np.ndarray] = None,
-        features: Optional[np.ndarray] = None,
-        attribute_types: Optional[List[OutputType]] = None,
+        features: np.ndarray,
         feature_types: Optional[List[OutputType]] = None,
+        attributes: Optional[np.ndarray] = None,
+        attribute_types: Optional[List[OutputType]] = None,
     ):
         """Train DGAN model on data in numpy arrays.
 
@@ -164,29 +164,29 @@ class DGAN:
         needed.
 
         Args:
-            attributes: 2-d numpy array of attributes for the training examples,
-                size is (# of training examples) X (# of attributes)
             features: 3-d numpy array of time series features for the training,
                 size is (# of training examples) X max_sequence_len X (# of
                 features)
-            attribute_types: Specification of Discrete or Continuous
-                type for each variable of the attributes. Discrete attributes
-                should be 0-indexed (not one-hot encoded). If None, assume all
-                attributes are continuous. Ignored if the model was already
-                built, either by passing *output params at initialization or
-                because train_* was called previously.
-            feature_types: Specification of Discrete or Continuous type
+            feature_types (Optional): Specification of Discrete or Continuous type
                 for each variable of the features. Discrete attributes should be
                 0-indexed (not one-hot encoded). If None, assume all features
                 are continuous. Ignored if the model was already built, either
                 by passing *output params at initialization or because train_*
                 was called previously.
+            attributes (Optional): 2-d numpy array of attributes for the training
+                examples, size is (# of training examples) X (# of attributes)
+            attribute_types (Optional): Specification of Discrete or Continuous
+                type for each variable of the attributes. Discrete attributes
+                should be 0-indexed (not one-hot encoded). If None, assume all
+                attributes are continuous. Ignored if the model was already
+                built, either by passing *output params at initialization or
+                because train_* was called previously.
         """
-
-        if attributes.shape[0] != features.shape[0]:
-            raise RuntimeError(
-                "First dimension of attributes and features must be the same length, i.e., the number of training examples."
-            )
+        if attributes is not None:
+            if attributes.shape[0] != features.shape[0]:
+                raise RuntimeError(
+                    "First dimension of attributes and features must be the same length, i.e., the number of training examples."
+                )
 
         if not self.is_built:
             attribute_outputs, feature_outputs = create_outputs_from_data(
@@ -204,42 +204,41 @@ class DGAN:
                 feature_outputs,
             )
 
-        internal_attributes = transform(
-            attributes,
-            self.attribute_outputs,
-            variable_dim_index=1,
-        )
-
         if self.additional_attribute_outputs:
-            # Use dataset with 3 tensors: attributes, additional_attributes,
-            # features
             (
                 internal_features,
                 internal_additional_attributes,
             ) = transform(features, self.feature_outputs, variable_dim_index=2)
 
-            dataset = TensorDataset(
-                torch.Tensor(internal_attributes),
-                torch.Tensor(internal_additional_attributes),
-                torch.Tensor(internal_features),
-            )
         else:
-            # No additional attributes, so use just 2 tensors: attributes, features
             internal_features = transform(
                 features, self.feature_outputs, variable_dim_index=2
             )
-
-            dataset = TensorDataset(
-                torch.Tensor(internal_attributes),
-                torch.Tensor(internal_features),
+            internal_additional_attributes = torch.Tensor(
+                np.full((internal_features.shape[0], 1), np.nan)
             )
+
+        internal_attributes = transform(
+            attributes,
+            self.attribute_outputs,
+            variable_dim_index=1,
+            num_examples=internal_features.shape[0],
+        )
+
+        internal_attributes_tensor = torch.Tensor(internal_attributes)
+
+        dataset = TensorDataset(
+            torch.Tensor(internal_attributes_tensor),
+            torch.Tensor(internal_additional_attributes),
+            torch.Tensor(internal_features),
+        )
 
         self._train(dataset)
 
     def train_dataframe(
         self,
         df: pd.DataFrame,
-        df_attribute_columns: List[Union[str, int]],
+        df_attribute_columns: Optional[List[Union[str, int]]] = None,
         df_feature_columns: Optional[List[Union[str, int]]] = None,
         attribute_types: Optional[List[OutputType]] = None,
         feature_types: Optional[List[OutputType]] = None,
@@ -252,7 +251,8 @@ class DGAN:
 
         Args:
             df: DataFrame of training data in "wide" format
-            df_attribute_columns: list of column names containing attributes
+            df_attribute_columns: list of column names containing attributes. if None,
+                no attribute columns are used, Default: None
             df_feature_columns: list of column names containing features, if None
                 all non-attribute columns are used, Default: None
             attribute_types: Specification of variable types, see train_numpy()
@@ -308,12 +308,12 @@ class DGAN:
                         self.feature_noise_func(self.config.batch_size),
                     )
                 )
-
             # Convert from list of tuples to tuple of lists with zip(*) and
             # concatenate into single numpy arrays for attributes, additional
             # attributes (if present), and features.
             internal_data = tuple(
-                np.concatenate(d, axis=0) for d in zip(*internal_data_list)
+                np.concatenate(d, axis=0) if not (np.array(d) == None).any() else None
+                for d in zip(*internal_data_list)
             )
 
         else:
@@ -326,36 +326,29 @@ class DGAN:
 
             internal_data = self._generate(attribute_noise, feature_noise)
 
-        if self.additional_attribute_outputs:
-            (
-                internal_attributes,
-                internal_additional_attributes,
-                internal_features,
-            ) = internal_data
+        (
+            internal_attributes,
+            internal_additional_attributes,
+            internal_features,
+        ) = internal_data
 
-            attributes = inverse_transform(
-                internal_attributes, self.attribute_outputs, variable_dim_index=1
-            )
-            features = inverse_transform(
-                internal_features,
-                self.feature_outputs,
-                variable_dim_index=2,
-                additional_attributes=internal_additional_attributes,
-            )
-        else:
-            internal_attributes, internal_features = internal_data
+        attributes = inverse_transform(
+            internal_attributes, self.attribute_outputs, variable_dim_index=1
+        )
 
-            attributes = inverse_transform(
-                internal_attributes, self.attribute_outputs, variable_dim_index=1
-            )
-            features = inverse_transform(
-                internal_features, self.feature_outputs, variable_dim_index=2
-            )
+        features = inverse_transform(
+            internal_features,
+            self.feature_outputs,
+            variable_dim_index=2,
+            additional_attributes=internal_additional_attributes,
+        )
 
         if n is not None:
-            # Truncate to requested length
-            attributes = attributes[:n]
-            features = features[:n]
+            if attributes is None:
+                features = features[:n]
+                return None, features
+            else:
+                return attributes[:n], features[:n]
 
         return attributes, features
 
@@ -381,32 +374,34 @@ class DGAN:
         """
 
         attributes, features = self.generate_numpy(n, attribute_noise, feature_noise)
-
         if features.shape[2] != 1:
             raise RuntimeError(
                 "Generating a dataframe is not supported with more than 1 feature variable"
             )
 
-        data = np.concatenate(
-            (attributes, features.reshape(features.shape[0], features.shape[1])), axis=1
-        )
-
-        columns = None
-        if (
-            self.attribute_column_names is not None
-            and self.feature_column_names is not None
-        ):
-            columns = np.concatenate(
-                (self.attribute_column_names, self.feature_column_names),
+        if attributes is not None:
+            data = np.concatenate(
+                (attributes, features.reshape(features.shape[0], features.shape[1])),
+                axis=1,
             )
 
+            columns = None
+            if (
+                self.attribute_column_names is not None
+                and self.feature_column_names is not None
+            ):
+                columns = np.concatenate(
+                    (self.attribute_column_names, self.feature_column_names),
+                )
+        else:
+            data = features.reshape(features.shape[0], features.shape[1])
+            columns = self.feature_column_names
         df = pd.DataFrame(data, columns=columns)
-
         return df
 
     def _build(
         self,
-        attribute_outputs: List[Output],
+        attribute_outputs: Optional[List[Output]],
         feature_outputs: List[Output],
     ):
         """Setup internal structure for DGAN model.
@@ -442,15 +437,16 @@ class DGAN:
             self.config.feature_num_layers,
         )
         self.generator.to(self.device)
+        if self.attribute_outputs is None:
+            self.attribute_outputs = []
+        attribute_dim = sum(output.dim for output in self.attribute_outputs)
 
-        attribute_dim = sum(output.dim for output in attribute_outputs)
-        additional_attribute_dim = 0
-        if self.additional_attribute_outputs:
-            additional_attribute_dim = sum(
-                output.dim for output in self.additional_attribute_outputs
-            )
+        if not self.additional_attribute_outputs:
+            self.additional_attribute_outputs = []
+        additional_attribute_dim = sum(
+            output.dim for output in self.additional_attribute_outputs
+        )
         feature_dim = sum(output.dim for output in feature_outputs)
-
         self.feature_discriminator = Discriminator(
             attribute_dim
             + additional_attribute_dim
@@ -461,6 +457,9 @@ class DGAN:
         self.feature_discriminator.to(self.device)
 
         self.attribute_discriminator = None
+        if not self.additional_attribute_outputs and not self.attribute_outputs:
+            self.config.use_attribute_discriminator = False
+
         if self.config.use_attribute_discriminator:
             self.attribute_discriminator = Discriminator(
                 attribute_dim + additional_attribute_dim,
@@ -519,11 +518,14 @@ class DGAN:
         """Internal method for training DGAN model.
 
         Expects data to already be transformed into the internal representation
-        and wrapped in a torch Dataset.
+        and wrapped in a torch Dataset. The torch Dataset consists of 3-element
+        tuples (attributes, additional_attributes, features). If attributes and/or
+        additional_attribtues were not passed by the user, these indexes of the
+        tuple will consists of nan-filled tensors which will later be filtered
+        out and ignored in the DGAN training process.
 
         Args:
-            dataset: torch Dataset containing tuple of (attributes, features)
-                or (attributes, additional_attributes, features)
+            dataset: torch Dataset containing tuple of (attributes, additional_attributes, features)
         """
 
         loader = DataLoader(
@@ -563,19 +565,16 @@ class DGAN:
                 attribute_noise = self.attribute_noise_func(self.config.batch_size)
                 feature_noise = self.feature_noise_func(self.config.batch_size)
 
-                # Both real and generated batch are a tuple of tensors. If
-                # self.additional_attribute_outputs is non-empty, they are
-                # 3-element tuples with attribute, additional_attribute, and
-                # feature tensors. Otherwise, no additional attributes are used
-                # by the model and they are 2-element tuples with attribute and
-                # feature tensors.
+                # Both real and generated batch are always three element tuple of
+                # tensors. The tuple is structured as follows: (attribute_output,
+                # additional_attribute_output, feature_output). If self.attribute_output
+                # and/or self.additional_attribute_output is empty, the respective
+                # tuple index will be filled with a placeholder nan-filled tensor.
+                # These nan-filled tensors get filtered out in the _discriminate,
+                # _get_gradient_penalty, and _discriminate_attributes functions.
+
                 generated_batch = self.generator(attribute_noise, feature_noise)
-
                 real_batch = [x.to(self.device) for x in real_batch]
-
-                for index, b in enumerate(generated_batch):
-                    if torch.isnan(b).any():
-                        logger.warning(f"found nans in generated_batch index={index}")
 
                 for _ in range(self.config.discriminator_rounds):
                     opt_discriminator.zero_grad()
@@ -683,8 +682,11 @@ class DGAN:
         Returns:
             Output of the GAN discriminator.
         """
+
+        batch = [index for index in batch if not torch.isnan(index).any()]
         inputs = list(batch)
         # Flatten the features
+
         inputs[-1] = torch.reshape(inputs[-1], (inputs[-1].shape[0], -1))
 
         input = torch.cat(inputs, dim=1)
@@ -696,12 +698,13 @@ class DGAN:
         """Internal helper function to apply the GAN attribute discriminator.
 
         Args:
-            batch: tuple of internal data, either 1 element for attributes
-                or 2 elements for attributes and additional_attributes
+            batch: tuple of internal data of size 2 elements
+            containing attributes and additional_attributes.
 
         Returns:
             Output for GAN attribute discriminator.
         """
+        batch = [index for index in batch if not torch.isnan(index).any()]
         if not self.attribute_discriminator:
             raise RuntimeError(
                 "discriminate_attributes called with no attribute_discriminator"
@@ -727,9 +730,16 @@ class DGAN:
         Returns:
             Gradient penalty tensor.
         """
+        generated_batch = [
+            generated_index
+            for generated_index in generated_batch
+            if not torch.isnan(generated_index).any()
+        ]
+        real_batch = [
+            real_index for real_index in real_batch if not torch.isnan(real_index).any()
+        ]
 
         alpha = torch.rand(generated_batch[0].shape[0], device=self.device)
-
         interpolated_batch = [
             self._interpolate(g, r, alpha).requires_grad_(True)
             for g, r in zip(generated_batch, real_batch)
@@ -788,7 +798,7 @@ class DGAN:
     def _extract_from_dataframe(
         self,
         df: pd.DataFrame,
-        attribute_columns: List[Union[str, int]],
+        attribute_columns: Optional[List[Union[str, int]]] = None,
         feature_columns: Optional[List[Union[str, int]]] = None,
     ) -> NumpyArrayPair:
         """Extract attribute and feature arrays from a single pandas DataFrame
@@ -809,10 +819,16 @@ class DGAN:
         Returns:
             Tuple of (attributes, features)
         """
-        attributes = df[attribute_columns].to_numpy()
+        if attribute_columns:
+            attributes = df[attribute_columns].to_numpy()
+        else:
+            attributes = None
 
         if feature_columns is None:
-            features_df = df.drop(columns=attribute_columns)
+            if attribute_columns is not None:
+                features_df = df.drop(columns=attribute_columns)
+            else:
+                features_df = df
         else:
             features_df = df[feature_columns]
 
@@ -850,6 +866,8 @@ class DGAN:
 
         if self.attribute_column_names is not None:
             state["attribute_column_names"] = self.attribute_column_names
+
+        if self.feature_column_names is not None:
             state["feature_column_names"] = self.feature_column_names
 
         torch.save(state, file_name, **kwargs)
@@ -889,8 +907,10 @@ class DGAN:
                 state["attribute_discriminator_state_dict"]
             )
 
-        if "attribute_column_names" in state and "feature_column_names" in state:
-            dgan.attribute_column_names = state["attribute_column_names"]
+        if "feature_column_names" in state:
             dgan.feature_column_names = state["feature_column_names"]
+
+        if "attribute_column_names" in state:
+            dgan.attribute_column_names = state["attribute_column_names"]
 
         return dgan

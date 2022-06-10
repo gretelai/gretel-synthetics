@@ -3,6 +3,7 @@
 from collections import OrderedDict
 from typing import cast, Iterable, List, Optional, Tuple, Union
 
+import numpy as np
 import torch
 
 from gretel_synthetics.timeseries_dgan.config import Normalization
@@ -145,15 +146,15 @@ class Generator(torch.nn.Module):
 
     def __init__(
         self,
-        attribute_outputs: List[Output],
+        attribute_outputs: Optional[List[Output]],
         additional_attribute_outputs: Optional[List[Output]],
         feature_outputs: List[Output],
         max_sequence_len: int,
         sample_len: int,
-        attribute_noise_dim: int,
+        attribute_noise_dim: Optional[int],
         feature_noise_dim: int,
-        attribute_num_units: int,
-        attribute_num_layers: int,
+        attribute_num_units: Optional[int],
+        attribute_num_layers: Optional[int],
         feature_num_units: int,
         feature_num_layers: int,
     ):
@@ -181,29 +182,22 @@ class Generator(torch.nn.Module):
 
         self.sample_len = sample_len
         self.max_sequence_len = max_sequence_len
-
-        self.attribute_gen = self._make_attribute_generator(
+        self.attribute_gen, attribute_dim = self._make_attribute_generator(
             attribute_outputs,
             attribute_noise_dim,
             attribute_num_units,
             attribute_num_layers,
         )
 
-        attribute_dim = sum(output.dim for output in attribute_outputs)
-
-        if additional_attribute_outputs:
-            self.additional_attribute_gen = self._make_attribute_generator(
-                additional_attribute_outputs,
-                attribute_noise_dim + attribute_dim,
-                attribute_num_units,
-                attribute_num_layers,
-            )
-            additional_attribute_dim = sum(
-                output.dim for output in additional_attribute_outputs
-            )
-        else:
-            self.additional_attribute_gen = None
-            additional_attribute_dim = 0
+        (
+            self.additional_attribute_gen,
+            additional_attribute_dim,
+        ) = self._make_attribute_generator(
+            additional_attribute_outputs,
+            attribute_noise_dim + attribute_dim,
+            attribute_num_units,
+            attribute_num_layers,
+        )
 
         self.feature_gen = torch.nn.Sequential(
             OrderedDict(
@@ -241,7 +235,10 @@ class Generator(torch.nn.Module):
     ) -> torch.nn.Sequential:
         """Helper function to create generator network for attributes.
 
-        Used for both attribute and additional attribute generation.
+        Used to build the generater for both the attribute and additional
+        attribute generation. The output dimension of the newly built
+        generator is also outputted. This is useful when passing these
+        attributes into other generators.
 
         Args:
             outputs: metadata objects for variables
@@ -252,7 +249,10 @@ class Generator(torch.nn.Module):
         Returns:
             Feed-forward MLP to generate attributes, wrapped in a
             torch.nn.Sequential module.
+            Attribute dimension for LSTM layer size in generator.
         """
+        if not outputs:
+            return None, 0
         seq = []
         last_dim = input_dim
         for _ in range(num_layers):
@@ -262,7 +262,8 @@ class Generator(torch.nn.Module):
             last_dim = num_units
 
         seq.append(OutputDecoder(last_dim, outputs, dim_index=1))
-        return torch.nn.Sequential(*seq)
+        attribute_dim = sum(output.dim for output in outputs)
+        return torch.nn.Sequential(*seq), attribute_dim
 
     def forward(
         self, attribute_noise: torch.Tensor, feature_noise: torch.Tensor
@@ -279,50 +280,79 @@ class Generator(torch.nn.Module):
                 max_sequence_len, feature_noise_dim) shape
 
         Returns:
-            Tuple of generated tensors with attributes, additional_attributes
-            (if present), and features.
+            Tuple of generated tensors with attributes (if present), additional_attributes
+            (if present), and features. The tuple is structured as follows: (attributes,
+            additional_attributes, features). If attributes and/or additional_attributes is not
+            present, an empty nan-filled tensor will be returned in the tuple. The function
+            will always return a 3-element tensor tuple.
         """
 
-        attributes = self.attribute_gen(attribute_noise)
+        # Attribute features exist
+        empty_tensor = torch.Tensor(np.full((1, 1), np.nan))
 
-        if self.additional_attribute_gen:
-            # detach() should be equivalent to stop_gradient used in tf1 code.
-            attributes_no_gradient = attributes.detach()
-            additional_attribute_gen_input = torch.cat(
-                (attributes_no_gradient, attribute_noise), dim=1
+        if self.attribute_gen is not None:
+            attributes = self.attribute_gen(attribute_noise)
+
+            if self.additional_attribute_gen:
+                # detach() should be equivalent to stop_gradient used in tf1 code.
+                attributes_no_gradient = attributes.detach()
+                additional_attribute_gen_input = torch.cat(
+                    (attributes_no_gradient, attribute_noise), dim=1
+                )
+
+                additional_attributes = self.additional_attribute_gen(
+                    additional_attribute_gen_input
+                )
+                combined_attributes = torch.cat(
+                    (attributes, additional_attributes), dim=1
+                )
+            else:
+                additional_attributes = empty_tensor
+                combined_attributes = attributes
+
+            # Use detach() to stop gradient flow
+            combined_attributes_no_gradient = combined_attributes.detach()
+
+            reshaped_attributes = torch.reshape(
+                combined_attributes_no_gradient, (combined_attributes.shape[0], 1, -1)
+            )
+            reshaped_attributes = reshaped_attributes.expand(
+                -1, feature_noise.shape[1], -1
             )
 
-            additional_attributes = self.additional_attribute_gen(
-                additional_attribute_gen_input
+            feature_gen_input = torch.cat((reshaped_attributes, feature_noise), 2)
+
+            features = self.feature_gen(feature_gen_input)
+
+            features = torch.reshape(
+                features, (features.shape[0], self.max_sequence_len, -1)
             )
-        else:
-            additional_attributes = None
-
-        # Reshape and expand attributes to match features
-        if self.additional_attribute_gen:
-            combined_attributes = torch.cat((attributes, additional_attributes), dim=1)
-        else:
-            combined_attributes = attributes
-
-        # Use detach() to stop gradient flow
-        combined_attributes_no_gradient = combined_attributes.detach()
-
-        reshaped_attributes = torch.reshape(
-            combined_attributes_no_gradient, (combined_attributes.shape[0], 1, -1)
-        )
-        reshaped_attributes = reshaped_attributes.expand(-1, feature_noise.shape[1], -1)
-
-        feature_gen_input = torch.cat((reshaped_attributes, feature_noise), 2)
-
-        features = self.feature_gen(feature_gen_input)
-
-        features = torch.reshape(
-            features, (features.shape[0], self.max_sequence_len, -1)
-        )
-        if self.additional_attribute_gen:
             return attributes, additional_attributes, features
         else:
-            return attributes, features
+
+            if self.additional_attribute_gen:
+                additional_attributes = self.additional_attribute_gen(attribute_noise)
+                combined_attributes_no_gradient = additional_attributes.detach()
+                reshaped_attributes = torch.reshape(
+                    combined_attributes_no_gradient,
+                    (additional_attributes.shape[0], 1, -1),
+                )
+                reshaped_attributes = reshaped_attributes.expand(
+                    -1, feature_noise.shape[1], -1
+                )
+                feature_gen_input = torch.cat((reshaped_attributes, feature_noise), 2)
+                features = self.feature_gen(feature_gen_input)
+                features = torch.reshape(
+                    features, (features.shape[0], self.max_sequence_len, -1)
+                )
+                return empty_tensor, additional_attributes, features
+
+            else:
+                features = self.feature_gen(feature_noise)
+                features = torch.reshape(
+                    features, (features.shape[0], self.max_sequence_len, -1)
+                )
+                return empty_tensor, empty_tensor, features
 
 
 class Discriminator(torch.nn.Module):
