@@ -73,7 +73,7 @@ logging.basicConfig(
     level=logging.INFO,
 )
 
-NumpyArrayPair = Tuple[np.ndarray, np.ndarray]
+AttributeFeaturePair = Tuple[Optional[np.ndarray], np.ndarray]
 NumpyArrayTriple = Tuple[np.ndarray, np.ndarray, np.ndarray]
 
 
@@ -276,7 +276,7 @@ class DGAN:
         n: Optional[int] = None,
         attribute_noise: Optional[torch.Tensor] = None,
         feature_noise: Optional[torch.Tensor] = None,
-    ) -> NumpyArrayPair:
+    ) -> AttributeFeaturePair:
         """Generate synthetic data from DGAN model.
 
         Once trained, a DGAN model can generate arbitrary amounts of
@@ -647,7 +647,7 @@ class DGAN:
 
     def _generate(
         self, attribute_noise: torch.Tensor, feature_noise: torch.Tensor
-    ) -> Union[NumpyArrayPair, NumpyArrayTriple]:
+    ) -> NumpyArrayTriple:
         """Internal method for generating from a DGAN model.
 
         Returns data in the internal representation, including additional
@@ -800,7 +800,7 @@ class DGAN:
         df: pd.DataFrame,
         attribute_columns: Optional[List[Union[str, int]]] = None,
         feature_columns: Optional[List[Union[str, int]]] = None,
-    ) -> NumpyArrayPair:
+    ) -> AttributeFeaturePair:
         """Extract attribute and feature arrays from a single pandas DataFrame
 
         Note this method only supports time series of 1 variable where the time

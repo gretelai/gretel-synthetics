@@ -44,7 +44,7 @@ def create_outputs_from_data(
     normalization: Normalization,
     apply_feature_scaling: bool = False,
     apply_example_scaling: bool = False,
-) -> Tuple[List[Output], List[Output]]:
+) -> Tuple[Optional[List[Output]], List[Output]]:
     """Create output metadata from data.
 
     Args:
@@ -201,7 +201,7 @@ def rescale_inverse(
 
 
 def transform(
-    original_data: np.ndarray,
+    original_data: Optional[np.ndarray],
     outputs: List[Output],
     variable_dim_index: int,
     num_examples: Optional[int] = None,
@@ -217,7 +217,7 @@ def transform(
         apply_example_scaling is True
 
     Args:
-        original_data: data to transform, 2d or 3d numpy array
+        original_data: data to transform, 2d or 3d numpy array, or None
         outputs: Output metadata for each variable
         variable_dim_index: dimension of numpy array that contains the
             variables, for 2d numpy arrays this should be 1, for 3d should be 2
@@ -231,9 +231,10 @@ def transform(
         Internal representation of data. A single numpy array if the input was a
         2d array or if no outputs have apply_example_scaling=True. A tuple of
         features, additional_attributes is returned when transforming features
-        (a 3d numpy array) and example scaling is used. If the input data is a
-        nan-filled tensor, then a single numpy array filled with nan's that has
-        the first dimension shape of the number examples of the feature vector is returned.
+        (a 3d numpy array) and example scaling is used. If the input data is
+        None, then a single numpy array filled with nan's that has the first
+        dimension shape of the number examples of the feature vector is
+        returned.
     """
     additional_attribute_parts = []
     parts = []
@@ -342,7 +343,7 @@ def inverse_transform(
     outputs: List[Output],
     variable_dim_index: int,
     additional_attributes: Optional[np.ndarray] = None,
-) -> np.ndarray:
+) -> Optional[np.ndarray]:
     """Invert transform to map back to original space.
 
     Args:

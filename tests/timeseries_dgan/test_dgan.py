@@ -198,13 +198,11 @@ def test_train_numpy(
     itertools.product([False, True], [False, True]),
 )
 def test_train_numpy_no_attributes_1(
-    attribute_data,
     feature_data,
     config: DGANConfig,
     use_attribute_discriminator,
     is_normalized,
 ):
-    attributes, attribute_types = attribute_data
     features, feature_types = feature_data
 
     config.use_attribute_discriminator = use_attribute_discriminator
@@ -220,6 +218,7 @@ def test_train_numpy_no_attributes_1(
 
     attributes, features = dg.generate_numpy(18)
 
+    assert attributes == None
     assert features.shape == (18, 20, 2)
 
 
@@ -434,7 +433,6 @@ def test_save_and_load(
     itertools.product([False, True], [False, True], [10, 25], [2, 5]),
 )
 def test_save_and_load_no_attributes(
-    attribute_data,
     feature_data,
     config: DGANConfig,
     tmp_path,
@@ -443,7 +441,6 @@ def test_save_and_load_no_attributes(
     noise_dim,
     sample_len,
 ):
-    attributes, attribute_types = attribute_data
     features, feature_types = feature_data
 
     config.epochs = 1

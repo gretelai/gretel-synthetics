@@ -267,10 +267,7 @@ class Generator(torch.nn.Module):
 
     def forward(
         self, attribute_noise: torch.Tensor, feature_noise: torch.Tensor
-    ) -> Union[
-        Tuple[torch.Tensor, torch.Tensor],
-        Tuple[torch.Tensor, torch.Tensor, torch.Tensor],
-    ]:
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Apply module to input.
 
         Args:
