@@ -252,6 +252,65 @@ def test_train_dataframe(config: DGANConfig):
     assert list(synthetic_df.columns) == list(df.columns)
 
 
+def test_train_dataframe_batch_size_larger_than_dataset(config: DGANConfig):
+    n = 50
+    df = pd.DataFrame(
+        {
+            "a1": np.random.randint(0, 3, size=n),
+            "a2": np.random.rand(n),
+            "2022-01-01": np.random.rand(n),
+            "2022-02-01": np.random.rand(n),
+            "2022-03-01": np.random.rand(n),
+            "2022-04-01": np.random.rand(n),
+        }
+    )
+
+    config.max_sequence_len = 4
+    config.sample_len = 1
+    config.batch_size = 1000
+
+    dg = DGAN(config=config)
+
+    dg.train_dataframe(
+        df=df,
+        df_attribute_columns=["a1", "a2"],
+        attribute_types=[OutputType.DISCRETE, OutputType.CONTINUOUS],
+    )
+
+    synthetic_df = dg.generate_dataframe(5)
+    assert synthetic_df.shape == (5, 6)
+    assert list(synthetic_df.columns) == list(df.columns)
+
+
+def test_train_dataframe_batch_size_not_divisible_by_dataset_length(config: DGANConfig):
+    n = 1000
+    df = pd.DataFrame(
+        {
+            "a1": np.random.randint(0, 3, size=n),
+            "a2": np.random.rand(n),
+            "2022-01-01": np.random.rand(n),
+            "2022-02-01": np.random.rand(n),
+            "2022-03-01": np.random.rand(n),
+            "2022-04-01": np.random.rand(n),
+        }
+    )
+
+    config.max_sequence_len = 4
+    config.sample_len = 2
+    config.batch_size = 300
+    dg = DGAN(config=config)
+
+    dg.train_dataframe(
+        df=df,
+        df_attribute_columns=["a1", "a2"],
+        attribute_types=[OutputType.DISCRETE, OutputType.CONTINUOUS],
+    )
+
+    synthetic_df = dg.generate_dataframe(5)
+    assert synthetic_df.shape == (5, 6)
+    assert list(synthetic_df.columns) == list(df.columns)
+
+
 def test_train_dataframe_no_attributes(config: DGANConfig):
     n = 50
     df = pd.DataFrame(

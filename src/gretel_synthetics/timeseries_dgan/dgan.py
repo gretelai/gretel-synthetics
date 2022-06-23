@@ -436,6 +436,7 @@ class DGAN:
             self.config.feature_num_units,
             self.config.feature_num_layers,
         )
+
         self.generator.to(self.device, non_blocking=True)
 
         if self.attribute_outputs is None:
@@ -533,7 +534,7 @@ class DGAN:
             dataset,
             self.config.batch_size,
             shuffle=True,
-            drop_last=True,
+            drop_last=False,
             num_workers=2,
             prefetch_factor=4,
             persistent_workers=True,
@@ -571,15 +572,12 @@ class DGAN:
 
             for real_batch in loader:
                 global_step += 1
+
                 with torch.cuda.amp.autocast(
                     enabled=self.config.mixed_precision_training
                 ):
-                    attribute_noise = self.attribute_noise_func(
-                        real_batch[0].shape[0]
-                    ).to(self.device, non_blocking=True)
-                    feature_noise = self.feature_noise_func(real_batch[0].shape[0]).to(
-                        self.device, non_blocking=True
-                    )
+                    attribute_noise = self.attribute_noise_func(real_batch[0].shape[0])
+                    feature_noise = self.feature_noise_func(real_batch[0].shape[0])
 
                     # Both real and generated batch are always three element tuple of
                     # tensors. The tuple is structured as follows: (attribute_output,
