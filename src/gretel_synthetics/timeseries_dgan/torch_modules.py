@@ -78,9 +78,9 @@ class OutputDecoder(torch.nn.Module):
                             [
                                 (
                                     "linear",
-                                    torch.nn.Linear(input_dim, output.dim),
+                                    torch.nn.Linear(int(input_dim), int(output.dim)),
                                 ),
-                                ("softmax", torch.nn.Softmax(dim=dim_index)),
+                                ("softmax", torch.nn.Softmax(dim=int(dim_index))),
                             ]
                         )
                     )
@@ -101,7 +101,7 @@ class OutputDecoder(torch.nn.Module):
                             [
                                 (
                                     "linear",
-                                    torch.nn.Linear(input_dim, output.dim),
+                                    torch.nn.Linear(int(input_dim), int(output.dim)),
                                 ),
                                 ("normalization", normalizer),
                             ]
@@ -188,7 +188,6 @@ class Generator(torch.nn.Module):
             attribute_num_units,
             attribute_num_layers,
         )
-
         (
             self.additional_attribute_gen,
             additional_attribute_dim,
@@ -198,18 +197,19 @@ class Generator(torch.nn.Module):
             attribute_num_units,
             attribute_num_layers,
         )
-
         self.feature_gen = torch.nn.Sequential(
             OrderedDict(
                 [
                     (
                         "lstm",
                         torch.nn.LSTM(
-                            attribute_dim
-                            + additional_attribute_dim
-                            + feature_noise_dim,
-                            feature_num_units,
-                            feature_num_layers,
+                            int(
+                                attribute_dim
+                                + additional_attribute_dim
+                                + feature_noise_dim
+                            ),
+                            int(feature_num_units),
+                            int(feature_num_layers),
                             batch_first=True,
                         ),
                     ),
@@ -219,7 +219,7 @@ class Generator(torch.nn.Module):
                         Merger(
                             [
                                 OutputDecoder(
-                                    feature_num_units, feature_outputs, dim_index=2
+                                    int(feature_num_units), feature_outputs, dim_index=2
                                 )
                                 for _ in range(self.sample_len)
                             ],
@@ -254,16 +254,16 @@ class Generator(torch.nn.Module):
         if not outputs:
             return None, 0
         seq = []
-        last_dim = input_dim
+        last_dim = int(input_dim)
         for _ in range(num_layers):
-            seq.append(torch.nn.Linear(last_dim, num_units))
+            seq.append(torch.nn.Linear(int(last_dim), int(num_units)))
             seq.append(torch.nn.ReLU())
-            seq.append(torch.nn.BatchNorm1d(num_units))
-            last_dim = num_units
+            seq.append(torch.nn.BatchNorm1d(int(num_units)))
+            last_dim = int(num_units)
 
-        seq.append(OutputDecoder(last_dim, outputs, dim_index=1))
+        seq.append(OutputDecoder(int(last_dim), outputs, dim_index=1))
         attribute_dim = sum(output.dim for output in outputs)
-        return torch.nn.Sequential(*seq), attribute_dim
+        return torch.nn.Sequential(*seq), int(attribute_dim)
 
     def forward(
         self, attribute_noise: torch.Tensor, feature_noise: torch.Tensor
@@ -285,6 +285,7 @@ class Generator(torch.nn.Module):
         """
 
         # Attribute features exist
+
         empty_tensor = torch.Tensor(np.full((1, 1), np.nan))
 
         if self.attribute_gen is not None:
@@ -368,11 +369,11 @@ class Discriminator(torch.nn.Module):
         seq = []
         last_dim = input_dim
         for _ in range(num_layers):
-            seq.append(torch.nn.Linear(last_dim, num_units))
+            seq.append(torch.nn.Linear(int(last_dim), int(num_units)))
             seq.append(torch.nn.ReLU())
             last_dim = num_units
 
-        seq.append(torch.nn.Linear(last_dim, 1))
+        seq.append(torch.nn.Linear(int(last_dim), 1))
 
         self.seq = torch.nn.Sequential(*seq)
 

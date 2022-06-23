@@ -82,6 +82,10 @@ class DGANConfig:
             batch
         generator_rounds: training steps for the generator in each batch
         cuda: use GPU if available
+        mixed_precision_training: enabling automatic mixed precision while training
+            in order to reduce memory costs, bandwith, and time by identifying the
+            steps that require full precision and using 32-bit floating point for
+            only those steps while using 16-bit floating point everywhere else.
     """
 
     # Model structure
@@ -122,6 +126,7 @@ class DGANConfig:
     generator_rounds: int = 1
 
     cuda: bool = True
+    mixed_precision_training: bool = False
 
     def to_dict(self):
         """Return dictionary representation of DGANConfig.

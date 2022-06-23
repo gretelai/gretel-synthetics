@@ -321,8 +321,8 @@ class DGAN:
                 raise RuntimeError(
                     "generate() must receive either n or both attribute_noise and feature_noise"
                 )
-            attribute_noise = attribute_noise.to(self.device)
-            feature_noise = feature_noise.to(self.device)
+            attribute_noise = attribute_noise.to(self.device, non_blocking=True)
+            feature_noise = feature_noise.to(self.device, non_blocking=True)
 
             internal_data = self._generate(attribute_noise, feature_noise)
 
@@ -436,7 +436,8 @@ class DGAN:
             self.config.feature_num_units,
             self.config.feature_num_layers,
         )
-        self.generator.to(self.device)
+        self.generator.to(self.device, non_blocking=True)
+
         if self.attribute_outputs is None:
             self.attribute_outputs = []
         attribute_dim = sum(output.dim for output in self.attribute_outputs)
@@ -454,7 +455,7 @@ class DGAN:
             num_layers=5,
             num_units=200,
         )
-        self.feature_discriminator.to(self.device)
+        self.feature_discriminator.to(self.device, non_blocking=True)
 
         self.attribute_discriminator = None
         if not self.additional_attribute_outputs and not self.attribute_outputs:
@@ -466,7 +467,7 @@ class DGAN:
                 num_layers=5,
                 num_units=200,
             )
-            self.attribute_discriminator.to(self.device)
+            self.attribute_discriminator.to(self.device, non_blocking=True)
 
         self.attribute_noise_func = lambda batch_size: torch.randn(
             batch_size, self.config.attribute_noise_dim, device=self.device
@@ -529,7 +530,14 @@ class DGAN:
         """
 
         loader = DataLoader(
-            dataset, self.config.batch_size, shuffle=True, drop_last=True
+            dataset,
+            self.config.batch_size,
+            shuffle=True,
+            drop_last=True,
+            num_workers=2,
+            prefetch_factor=4,
+            persistent_workers=True,
+            pin_memory=True,
         )
 
         opt_discriminator = torch.optim.Adam(
@@ -556,94 +564,116 @@ class DGAN:
 
         # Set torch modules to training mode
         self._set_mode(True)
+        scaler = torch.cuda.amp.GradScaler(enabled=self.config.mixed_precision_training)
 
         for epoch in range(self.config.epochs):
             logger.info(f"epoch: {epoch}")
 
             for real_batch in loader:
                 global_step += 1
-                attribute_noise = self.attribute_noise_func(self.config.batch_size)
-                feature_noise = self.feature_noise_func(self.config.batch_size)
+                with torch.cuda.amp.autocast(
+                    enabled=self.config.mixed_precision_training
+                ):
+                    attribute_noise = self.attribute_noise_func(
+                        real_batch[0].shape[0]
+                    ).to(self.device, non_blocking=True)
+                    feature_noise = self.feature_noise_func(real_batch[0].shape[0]).to(
+                        self.device, non_blocking=True
+                    )
 
-                # Both real and generated batch are always three element tuple of
-                # tensors. The tuple is structured as follows: (attribute_output,
-                # additional_attribute_output, feature_output). If self.attribute_output
-                # and/or self.additional_attribute_output is empty, the respective
-                # tuple index will be filled with a placeholder nan-filled tensor.
-                # These nan-filled tensors get filtered out in the _discriminate,
-                # _get_gradient_penalty, and _discriminate_attributes functions.
+                    # Both real and generated batch are always three element tuple of
+                    # tensors. The tuple is structured as follows: (attribute_output,
+                    # additional_attribute_output, feature_output). If self.attribute_output
+                    # and/or self.additional_attribute_output is empty, the respective
+                    # tuple index will be filled with a placeholder nan-filled tensor.
+                    # These nan-filled tensors get filtered out in the _discriminate,
+                    # _get_gradient_penalty, and _discriminate_attributes functions.
 
-                generated_batch = self.generator(attribute_noise, feature_noise)
-                real_batch = [x.to(self.device) for x in real_batch]
+                    generated_batch = self.generator(attribute_noise, feature_noise)
+                    real_batch = [
+                        x.to(self.device, non_blocking=True) for x in real_batch
+                    ]
 
                 for _ in range(self.config.discriminator_rounds):
-                    opt_discriminator.zero_grad()
-                    generated_output = self._discriminate(generated_batch)
-                    real_output = self._discriminate(real_batch)
-
-                    loss_generated = torch.mean(generated_output)
-                    loss_real = -torch.mean(real_output)
-                    loss_gradient_penalty = self._get_gradient_penalty(
-                        generated_batch, real_batch, self._discriminate
+                    opt_discriminator.zero_grad(
+                        set_to_none=self.config.mixed_precision_training
                     )
-
-                    loss = (
-                        loss_generated
-                        + loss_real
-                        + self.config.gradient_penalty_coef * loss_gradient_penalty
-                    )
-
-                    loss.backward(retain_graph=True)
-                    opt_discriminator.step()
-
-                    if opt_attribute_discriminator is not None:
-                        opt_attribute_discriminator.zero_grad()
-                        # Exclude features (last element of batches) for
-                        # attribute discriminator
-                        generated_output = self._discriminate_attributes(
-                            generated_batch[:-1]
-                        )
-                        real_output = self._discriminate_attributes(real_batch[:-1])
+                    with torch.cuda.amp.autocast(enabled=True):
+                        generated_output = self._discriminate(generated_batch)
+                        real_output = self._discriminate(real_batch)
 
                         loss_generated = torch.mean(generated_output)
                         loss_real = -torch.mean(real_output)
                         loss_gradient_penalty = self._get_gradient_penalty(
-                            generated_batch[:-1],
-                            real_batch[:-1],
-                            self._discriminate_attributes,
+                            generated_batch, real_batch, self._discriminate
                         )
 
-                        attribute_loss = (
+                        loss = (
                             loss_generated
                             + loss_real
-                            + self.config.attribute_gradient_penalty_coef
-                            * loss_gradient_penalty
+                            + self.config.gradient_penalty_coef * loss_gradient_penalty
                         )
 
-                        attribute_loss.backward(retain_graph=True)
-                        opt_attribute_discriminator.step()
+                    scaler.scale(loss).backward(retain_graph=True)
+                    scaler.step(opt_discriminator)
+                    scaler.update()
+
+                    if opt_attribute_discriminator is not None:
+                        opt_attribute_discriminator.zero_grad(set_to_none=False)
+                        # Exclude features (last element of batches) for
+                        # attribute discriminator
+                        with torch.cuda.amp.autocast(
+                            enabled=self.config.mixed_precision_training
+                        ):
+                            generated_output = self._discriminate_attributes(
+                                generated_batch[:-1]
+                            )
+                            real_output = self._discriminate_attributes(real_batch[:-1])
+
+                            loss_generated = torch.mean(generated_output)
+                            loss_real = -torch.mean(real_output)
+                            loss_gradient_penalty = self._get_gradient_penalty(
+                                generated_batch[:-1],
+                                real_batch[:-1],
+                                self._discriminate_attributes,
+                            )
+
+                            attribute_loss = (
+                                loss_generated
+                                + loss_real
+                                + self.config.attribute_gradient_penalty_coef
+                                * loss_gradient_penalty
+                            )
+
+                        scaler.scale(attribute_loss).backward(retain_graph=True)
+                        scaler.step(opt_attribute_discriminator)
+                        scaler.update()
 
                 for _ in range(self.config.generator_rounds):
-                    opt_generator.zero_grad()
-                    generated_output = self._discriminate(generated_batch)
+                    opt_generator.zero_grad(set_to_none=False)
+                    with torch.cuda.amp.autocast(
+                        enabled=self.config.mixed_precision_training
+                    ):
+                        generated_output = self._discriminate(generated_batch)
 
-                    if self.attribute_discriminator:
-                        # Exclude features (last element of batch) before
-                        # calling attribute discriminator
-                        attribute_generated_output = self._discriminate_attributes(
-                            generated_batch[:-1]
-                        )
+                        if self.attribute_discriminator:
+                            # Exclude features (last element of batch) before
+                            # calling attribute discriminator
+                            attribute_generated_output = self._discriminate_attributes(
+                                generated_batch[:-1]
+                            )
 
-                        loss = -torch.mean(
-                            generated_output
-                        ) + self.config.attribute_loss_coef * -torch.mean(
-                            attribute_generated_output
-                        )
-                    else:
-                        loss = -torch.mean(generated_output)
+                            loss = -torch.mean(
+                                generated_output
+                            ) + self.config.attribute_loss_coef * -torch.mean(
+                                attribute_generated_output
+                            )
+                        else:
+                            loss = -torch.mean(generated_output)
 
-                    loss.backward()
-                    opt_generator.step()
+                    scaler.scale(loss).backward()
+                    scaler.step(opt_generator)
+                    scaler.update()
 
     def _generate(
         self, attribute_noise: torch.Tensor, feature_noise: torch.Tensor
