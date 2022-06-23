@@ -80,6 +80,8 @@ The [timeseries DGAN module](https://synthetics.docs.gretel.ai/en/stable/models/
 pip install torch==1.11.0
 ```
 
+[This notebook](https://github.com/gretelai/gretel-synthetics/blob/master/examples/timeseries_dgan.ipynb) shows basic usage on a small data set of smart home sensor readings.
+
 ## Overview
 
 This package allows developers to quickly get immersed with synthetic data generation through the use of neural networks. The more complex pieces of working with libraries like Tensorflow and differential privacy are bundled into friendly Python classes and functions. There are two high level modes that can be utilized.
