@@ -249,8 +249,8 @@ class BaseTokenizer(Base):
         params_file = Path(self._model_dir) / self.settings_fname
         if not params_file.is_file():
             self.settings = {}
-
-        self.settings = json.loads(params_file.read_text())
+        else:
+            self.settings = json.loads(params_file.read_text())
 
     @classmethod
     @abstractmethod
