@@ -136,3 +136,13 @@ class DGANConfig:
             object, e.g., `DGANConfig(**config.to_dict())`
         """
         return asdict(self)
+
+
+class DfStyle(str, Enum):
+    """Supported styles for parsing pandas DataFrames.
+
+    See `train_dataframe` method in dgan.py for details.
+    """
+
+    WIDE = "wide"
+    LONG = "long"

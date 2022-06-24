@@ -47,15 +47,16 @@ Sample usage:
 
 from __future__ import annotations
 
+import abc
 import logging
 
-from typing import List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 import torch
 
-from gretel_synthetics.timeseries_dgan.config import DGANConfig, OutputType
+from gretel_synthetics.timeseries_dgan.config import DfStyle, DGANConfig, OutputType
 from gretel_synthetics.timeseries_dgan.torch_modules import Discriminator, Generator
 from gretel_synthetics.timeseries_dgan.transformations import (
     create_additional_attribute_outputs,
@@ -136,8 +137,7 @@ class DGAN:
                 "feature_outputs and attribute_ouputs must either both be given or both be None"
             )
 
-        self.attribute_column_names = None
-        self.feature_column_names = None
+        self.data_frame_converter = None
 
     def train_numpy(
         self,
@@ -238,37 +238,70 @@ class DGAN:
     def train_dataframe(
         self,
         df: pd.DataFrame,
-        df_attribute_columns: Optional[List[Union[str, int]]] = None,
-        df_feature_columns: Optional[List[Union[str, int]]] = None,
-        attribute_types: Optional[List[OutputType]] = None,
-        feature_types: Optional[List[OutputType]] = None,
+        attribute_columns: Optional[List[str]] = None,
+        feature_columns: Optional[List[str]] = None,
+        example_id_column: Optional[str] = None,
+        time_column: Optional[str] = None,
+        discrete_columns: Optional[List[str]] = None,
+        df_style: DfStyle = DfStyle.WIDE,
     ):
         """Train DGAN model on data in pandas DataFrame.
 
-        Training data is passed as a DataFrame in "wide" format, with one row
-        representing one example with attribute columns and 1 column per time
-        point in the time series.
+        Training data can be in either "wide" or "long" format. "Wide" format
+        uses one row for each example with 0 or more attribute columns and 1
+        column per time point in the time series. "Wide" format is restricted to
+        1 feature variable. "Long" format uses one row per time point, supports
+        multiple feature variables, and uses additional example id to split into
+        examples and time column to sort.
 
         Args:
-            df: DataFrame of training data in "wide" format
-            df_attribute_columns: list of column names containing attributes. if None,
+            df: DataFrame of training data
+            attribute_columns: list of column names containing attributes, if None,
                 no attribute columns are used, Default: None
-            df_feature_columns: list of column names containing features, if None
+            feature_columns: list of column names containing features, if None
                 all non-attribute columns are used, Default: None
-            attribute_types: Specification of variable types, see train_numpy()
-                documentation for details
-            feature_types: Specification of variable types, see train_numpy()
-                documentation for details
+            example_id_column: column name used to split "long" format data
+                frame into multiple examples, if None, data is treated as a
+                single example
+            time_column: column name used to sort "long" format data frame,
+                if None, data frame order of rows/time points is used
+            discrete_columns: column names (either attributes or features) to
+                use discrete, onehot encoding, discrete values must be integer
+                in [0,1,2,3...]
+            df_style: str enum of "wide" or "long" indicating format of the
+                DataFrame
         """
-        attributes, features = self._extract_from_dataframe(
-            df, df_attribute_columns, df_feature_columns
-        )
+
+        if self.data_frame_converter is None:
+
+            if df_style == DfStyle.WIDE:
+                self.data_frame_converter = _WideDataFrameConverter.create(
+                    df,
+                    attribute_columns=attribute_columns,
+                    feature_columns=feature_columns,
+                    discrete_columns=discrete_columns,
+                )
+            elif df_style == DfStyle.LONG:
+                self.data_frame_converter = _LongDataFrameConverter.create(
+                    df,
+                    attribute_columns=attribute_columns,
+                    feature_columns=feature_columns,
+                    example_id_column=example_id_column,
+                    time_column=time_column,
+                    discrete_columns=discrete_columns,
+                )
+            else:
+                raise ValueError(
+                    f"df_style param must be an enum value DfStyle ('wide' or 'long'), received '{df_style}'"
+                )
+
+        attributes, features = self.data_frame_converter.convert(df)
 
         self.train_numpy(
             attributes=attributes,
             features=features,
-            attribute_types=attribute_types,
-            feature_types=feature_types,
+            attribute_types=self.data_frame_converter.attribute_types,
+            feature_types=self.data_frame_converter.feature_types,
         )
 
     def generate_numpy(
@@ -370,34 +403,12 @@ class DGAN:
             feature_noise: noise vectors to create synthetic data
 
         Returns:
-            pandas DataFrame in "wide" format
+            pandas DataFrame in same format used in 'train_dataframe' call
         """
 
         attributes, features = self.generate_numpy(n, attribute_noise, feature_noise)
-        if features.shape[2] != 1:
-            raise RuntimeError(
-                "Generating a dataframe is not supported with more than 1 feature variable"
-            )
 
-        if attributes is not None:
-            data = np.concatenate(
-                (attributes, features.reshape(features.shape[0], features.shape[1])),
-                axis=1,
-            )
-
-            columns = None
-            if (
-                self.attribute_column_names is not None
-                and self.feature_column_names is not None
-            ):
-                columns = np.concatenate(
-                    (self.attribute_column_names, self.feature_column_names),
-                )
-        else:
-            data = features.reshape(features.shape[0], features.shape[1])
-            columns = self.feature_column_names
-        df = pd.DataFrame(data, columns=columns)
-        return df
+        return self.data_frame_converter.invert(attributes, features)
 
     def _build(
         self,
@@ -823,54 +834,6 @@ class DGAN:
         if self.attribute_discriminator:
             self.attribute_discriminator.train(mode)
 
-    def _extract_from_dataframe(
-        self,
-        df: pd.DataFrame,
-        attribute_columns: Optional[List[Union[str, int]]] = None,
-        feature_columns: Optional[List[Union[str, int]]] = None,
-    ) -> AttributeFeaturePair:
-        """Extract attribute and feature arrays from a single pandas DataFrame
-
-        Note this method only supports time series of 1 variable where the time
-        steps are represented as separate columns in the DataFrame.
-
-        Args:
-
-            df: DataFrame of time series data in a "wide" format, each row is an
-                example with some columns as attributes and a column for each time
-                step in the time series.
-            attribute_columns: column names or indices for the attributes, may be an
-                empty list if there are no attributes
-            feature_columns: column names or indices for the features, if not
-                specified, all non-attribute columns will be used
-
-        Returns:
-            Tuple of (attributes, features)
-        """
-        if attribute_columns:
-            attributes = df[attribute_columns].to_numpy()
-        else:
-            attributes = None
-
-        if feature_columns is None:
-            if attribute_columns is not None:
-                features_df = df.drop(columns=attribute_columns)
-            else:
-                features_df = df
-        else:
-            features_df = df[feature_columns]
-
-        # Store column names so we can make a similar dataframe when generating
-        # synthetic data.
-        self.attribute_column_names = attribute_columns
-        self.feature_column_names = features_df.columns
-
-        # Convert from 2-d to 3-d array with dimension of 1 on the last dim (the
-        # number of variables at each time point).
-        features = np.expand_dims(features_df.to_numpy(), axis=-1)
-
-        return attributes, features
-
     def save(self, file_name: str, **kwargs):
         """Save DGAN model to a file.
 
@@ -892,11 +855,8 @@ class DGAN:
                 "attribute_discriminator_state_dict"
             ] = self.attribute_discriminator.state_dict()
 
-        if self.attribute_column_names is not None:
-            state["attribute_column_names"] = self.attribute_column_names
-
-        if self.feature_column_names is not None:
-            state["feature_column_names"] = self.feature_column_names
+        if self.data_frame_converter is not None:
+            state["data_frame_converter"] = self.data_frame_converter.state_dict()
 
         torch.save(state, file_name, **kwargs)
 
@@ -935,10 +895,477 @@ class DGAN:
                 state["attribute_discriminator_state_dict"]
             )
 
-        if "feature_column_names" in state:
-            dgan.feature_column_names = state["feature_column_names"]
-
-        if "attribute_column_names" in state:
-            dgan.attribute_column_names = state["attribute_column_names"]
+        if "data_frame_converter" in state:
+            dgan.data_frame_converter = _DataFrameConverter.load_from_state_dict(
+                state["data_frame_converter"]
+            )
 
         return dgan
+
+
+class _DataFrameConverter(abc.ABC):
+    """Abstract class for converting DGAN input to and from a DataFrame."""
+
+    @property
+    @abc.abstractmethod
+    def name(self) -> str:
+        """Class name used for serialization."""
+        ...
+
+    @property
+    @abc.abstractmethod
+    def attribute_types(self) -> List[OutputType]:
+        """Output types used for attributes."""
+        ...
+
+    @property
+    @abc.abstractmethod
+    def feature_types(self) -> List[OutputType]:
+        """Output types used for features."""
+        ...
+
+    @abc.abstractmethod
+    def convert(self, df: pd.DataFrame) -> AttributeFeaturePair:
+        """Convert DataFrame to DGAN input format.
+
+        Args:
+            df: DataFrame of training data
+
+        Returns:
+            Attribute (optional) and feature numpy arrays.
+        """
+        ...
+
+    @abc.abstractmethod
+    def invert(
+        self, attributes: Optional[np.ndarray], features: np.ndarray
+    ) -> pd.DataFrame:
+        """Invert from DGAN input format back to DataFrame.
+
+        Args:
+            attributes: 2d numpy array of attributes
+            features: 3d numpy array of features
+
+        Returns:
+            DataFrame representing attributes and features in original format.
+        """
+        ...
+
+    def state_dict(self) -> Dict:
+        """Dictionary describing this converter to use in saving and loading."""
+        state = self._state_dict()
+        state["name"] = self.name
+        return state
+
+    @abc.abstractmethod
+    def _state_dict() -> Dict:
+        """Subclass specific dictionary for saving and loading."""
+        ...
+
+    @classmethod
+    def load_from_state_dict(cls, state: Dict) -> _DataFrameConverter:
+        """Load a converter previously saved to a state dictionary."""
+        # Assumes saved state was created with `state_dict()` method with name
+        # and other params to initialize the class specified in
+        # CONVERTER_CLASS_MAP. Care is required when modifying constructor
+        # params or changing names if backwards compatibility is required.
+        sub_class = CONVERTER_CLASS_MAP[state.pop("name")]
+
+        return sub_class(**state)
+
+
+class _WideDataFrameConverter(_DataFrameConverter):
+    """Convert "wide" format DataFrames.
+
+    Expects one row for each example with 0 or more attribute columns and 1
+    column per time point in the time series.
+    """
+
+    def __init__(
+        self,
+        attribute_columns: List[str],
+        feature_columns: List[str],
+        discrete_columns: List[str],
+        df_column_order: List[str],
+        attribute_types: List[OutputType],
+        feature_types: List[OutputType],
+    ):
+        super().__init__()
+        self._attribute_columns = attribute_columns
+        self._feature_columns = feature_columns
+        self._discrete_columns = discrete_columns
+        self._df_column_order = df_column_order
+        self._attribute_types = attribute_types
+        self._feature_types = feature_types
+
+    @classmethod
+    def create(
+        cls,
+        df: pd.DataFrame,
+        attribute_columns: Optional[List[str]] = None,
+        feature_columns: Optional[List[str]] = None,
+        discrete_columns: Optional[List[str]] = None,
+    ) -> _WideDataFrameConverter:
+        """Create a converter instance.
+
+        See `train_dataframe` for parameter details.
+        """
+        if attribute_columns is None:
+            attribute_columns = []
+        else:
+            attribute_columns = attribute_columns
+
+        if feature_columns is None:
+            feature_columns = [c for c in df.columns if c not in attribute_columns]
+        else:
+            feature_columns = feature_columns
+
+        df_column_order = [
+            c for c in df.columns if c in attribute_columns or c in feature_columns
+        ]
+
+        if discrete_columns is None:
+            discrete_column_set = set()
+            discrete_columns = []
+        else:
+            discrete_column_set = set(discrete_columns)
+            discrete_columns = discrete_columns
+
+        attribute_types = [
+            OutputType.DISCRETE if c in discrete_column_set else OutputType.CONTINUOUS
+            for c in attribute_columns
+        ]
+        # With wide format, there's always 1 feature. It's only discrete if
+        # every column used (every time point) is discrete.
+        if all(c in discrete_column_set for c in feature_columns):
+            feature_types = [OutputType.DISCRETE]
+        else:
+            feature_types = [OutputType.CONTINUOUS]
+
+        return _WideDataFrameConverter(
+            attribute_columns=attribute_columns,
+            feature_columns=feature_columns,
+            discrete_columns=discrete_columns,
+            df_column_order=df_column_order,
+            attribute_types=attribute_types,
+            feature_types=feature_types,
+        )
+
+    @property
+    def name(self) -> str:
+        return "WideDataFrameConverter"
+
+    @property
+    def attribute_types(self):
+        return self._attribute_types
+
+    @property
+    def feature_types(self):
+        return self._feature_types
+
+    def convert(self, df: pd.DataFrame) -> AttributeFeaturePair:
+        if self._attribute_columns:
+            attributes = df[self._attribute_columns].to_numpy()
+        else:
+            attributes = None
+
+        features = np.expand_dims(df[self._feature_columns].to_numpy(), axis=-1)
+
+        return attributes, features
+
+    def invert(
+        self, attributes: Optional[np.ndarray], features: np.ndarray
+    ) -> pd.DataFrame:
+        if self._attribute_columns:
+            if attributes is None:
+                raise ValueError(
+                    "Data converter with attribute columns expects attributes array, received None"
+                )
+            data = np.concatenate(
+                (attributes, features.reshape(features.shape[0], features.shape[1])),
+                axis=1,
+            )
+        else:
+            data = features.reshape(features.shape[0], features.shape[1])
+
+        df = pd.DataFrame(data, columns=self._attribute_columns + self._feature_columns)
+
+        # Convert discrete columns to int to match inputs
+        for c in self._discrete_columns:
+            df[c] = df[c].astype("int")
+
+        # Ensure we match the original ordering
+        return df[self._df_column_order]
+
+    def _state_dict(self) -> Dict:
+        return {
+            "attribute_columns": self._attribute_columns,
+            "feature_columns": self._feature_columns,
+            "discrete_columns": self._discrete_columns,
+            "df_column_order": self._df_column_order,
+            "attribute_types": self._attribute_types,
+            "feature_types": self._feature_types,
+        }
+
+
+class _LongDataFrameConverter(_DataFrameConverter):
+    """Convert "long" format DataFrames.
+
+    Expects one row per time point. Splits into examples based on specified
+    example id column.
+    """
+
+    def __init__(
+        self,
+        attribute_columns: List[str],
+        feature_columns: List[str],
+        example_id_column: Optional[str],
+        time_column: Optional[str],
+        discrete_columns: List[str],
+        df_column_order: List[str],
+        attribute_types: List[OutputType],
+        feature_types: List[OutputType],
+        time_column_values: Optional[List[str]],
+    ):
+        super().__init__()
+        self._attribute_columns = attribute_columns
+        self._feature_columns = feature_columns
+        self._example_id_column = example_id_column
+        self._time_column = time_column
+        self._discrete_columns = discrete_columns
+        self._df_column_order = df_column_order
+        self._attribute_types = attribute_types
+        self._feature_types = feature_types
+        self._time_column_values = time_column_values
+
+    @classmethod
+    def create(
+        cls,
+        df: pd.DataFrame,
+        attribute_columns: Optional[List[str]] = None,
+        feature_columns: Optional[List[str]] = None,
+        example_id_column: Optional[str] = None,
+        time_column: Optional[str] = None,
+        discrete_columns: Optional[List[str]] = None,
+    ):
+        """Create a converter instance.
+
+        See `train_dataframe` for parameter details.
+        """
+        if attribute_columns is None:
+            attribute_columns = []
+        else:
+            attribute_columns = attribute_columns
+
+        given_columns = set(attribute_columns)
+        if example_id_column is not None:
+            given_columns.add(example_id_column)
+        if time_column is not None:
+            given_columns.add(time_column)
+
+        if feature_columns is None:
+            # If not specified, use remaining columns in the data frame that
+            # are not used elsewhere
+            feature_columns = [c for c in df.columns if c not in given_columns]
+        else:
+            feature_columns = feature_columns
+
+        # Add feature columns too, so given_columns contains all columns of df
+        # that we are actually using
+        given_columns.update(feature_columns)
+
+        df_column_order = [c for c in df.columns if c in given_columns]
+
+        if discrete_columns is None:
+            discrete_column_set = set()
+            discrete_columns = []
+        else:
+            discrete_column_set = set(discrete_columns)
+            discrete_columns = discrete_columns
+
+        attribute_types = [
+            OutputType.DISCRETE if c in discrete_column_set else OutputType.CONTINUOUS
+            for c in attribute_columns
+        ]
+        feature_types = [
+            OutputType.DISCRETE if c in discrete_column_set else OutputType.CONTINUOUS
+            for c in feature_columns
+        ]
+
+        if time_column:
+            if example_id_column:
+                # Assume all examples are for the same time points, e.g., always
+                # from 2020 even if df has examples from different years.
+                df_time_example = df[[time_column, example_id_column]]
+                time_values = df_time_example.groupby(example_id_column).apply(
+                    pd.DataFrame.to_numpy
+                )[0][:, 0]
+
+                time_column_values = list(sorted(time_values))
+            else:
+                time_column_values = list(sorted(df[time_column]))
+        else:
+            time_column_values = None
+
+        return cls(
+            attribute_columns=attribute_columns,
+            feature_columns=feature_columns,
+            example_id_column=example_id_column,
+            time_column=time_column,
+            discrete_columns=discrete_columns,
+            df_column_order=df_column_order,
+            attribute_types=attribute_types,
+            feature_types=feature_types,
+            time_column_values=time_column_values,
+        )
+
+    @property
+    def name(self) -> str:
+        return "LongDataFrameConverter"
+
+    @property
+    def attribute_types(self):
+        return self._attribute_types
+
+    @property
+    def feature_types(self):
+        return self._feature_types
+
+    def convert(self, df: pd.DataFrame) -> AttributeFeaturePair:
+
+        if self._time_column is not None:
+            sorted_df = df.sort_values(by=[self._time_column])
+        else:
+            sorted_df = df
+
+        if self._example_id_column is not None:
+            # Use example_id_column to split into separate time series
+            df_features = sorted_df[self._feature_columns]
+
+            features = np.stack(
+                list(
+                    df_features.groupby(sorted_df[self._example_id_column]).apply(
+                        pd.DataFrame.to_numpy
+                    )
+                ),
+                axis=0,
+            )
+
+            if self._attribute_columns:
+                df_attributes = sorted_df[
+                    self._attribute_columns + [self._example_id_column]
+                ]
+
+                # Check that attributes are the same for all rows with the same
+                # example id
+                attribute_mins = df_attributes.groupby(self._example_id_column).min()
+                attribute_maxes = df_attributes.groupby(self._example_id_column).max()
+                for column in self._attribute_columns:
+                    comparison = attribute_mins[column] != attribute_maxes[column]
+                    if comparison.any():
+                        raise ValueError(
+                            f"Attribute {column} is not constant within each example."
+                        )
+
+                attributes = (
+                    df_attributes.groupby(self._example_id_column).min().to_numpy()
+                )
+            else:
+                attributes = None
+        else:
+            # No example_id column provided to create multiple examples, so we
+            # create one example from all time points.
+            features = np.expand_dims(
+                sorted_df[self._feature_columns].to_numpy(), axis=0
+            )
+
+            # Check that attributes are the same for all rows (since they are
+            # all implicitly in the same example)
+            for column in self._attribute_columns:
+                if sorted_df[column].nunique() != 1:
+                    raise ValueError(
+                        f"Attribute {column} is not constant for all rows."
+                    )
+
+            if self._attribute_columns:
+                # With one example, attributes should all be constant, so grab from
+                # the first row. Need to add first (example) dimension.
+                attributes = np.expand_dims(
+                    sorted_df[self._attribute_columns].iloc[0, :].to_numpy(), axis=0
+                )
+            else:
+                attributes = None
+
+        return attributes, features
+
+    def invert(
+        self, attributes: Optional[np.ndarray], features: np.ndarray
+    ) -> pd.DataFrame:
+        num_examples = features.shape[0]
+        num_time_points = features.shape[1]
+        num_features = features.shape[2]
+
+        if num_features != len(self._feature_columns):
+            raise ValueError(
+                "Unable to invert features back to data frame, "
+                + f"converter expected {len(self._feature_columns)} features, "
+                + f"received numpy array with {features.shape[2]}"
+            )
+
+        # Reshape so each time point is its own row in a 2d array
+        long_features = features.reshape(-1, num_features)
+
+        if self._attribute_columns:
+            if attributes is None:
+                raise ValueError(
+                    "Data converter with attribute columns expects attributes array, received None"
+                )
+            # Repeat attribute rows for every time point in each example
+            long_attributes = np.repeat(attributes, num_time_points, axis=0)
+
+            df = pd.DataFrame(
+                np.hstack((long_attributes, long_features)),
+                columns=self._attribute_columns + self._feature_columns,
+            )
+        else:
+            df = pd.DataFrame(
+                long_features,
+                columns=self._feature_columns,
+            )
+
+        for c in self._discrete_columns:
+            df[c] = df[c].astype("int")
+
+        if self._example_id_column:
+            # Use [0,1,2,...] for example_id
+            # This may not match the style of the originally converted data
+            df[self._example_id_column] = np.repeat(
+                range(num_examples), num_time_points
+            )
+
+        if self._time_column:
+            if self._time_column_values is None:
+                raise RuntimeError("time_column is present, but not time_column_values")
+
+            df[self._time_column] = np.tile(self._time_column_values, num_examples)
+
+        return df[self._df_column_order]
+
+    def _state_dict(self) -> Dict:
+        return {
+            "attribute_columns": self._attribute_columns,
+            "feature_columns": self._feature_columns,
+            "example_id_column": self._example_id_column,
+            "time_column": self._time_column,
+            "df_column_order": self._df_column_order,
+            "discrete_columns": self._discrete_columns,
+            "attribute_types": self._attribute_types,
+            "feature_types": self._feature_types,
+            "time_column_values": self._time_column_values,
+        }
+
+
+CONVERTER_CLASS_MAP = {
+    "WideDataFrameConverter": _WideDataFrameConverter,
+    "LongDataFrameConverter": _LongDataFrameConverter,
+}

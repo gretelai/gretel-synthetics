@@ -6,15 +6,22 @@ import pandas as pd
 import pytest
 
 from gretel_synthetics.timeseries_dgan.config import (
+    DfStyle,
     DGANConfig,
     Normalization,
     OutputType,
 )
-from gretel_synthetics.timeseries_dgan.dgan import DGAN
+from gretel_synthetics.timeseries_dgan.dgan import (
+    _DataFrameConverter,
+    _LongDataFrameConverter,
+    _WideDataFrameConverter,
+    DGAN,
+)
 from gretel_synthetics.timeseries_dgan.transformations import (
     ContinuousOutput,
     DiscreteOutput,
 )
+from pandas.testing import assert_frame_equal
 
 
 @pytest.fixture
@@ -222,7 +229,32 @@ def test_train_numpy_no_attributes_1(
     assert features.shape == (18, 20, 2)
 
 
-def test_train_dataframe(config: DGANConfig):
+def test_train_numpy_no_attributes_2(config: DGANConfig):
+    features = np.random.rand(100, 20, 2)
+    n_samples = 10
+    config.epochs = 1
+    model_attributes_blank = DGAN(config=config)
+    model_attributes_blank.train_numpy(features=features)
+    synthetic_attributes, synthetic_features = model_attributes_blank.generate_numpy(
+        n_samples
+    )
+
+    assert type(model_attributes_blank) == DGAN
+    assert synthetic_attributes == None
+    assert synthetic_features.shape == (n_samples, features.shape[1], features.shape[2])
+
+    model_attributes_none = DGAN(config)
+    model_attributes_none.train_numpy(attributes=None, features=features)
+    synthetic_attributes, synthetic_features = model_attributes_none.generate_numpy(
+        n_samples
+    )
+
+    assert type(model_attributes_none) == DGAN
+    assert synthetic_attributes == None
+    assert synthetic_features.shape == (n_samples, features.shape[1], features.shape[2])
+
+
+def test_train_dataframe_wide(config: DGANConfig):
     n = 50
     df = pd.DataFrame(
         {
@@ -242,8 +274,9 @@ def test_train_dataframe(config: DGANConfig):
 
     dg.train_dataframe(
         df=df,
-        df_attribute_columns=["a1", "a2"],
-        attribute_types=[OutputType.DISCRETE, OutputType.CONTINUOUS],
+        attribute_columns=["a1", "a2"],
+        discrete_columns=["a1"],
+        df_style=DfStyle.WIDE,
     )
 
     synthetic_df = dg.generate_dataframe(5)
@@ -273,8 +306,9 @@ def test_train_dataframe_batch_size_larger_than_dataset(config: DGANConfig):
 
     dg.train_dataframe(
         df=df,
-        df_attribute_columns=["a1", "a2"],
-        attribute_types=[OutputType.DISCRETE, OutputType.CONTINUOUS],
+        attribute_columns=["a1", "a2"],
+        discrete_columns=["a1"],
+        df_style=DfStyle.WIDE,
     )
 
     synthetic_df = dg.generate_dataframe(5)
@@ -302,8 +336,9 @@ def test_train_dataframe_batch_size_not_divisible_by_dataset_length(config: DGAN
 
     dg.train_dataframe(
         df=df,
-        df_attribute_columns=["a1", "a2"],
-        attribute_types=[OutputType.DISCRETE, OutputType.CONTINUOUS],
+        attribute_columns=["a1", "a2"],
+        discrete_columns=["a1"],
+        df_style=DfStyle.WIDE,
     )
 
     synthetic_df = dg.generate_dataframe(5)
@@ -311,7 +346,7 @@ def test_train_dataframe_batch_size_not_divisible_by_dataset_length(config: DGAN
     assert list(synthetic_df.columns) == list(df.columns)
 
 
-def test_train_dataframe_no_attributes(config: DGANConfig):
+def test_train_dataframe_wide_no_attributes(config: DGANConfig):
     n = 50
     df = pd.DataFrame(
         {
@@ -327,7 +362,7 @@ def test_train_dataframe_no_attributes(config: DGANConfig):
     config.epochs = 1
 
     dg = DGAN(config=config)
-    dg.train_dataframe(df=df)
+    dg.train_dataframe(df=df, df_style=DfStyle.WIDE)
 
     assert type(dg) == DGAN
 
@@ -338,99 +373,614 @@ def test_train_dataframe_no_attributes(config: DGANConfig):
     assert list(synthetic_df.columns) == list(df.columns)
 
 
-def test_train_numpy_no_attributes_2(config: DGANConfig):
-    features = np.random.rand(100, 20, 2)
-    n_samples = 10
-    config.epochs = 1
-    model_attributes_blank = DGAN(config=config)
-    model_attributes_blank.train_numpy(features=features)
-    synthetic_attributes, synthetic_features = model_attributes_blank.generate_numpy(
-        n_samples
-    )
-
-    assert type(model_attributes_blank) == DGAN
-    assert synthetic_attributes == None
-    assert synthetic_features.shape == (n_samples, features.shape[1], features.shape[2])
-
-    model_attributes_none = DGAN(config)
-    model_attributes_none.train_numpy(attributes=None, features=features)
-    synthetic_attributes, synthetic_features = model_attributes_none.generate_numpy(
-        n_samples
-    )
-
-    assert type(model_attributes_none) == DGAN
-    assert synthetic_attributes == None
-    assert synthetic_features.shape == (n_samples, features.shape[1], features.shape[2])
-
-
-def test_extract_from_dataframe(config):
+def test_train_dataframe_long(config: DGANConfig):
+    n = 500
     df = pd.DataFrame(
         {
-            "a1": np.random.randint(0, 3, size=6),
-            "a2": np.random.rand(6),
-            "2022-01-01": np.random.rand(6),
-            "2022-02-01": np.random.rand(6),
-            "2022-03-01": np.random.rand(6),
-            "2022-04-01": np.random.rand(6),
+            "example_id": np.repeat(range(n), 4),
+            "a1": np.repeat(np.random.randint(0, 3, size=n), 4),
+            "a2": np.repeat(np.random.rand(n), 4),
+            "f1": np.random.rand(4 * n),
+            "f2": np.random.rand(4 * n),
         }
     )
 
+    config.max_sequence_len = 4
+    config.sample_len = 2
+
     dg = DGAN(config=config)
 
-    attributes, features = dg._extract_from_dataframe(
-        df, attribute_columns=["a1", "a2"]
+    dg.train_dataframe(
+        df=df,
+        attribute_columns=["a1", "a2"],
+        example_id_column="example_id",
+        discrete_columns=["a1"],
+        df_style=DfStyle.LONG,
     )
+
+    synthetic_df = dg.generate_dataframe(5)
+
+    assert synthetic_df.shape == (5 * 4, 5)
+    assert list(synthetic_df.columns) == list(df.columns)
+
+
+def test_train_dataframe_long_no_attributes(config: DGANConfig):
+    n = 500
+    df = pd.DataFrame(
+        {
+            "example_id": np.repeat(range(n), 4),
+            "f1": np.random.rand(4 * n),
+            "f2": np.random.rand(4 * n),
+        }
+    )
+
+    config.max_sequence_len = 4
+    config.sample_len = 4
+
+    dg = DGAN(config=config)
+
+    dg.train_dataframe(
+        df=df,
+        example_id_column="example_id",
+        df_style=DfStyle.LONG,
+    )
+
+    synthetic_df = dg.generate_dataframe(5)
+
+    assert synthetic_df.shape == (5 * 4, 3)
+    assert list(synthetic_df.columns) == list(df.columns)
+
+
+@pytest.fixture
+def df_wide() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "a1": [1, 2, 2, 0, 0, 1],
+            "a2": [5.0, 2.5, -1.0, 3.0, 2.0, 1.0],
+            "2022-01-01": [1.0, 1.0, 1.0, 2.0, 2.0, 5.0],
+            "2022-02-01": [2.0, 3.0, 4.0, 3.0, 2.0, -1.0],
+            "2022-03-01": [2.5, 4.0, 5.0, 1.5, 2.0, 0.0],
+        }
+    )
+
+
+def test_wide_data_frame_converter1(df_wide):
+    expected_attributes = [
+        [1, 5.0],
+        [2, 2.5],
+        [2, -1.0],
+        [0, 3.0],
+        [0, 2.0],
+        [1, 1.0],
+    ]
+    expected_features = [
+        [[1.0], [2.0], [2.5]],
+        [[1.0], [3.0], [4.0]],
+        [[1.0], [4.0], [5.0]],
+        [[2.0], [3.0], [1.5]],
+        [[2.0], [2.0], [2.0]],
+        [[5.0], [-1.0], [0.0]],
+    ]
+    converter = _WideDataFrameConverter.create(
+        df_wide, attribute_columns=["a1", "a2"], discrete_columns=["a1"]
+    )
+    attributes, features = converter.convert(df_wide)
 
     assert attributes.shape == (6, 2)
-    assert features.shape == (6, 4, 1)
+    assert features.shape == (6, 3, 1)
 
-    attributes, features = dg._extract_from_dataframe(
-        df,
+    np.testing.assert_allclose(attributes, expected_attributes)
+    np.testing.assert_allclose(features, expected_features)
+
+    # Check invert produces original df
+    df_out = converter.invert(attributes, features)
+
+    assert_frame_equal(df_out, df_wide)
+
+
+def test_wide_data_frame_converter2(df_wide):
+    expected_attributes = [
+        [1],
+        [2],
+        [2],
+        [0],
+        [0],
+        [1],
+    ]
+    expected_features = [
+        [[1.0], [2.0], [2.5]],
+        [[1.0], [3.0], [4.0]],
+        [[1.0], [4.0], [5.0]],
+        [[2.0], [3.0], [1.5]],
+        [[2.0], [2.0], [2.0]],
+        [[5.0], [-1.0], [0.0]],
+    ]
+
+    converter = _WideDataFrameConverter.create(
+        df_wide,
         attribute_columns=["a1"],
-        feature_columns=["2022-01-01", "2022-02-01", "2022-03-01", "2022-04-01"],
+        feature_columns=["2022-01-01", "2022-02-01", "2022-03-01"],
+        discrete_columns=["a1"],
     )
+    attributes, features = converter.convert(df_wide)
 
     assert attributes.shape == (6, 1)
-    assert features.shape == (6, 4, 1)
+    assert features.shape == (6, 3, 1)
+
+    np.testing.assert_allclose(attributes, expected_attributes)
+    np.testing.assert_allclose(features, expected_features)
+
+    # Check invert produces original df
+    df_out = converter.invert(attributes, features)
+
+    assert_frame_equal(df_out, df_wide.drop(columns=["a2"]))
 
 
-def test_extract_from_dataframe_no_attributes(config):
-    dg = DGAN(config=config)
-    df = pd.DataFrame(
-        {
-            "2022-01-01": np.random.rand(6),
-            "2022-02-01": np.random.rand(6),
-            "2022-03-01": np.random.rand(6),
-        }
-    )
-    attributes, features = dg._extract_from_dataframe(
-        df,
+def test_wide_data_frame_converter_no_attributes(df_wide):
+    expected_features = [
+        [[1.0], [2.0], [2.5]],
+        [[1.0], [3.0], [4.0]],
+        [[1.0], [4.0], [5.0]],
+        [[2.0], [3.0], [1.5]],
+        [[2.0], [2.0], [2.0]],
+        [[5.0], [-1.0], [0.0]],
+    ]
+
+    converter = _WideDataFrameConverter.create(
+        df_wide,
+        attribute_columns=[],
         feature_columns=["2022-01-01", "2022-02-01", "2022-03-01"],
     )
+    attributes, features = converter.convert(df_wide)
 
     assert attributes == None
     assert features.shape == (6, 3, 1)
 
+    np.testing.assert_allclose(features, expected_features)
 
-def test_extract_from_dataframe_no_attributes_no_column_name(config):
-    dg = DGAN(config=config)
-    config.max_sequence_len = 3
-    config.sample_len = 1
-    config.epochs = 1
+    # Check invert produces original df
+    df_out = converter.invert(attributes, features)
 
-    df = pd.DataFrame(
+    assert_frame_equal(df_out, df_wide.drop(columns=["a1", "a2"]))
+
+
+def test_wide_data_frame_converter_no_attributes_no_column_name(df_wide):
+    df_wide.drop(columns=["a1", "a2"], inplace=True)
+
+    expected_features = [
+        [[1.0], [2.0], [2.5]],
+        [[1.0], [3.0], [4.0]],
+        [[1.0], [4.0], [5.0]],
+        [[2.0], [3.0], [1.5]],
+        [[2.0], [2.0], [2.0]],
+        [[5.0], [-1.0], [0.0]],
+    ]
+
+    converter = _WideDataFrameConverter.create(df_wide)
+    attributes, features = converter.convert(df_wide)
+
+    assert attributes == None
+    assert features.shape == (6, 3, 1)
+
+    np.testing.assert_allclose(features, expected_features)
+
+    # Check invert produces original df
+    df_out = converter.invert(attributes, features)
+
+    assert_frame_equal(df_out, df_wide)
+
+
+def test_wide_data_frame_converter_save_and_load(df_wide):
+    converter = _WideDataFrameConverter.create(
+        df_wide,
+        attribute_columns=["a1", "a2"],
+        discrete_columns=["a1"],
+    )
+
+    expected_attributes, expected_features = converter.convert(df_wide)
+
+    expected_df = converter.invert(expected_attributes, expected_features)
+
+    state = converter.state_dict()
+
+    loaded_converter = _DataFrameConverter.load_from_state_dict(state)
+
+    attributes, features = loaded_converter.convert(df_wide)
+
+    np.testing.assert_allclose(attributes, expected_attributes)
+    np.testing.assert_allclose(features, expected_features)
+
+    df = loaded_converter.invert(attributes, features)
+
+    assert_frame_equal(df, expected_df)
+
+
+@pytest.fixture
+def df_long() -> pd.DataFrame:
+    # Add an hour to the times so sorting just by the time column has a total
+    # ordering and is deterministic.
+    return pd.DataFrame(
         {
-            "2022-01-01": np.random.rand(6),
-            "2022-02-01": np.random.rand(6),
-            "2022-03-01": np.random.rand(6),
+            "example_id": [0, 0, 0, 1, 1, 1],
+            "time": [
+                "2022-01-01 00",
+                "2022-01-03 00",
+                "2022-01-02 00",
+                "2022-01-01 01",
+                "2022-01-02 01",
+                "2022-01-03 01",
+            ],
+            "a1": [10, 10, 10, 11, 11, 11],
+            "a2": [1.5, 1.5, 1.5, 3.3, 3.3, 3.3],
+            "f1": [101.0, 102.0, 103.0, 104.0, 105.0, 106.0],
+            "f2": [51.0, 50.0, 49.0, 48.0, 47.0, 46.0],
+            "f3": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
         }
     )
-    attributes, features = dg._extract_from_dataframe(
-        df,
+
+
+def test_long_data_frame_converter1(df_long):
+    # All column params are given
+    # Time column reorders some rows
+
+    expected_attributes = [
+        [10, 1.5],
+        [11, 3.3],
+    ]
+    expected_features = [
+        [[101.0, 51.0, 0.0], [103.0, 49.0, 0.0], [102.0, 50.0, 0.0]],
+        [[104.0, 48.0, 0.0], [105.0, 47.0, 0.0], [106.0, 46.0, 0.0]],
+    ]
+
+    converter = _LongDataFrameConverter.create(
+        df_long,
+        attribute_columns=["a1", "a2"],
+        feature_columns=["f1", "f2", "f3"],
+        example_id_column="example_id",
+        time_column="time",
+        discrete_columns=["a1"],
+    )
+    attributes, features = converter.convert(df_long)
+
+    assert attributes.shape == (2, 2)
+    assert features.shape == (2, 3, 3)
+
+    np.testing.assert_allclose(attributes, expected_attributes)
+    np.testing.assert_allclose(features, expected_features)
+
+    # Check works the same if feature column param is omitted
+    converter = _LongDataFrameConverter.create(
+        df_long,
+        attribute_columns=["a1", "a2"],
+        example_id_column="example_id",
+        time_column="time",
+        discrete_columns=["a1"],
+    )
+    attributes, features = converter.convert(df_long)
+    assert attributes.shape == (2, 2)
+    assert features.shape == (2, 3, 3)
+
+    np.testing.assert_allclose(attributes, expected_attributes)
+    np.testing.assert_allclose(features, expected_features)
+
+    # Check the inverse returns the original df
+    df_out = converter.invert(attributes, features)
+
+    # We intentionally reordered rows based on time, so need to sort original
+    # before comparing. Time column is not preserved, so remove it before
+    # comparing.
+    assert_frame_equal(
+        df_out.drop(columns=["time"]),
+        df_long.sort_values(by=["example_id", "time"])
+        .drop(columns=["time"])
+        .reset_index(drop=True),
     )
 
-    assert attributes == None
-    assert features.shape == (6, 3, 1)
+
+def test_long_data_frame_converter2(df_long):
+    # No time column, use order in input dataframe
+    df_long = df_long.drop(columns=["time"])
+
+    # Ignore time column, use original ordering in dataframe
+    expected_attributes = [
+        [10, 1.5],
+        [11, 3.3],
+    ]
+    expected_features = [
+        [[101.0, 51.0, 0.0], [102.0, 50.0, 0.0], [103.0, 49.0, 0.0]],
+        [[104.0, 48.0, 0.0], [105.0, 47.0, 0.0], [106.0, 46.0, 0.0]],
+    ]
+
+    converter = _LongDataFrameConverter.create(
+        df_long,
+        attribute_columns=["a1", "a2"],
+        feature_columns=["f1", "f2", "f3"],
+        example_id_column="example_id",
+        discrete_columns=["a1"],
+    )
+    attributes, features = converter.convert(df_long)
+
+    assert attributes.shape == (2, 2)
+    assert features.shape == (2, 3, 3)
+
+    np.testing.assert_allclose(attributes, expected_attributes)
+    np.testing.assert_allclose(features, expected_features)
+
+    # Check works the same if feature column param is omitted
+    converter = _LongDataFrameConverter.create(
+        df_long,
+        attribute_columns=["a1", "a2"],
+        example_id_column="example_id",
+        discrete_columns=["a1"],
+    )
+    attributes, features = converter.convert(df_long)
+
+    assert attributes.shape == (2, 2)
+    assert features.shape == (2, 3, 3)
+
+    np.testing.assert_allclose(attributes, expected_attributes)
+    np.testing.assert_allclose(features, expected_features)
+
+    # Check the inverse returns the original df
+    df_out = converter.invert(attributes, features)
+
+    assert_frame_equal(df_out, df_long)
+
+
+def test_long_data_frame_converter3(df_long):
+    # No example id column, extract as 1 example
+    # Time column reorders some rows
+    df_long = df_long.drop(columns=["example_id"])
+    # Make attributes constant since we have 1 example
+    df_long["a1"] = 10
+    df_long["a2"] = 1.5
+
+    expected_attributes = [
+        [10, 1.5],
+    ]
+    expected_features = [
+        [
+            [101.0, 51.0, 0.0],
+            [104.0, 48.0, 0.0],
+            [103.0, 49.0, 0.0],
+            [105.0, 47.0, 0.0],
+            [102.0, 50.0, 0.0],
+            [106.0, 46.0, 0.0],
+        ],
+    ]
+
+    converter = _LongDataFrameConverter.create(
+        df_long,
+        attribute_columns=["a1", "a2"],
+        feature_columns=["f1", "f2", "f3"],
+        time_column="time",
+        discrete_columns=["a1"],
+    )
+    attributes, features = converter.convert(df_long)
+
+    assert attributes.shape == (1, 2)
+    assert features.shape == (1, 6, 3)
+
+    np.testing.assert_allclose(attributes, expected_attributes)
+    np.testing.assert_allclose(features, expected_features)
+
+    # Check works the same if feature column param is omitted
+    converter = _LongDataFrameConverter.create(
+        df_long,
+        attribute_columns=["a1", "a2"],
+        time_column="time",
+        discrete_columns=["a1"],
+    )
+    attributes, features = converter.convert(df_long)
+
+    assert attributes.shape == (1, 2)
+    assert features.shape == (1, 6, 3)
+
+    np.testing.assert_allclose(attributes, expected_attributes)
+    np.testing.assert_allclose(features, expected_features)
+
+    # Check the inverse returns the original df
+    df_out = converter.invert(attributes, features)
+
+    # We intentionally reordered rows based on time, so need to sort original
+    # before comparing. We can keep and compare the time column though since we
+    # should preserve values exactly for the "1 example".
+    assert_frame_equal(df_out, df_long.sort_values(by="time").reset_index(drop=True))
+
+
+def test_long_data_frame_converter4(config, df_long):
+    # No example id or time column, extract as 1 example with original order
+
+    df_long = df_long.drop(columns=["example_id", "time"])
+    # Make attributes constant since we have 1 example
+    df_long["a1"] = 10
+    df_long["a2"] = 1.5
+
+    expected_attributes = [
+        [10, 1.5],
+    ]
+    expected_features = [
+        [
+            [101.0, 51.0, 0.0],
+            [102.0, 50.0, 0.0],
+            [103.0, 49.0, 0.0],
+            [104.0, 48.0, 0.0],
+            [105.0, 47.0, 0.0],
+            [106.0, 46.0, 0.0],
+        ],
+    ]
+
+    converter = _LongDataFrameConverter.create(
+        df_long,
+        attribute_columns=["a1", "a2"],
+        feature_columns=["f1", "f2", "f3"],
+        discrete_columns=["a1"],
+    )
+    attributes, features = converter.convert(df_long)
+
+    assert attributes.shape == (1, 2)
+    assert features.shape == (1, 6, 3)
+
+    np.testing.assert_allclose(attributes, expected_attributes)
+    np.testing.assert_allclose(features, expected_features)
+
+    # Check works the same if feature column param is omitted
+    converter = _LongDataFrameConverter.create(
+        df_long,
+        attribute_columns=["a1", "a2"],
+        discrete_columns=["a1"],
+    )
+    attributes, features = converter.convert(df_long)
+
+    assert attributes.shape == (1, 2)
+    assert features.shape == (1, 6, 3)
+
+    np.testing.assert_allclose(attributes, expected_attributes)
+    np.testing.assert_allclose(features, expected_features)
+
+    # Check the inverse returns the original df
+    df_out = converter.invert(attributes, features)
+
+    assert_frame_equal(df_out, df_long)
+
+
+def test_long_data_frame_converter_extra_cols(df_long):
+    # Check if converter works if there are extra columns
+    # in the input df
+    df_long["random1"] = "foo"
+    df_long["random2"] = range(len(df_long))
+
+    expected_attributes = [
+        [10, 1.5],
+        [11, 3.3],
+    ]
+    expected_features = [
+        [[101.0, 51.0, 0.0], [102.0, 50.0, 0.0], [103.0, 49.0, 0.0]],
+        [[104.0, 48.0, 0.0], [105.0, 47.0, 0.0], [106.0, 46.0, 0.0]],
+    ]
+
+    converter = _LongDataFrameConverter.create(
+        df_long,
+        attribute_columns=["a1", "a2"],
+        feature_columns=["f1", "f2", "f3"],
+        example_id_column="example_id",
+        discrete_columns=["a1"],
+    )
+    attributes, features = converter.convert(df_long)
+
+    assert attributes.shape == (2, 2)
+    assert features.shape == (2, 3, 3)
+
+    np.testing.assert_allclose(attributes, expected_attributes)
+    np.testing.assert_allclose(features, expected_features)
+
+    # Check the inverse returns the original df
+    df_out = converter.invert(attributes, features)
+
+    # Remove time and random columns from original
+    assert_frame_equal(
+        df_out,
+        df_long.drop(columns=["time", "random1", "random2"]),
+    )
+
+
+def test_long_data_frame_converter_attribute_errors(df_long):
+    df_long = df_long.drop(columns="time")  # Don't need time for these tests
+
+    # Insert attribute value that is not equal for all rows with same example id
+    df_long.loc[2, "a1"] = 42.0
+
+    converter = _LongDataFrameConverter.create(
+        df_long,
+        attribute_columns=["a1", "a2"],
+        feature_columns=["f1", "f2", "f3"],
+        example_id_column="example_id",
+        discrete_columns=["a1"],
+    )
+    with pytest.raises(ValueError):
+        converter.convert(df_long)
+
+    # Same if we don't use example_id where attributes should be constant
+    converter = _LongDataFrameConverter.create(
+        df_long,
+        attribute_columns=["a1", "a2"],
+        feature_columns=["f1", "f2", "f3"],
+        discrete_columns=["a1"],
+    )
+    with pytest.raises(ValueError):
+        converter.convert(df_long)
+
+
+def test_long_data_frame_converter_mixed_feature_types(df_long):
+    # Check int and float types for dataframe work and produce
+    # features array with float64 type
+
+    df_long = df_long.drop(columns="time")
+
+    # Replace f2 with another discrete column
+    df_long["f2"] = df_long["a1"]
+    assert df_long["f2"].dtype == "int64"
+
+    converter = _LongDataFrameConverter.create(
+        df_long,
+        attribute_columns=["a1", "a2"],
+        feature_columns=["f1", "f2", "f3"],
+        example_id_column="example_id",
+    )
+
+    _, features = converter.convert(df_long)
+    assert features.dtype == "float64"
+
+
+def test_long_data_frame_converter_example_id_object(df_long):
+    # Check dtype of features and attributes is float when example id column is
+    # of object type like strings
+
+    df_long = df_long.drop(columns="time")
+
+    # Make example id column a string
+    df_long["example_id"] = df_long["example_id"].astype("str")
+    assert df_long["example_id"].dtype == "object"
+
+    converter = _LongDataFrameConverter.create(
+        df_long,
+        attribute_columns=["a1", "a2"],
+        feature_columns=["f1", "f2", "f3"],
+        example_id_column="example_id",
+    )
+
+    attributes, features = converter.convert(df_long)
+    assert attributes is not None
+    assert attributes.dtype == "float64"
+    assert features.dtype == "float64"
+
+
+def test_long_data_frame_converter_save_and_load(df_long):
+    converter = _LongDataFrameConverter.create(
+        df_long,
+        attribute_columns=["a1", "a2"],
+        feature_columns=["f1", "f2", "f3"],
+        example_id_column="example_id",
+        time_column="time",
+        discrete_columns=["a1"],
+    )
+
+    expected_attributes, expected_features = converter.convert(df_long)
+
+    expected_df = converter.invert(expected_attributes, expected_features)
+
+    state = converter.state_dict()
+
+    loaded_converter = _DataFrameConverter.load_from_state_dict(state)
+
+    attributes, features = loaded_converter.convert(df_long)
+
+    np.testing.assert_allclose(attributes, expected_attributes)
+    np.testing.assert_allclose(features, expected_features)
+
+    df = loaded_converter.invert(attributes, features)
+
+    assert_frame_equal(df, expected_df)
 
 
 @pytest.mark.parametrize(
@@ -557,8 +1107,9 @@ def test_save_and_load_dataframe_with_attributes(config: DGANConfig, tmp_path):
 
     dg.train_dataframe(
         df=df,
-        df_attribute_columns=["a1", "a2"],
-        attribute_types=[OutputType.DISCRETE, OutputType.CONTINUOUS],
+        attribute_columns=["a1", "a2"],
+        discrete_columns=["a1"],
+        df_style=DfStyle.WIDE,
     )
     file_name = str(tmp_path / "model.pt")
     dg.save(file_name)
@@ -589,6 +1140,7 @@ def test_save_and_load_dataframe_no_attributes(config: DGANConfig, tmp_path):
 
     dg.train_dataframe(
         df=df,
+        df_style=DfStyle.WIDE,
     )
     file_name = str(tmp_path / "model.pt")
     dg.save(file_name)
