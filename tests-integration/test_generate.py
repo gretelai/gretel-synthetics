@@ -225,11 +225,11 @@ def scooter_val(line):
 
 SIMPLE_MODELS = [
     (
-        "https://gretel-public-website.s3-us-west-2.amazonaws.com/tests/synthetics/models/scooter-simple-sp-0-14.tar.gz",
+        "https://gretel-public-website.s3-us-west-2.amazonaws.com/tests/synthetics/models/scooter-simple-sp-0-14.tar.gz",  # noqa
         scooter_val,
     ),  # noqa
     (
-        "https://gretel-public-website.s3-us-west-2.amazonaws.com/tests/synthetics/models/scooter-simple-char-0-15.tar.gz",
+        "https://gretel-public-website.s3-us-west-2.amazonaws.com/tests/synthetics/models/scooter-simple-char-0-15.tar.gz",  # noqa
         scooter_val,
     ),  # noqa
 ]
@@ -251,7 +251,7 @@ def test_generate_simple(model_path, validator_fn, tmp_path):
     "model_path,seed",
     [
         (
-            "https://gretel-public-website.s3-us-west-2.amazonaws.com/tests/synthetics/models/safecast-batch-sp-0-14.tar.gz",
+            "https://gretel-public-website.s3-us-west-2.amazonaws.com/tests/synthetics/models/safecast-batch-sp-0-14.tar.gz",  # noqa
             {"payload.service_handler": "i-051a2a353509414f0"},
         )  # noqa
     ],

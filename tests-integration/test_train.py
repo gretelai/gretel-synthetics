@@ -15,6 +15,7 @@ from gretel_synthetics.config import TensorFlowConfig
 from gretel_synthetics.tokenizers import (
     BaseTokenizerTrainer,
     CharTokenizerTrainer,
+    SentencePieceColumnTokenizerTrainer,
     SentencePieceTokenizerTrainer,
 )
 from gretel_synthetics.train import EpochState
@@ -128,7 +129,10 @@ def test_train_batch_char_tok(train_df, tmp_path):
     assert syn_df.shape[0] == _tok_gen_count
 
 
-def test_train_batch_sp_tok(train_df, tmp_path):
+@pytest.mark.parametrize(
+    "tok_class", [SentencePieceTokenizerTrainer, SentencePieceColumnTokenizerTrainer]
+)
+def test_train_batch_sp_tok(train_df, tmp_path, tok_class):
     config = TensorFlowConfig(
         epochs=5,
         field_delimiter=",",
@@ -136,12 +140,14 @@ def test_train_batch_sp_tok(train_df, tmp_path):
         input_data_path=PATH_HOLDER,
         learning_rate=0.01,
     )
-    tokenizer = SentencePieceTokenizerTrainer(vocab_size=10000, config=config)
+    tokenizer = tok_class(vocab_size=10000, config=config)
     batcher = DataFrameBatch(df=train_df, config=config, tokenizer=tokenizer)
     batcher.create_training_data()
     batcher.train_all_batches()
 
-    batcher.generate_all_batch_lines(num_lines=_tok_gen_count, max_invalid=5000)
+    batcher.generate_all_batch_lines(
+        num_lines=_tok_gen_count, max_invalid=5000, parallelism=1
+    )
     syn_df = batcher.batches_to_df()
     assert syn_df.shape[0] == _tok_gen_count
 

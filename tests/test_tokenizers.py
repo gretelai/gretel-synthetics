@@ -212,6 +212,98 @@ def test_sp(input_data_path, tmpdir):
     )
 
 
+def test_sp_column_tok(input_data_path, tmpdir):
+    # We can only use valid token patterns
+    with pytest.raises(ValueError):
+        tok.SentencePieceColumnTokenizerTrainer(col_pattern="<nope2{}>")
+
+    config = SimpleConfig(
+        input_data_path=input_data_path, checkpoint_dir=tmpdir, field_delimiter=","
+    )
+    trainer = tok.SentencePieceColumnTokenizerTrainer(config=config)
+    line_iter = trainer.annotate_data()
+    line_one = next(line_iter)
+    assert (
+        line_one
+        == "<col0>Once upon a midnight dreary<col1> while I pondered<col2> weak and weary<col3><n>\n"
+    )
+
+    trainer.train()
+    assert len(trainer._col_symbols) == 4
+    tokenizer = tok.SentencePieceColumnTokenizer.load(tmpdir)
+
+    # Validate that our column pattern was saved out and restored
+    assert tokenizer._col_pattern == tok._DEFAULT_COL_PATTERN
+
+    ids = [
+        9,
+        5,
+        43,
+        57,
+        11,
+        9,
+        14,
+        38,
+        13,
+        17,
+        19,
+        16,
+        20,
+        19,
+        25,
+        23,
+        18,
+        9,
+        16,
+        29,
+        34,
+        10,
+        6,
+        55,
+        44,
+        12,
+        11,
+        9,
+        26,
+        9,
+        38,
+        16,
+        50,
+        16,
+        7,
+        52,
+        65,
+        13,
+        31,
+        52,
+        29,
+        10,
+        8,
+        3,
+    ]
+    assert (
+        tokenizer.encode_to_ids(
+            "<col0>Once upon a midnight dreary<col1> while I pondered<col2> weak and weary<col3><n>\n"
+        )
+        == ids
+    )
+
+    assert (
+        tokenizer.decode_from_ids(ids)
+        == "Once upon a midnight dreary, while I pondered, weak and weary,<n>"
+    )
+    assert isinstance(
+        tok.tokenizer_from_model_dir(tmpdir), tok.SentencePieceColumnTokenizer
+    )
+
+    substring = "this is,a test,"
+    check = tokenizer.tokenize_delimiter(substring)
+    assert check == "<col0>this is<col1>a test<col2>"
+
+    check2 = tokenizer.detokenize_delimiter(check)
+    assert check2 == "this is,a test,"
+
+
 def test_sp_field_delim(input_data_path, tmpdir):
     config = SimpleConfig(
         input_data_path=input_data_path, checkpoint_dir=tmpdir, field_delimiter=","
