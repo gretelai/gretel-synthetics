@@ -1,7 +1,7 @@
 faker==4.1.1
-flake8==3.8.4
+flake8==4.0.1
 numpy>=1.18.0
 pandas>=1.1.0
-pylint==2.7.2
+pylint==2.14.3
 pytest==6.1.2
 pytest-cov==2.11.1
