@@ -550,6 +550,7 @@ class DGAN:
             prefetch_factor=4,
             persistent_workers=True,
             pin_memory=True,
+            multiprocessing_context="fork",
         )
 
         opt_discriminator = torch.optim.Adam(
