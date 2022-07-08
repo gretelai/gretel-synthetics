@@ -188,6 +188,8 @@ class DGAN:
                     "First dimension of attributes and features must be the same length, i.e., the number of training examples."
                 )
 
+        _check_for_nans(attributes, features)
+
         if not self.is_built:
             attribute_outputs, feature_outputs = create_outputs_from_data(
                 attributes,
@@ -296,6 +298,8 @@ class DGAN:
                 )
 
         attributes, features = self.data_frame_converter.convert(df)
+
+        _check_for_nans(attributes, features)
 
         self.train_numpy(
             attributes=attributes,
@@ -913,6 +917,24 @@ class DGAN:
             )
 
         return dgan
+
+
+def _check_for_nans(attributes: Optional[np.ndarray], features: np.ndarray):
+    """Helper function to raise an error if NaNs are found.
+
+    The DGAN model does not handle NaNs at this time, so we want to throw a
+    specific error instead of waiting for later steps to fail that are harder to
+    debug.
+    """
+    if attributes is not None and np.any(np.isnan(attributes)):
+        raise ValueError(
+            "NaN found in attributes. DGAN does not support NaNs, please remove NaNs before training."
+        )
+
+    if np.any(np.isnan(features)):
+        raise ValueError(
+            "NaN found in features. DGAN does not support NANs, please remove NaNs before training."
+        )
 
 
 class _DataFrameConverter(abc.ABC):

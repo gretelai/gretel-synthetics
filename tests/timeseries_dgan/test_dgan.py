@@ -488,6 +488,36 @@ def test_train_dataframe_long_no_attributes(config: DGANConfig):
     assert list(synthetic_df.columns) == list(df.columns)
 
 
+def test_train_numpy_nans(config: DGANConfig, feature_data):
+    features, feature_types = feature_data
+    # Insert a NaN
+    features[11, 3, 1] = np.NaN
+
+    dg = DGAN(config=config)
+
+    with pytest.raises(ValueError, match="NaN"):
+        dg.train_numpy(features=features, feature_types=feature_types)
+
+
+def test_train_dataframe_nans(config: DGANConfig):
+    n = 50
+    df = pd.DataFrame(
+        {
+            "2022-01-01": np.random.rand(n),
+            "2022-02-01": np.NaN,
+            "2022-03-01": np.random.rand(n),
+            "2022-04-01": np.random.rand(n),
+        }
+    )
+
+    config.max_sequence_len = 4
+    config.sample_len = 1
+
+    dg = DGAN(config=config)
+    with pytest.raises(ValueError, match="NaN"):
+        dg.train_dataframe(df=df, df_style=DfStyle.WIDE)
+
+
 @pytest.fixture
 def df_wide() -> pd.DataFrame:
     return pd.DataFrame(
