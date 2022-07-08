@@ -540,12 +540,23 @@ class DGAN:
         Args:
             dataset: torch Dataset containing tuple of (attributes, additional_attributes, features)
         """
+        if len(dataset) <= 1:
+            raise ValueError(
+                f"DGAN requires multiple examples to train, received {len(dataset)} example."
+                + "Consider splitting a single long sequence into many subsequences to obtain "
+                + "multiple examples for training."
+            )
+
+        # Our optimization setup does not work on batches of size 1. So if
+        # drop_last=False would produce a last batch of size of 1, we use
+        # drop_last=True instead.
+        drop_last = len(dataset) % self.config.batch_size == 1
 
         loader = DataLoader(
             dataset,
             self.config.batch_size,
             shuffle=True,
-            drop_last=False,
+            drop_last=drop_last,
             num_workers=2,
             prefetch_factor=4,
             persistent_workers=True,

@@ -254,6 +254,29 @@ def test_train_numpy_no_attributes_2(config: DGANConfig):
     assert synthetic_features.shape == (n_samples, features.shape[1], features.shape[2])
 
 
+def test_train_numpy_batch_size_of_1(config: DGANConfig):
+    # Check model trains when (# of examples) % batch_size == 1.
+
+    config.batch_size = 10
+    config.epochs = 1
+
+    features = np.random.rand(91, 20, 2)
+    attributes = np.random.randint(0, 3, (91, 1))
+
+    model = DGAN(config=config)
+    model.train_numpy(
+        features=features,
+        attributes=attributes,
+        feature_types=[OutputType.CONTINUOUS] * 2,
+        attribute_types=[OutputType.DISCRETE],
+    )
+
+    synthetic_attributes, synthetic_features = model.generate_numpy(11)
+    assert synthetic_attributes is not None
+    assert synthetic_attributes.shape == (11, 1)
+    assert synthetic_features.shape == (11, 20, 2)
+
+
 def test_train_dataframe_wide(config: DGANConfig):
     n = 50
     df = pd.DataFrame(
@@ -311,9 +334,43 @@ def test_train_dataframe_batch_size_larger_than_dataset(config: DGANConfig):
         df_style=DfStyle.WIDE,
     )
 
+    # We want to confirm the training does update the model params, so we create
+    # some fixed noise inputs and check if they produce different outputs before
+    # and after some more training.
+    attribute_noise = dg.attribute_noise_func(50)
+    feature_noise = dg.feature_noise_func(50)
+    before_attributes, before_features = dg.generate_numpy(
+        attribute_noise=attribute_noise, feature_noise=feature_noise
+    )
+
+    dg.train_dataframe(
+        df=df,
+        attribute_columns=["a1", "a2"],
+        discrete_columns=["a1"],
+        df_style=DfStyle.WIDE,
+    )
+
+    after_attributes, after_features = dg.generate_numpy(
+        attribute_noise=attribute_noise, feature_noise=feature_noise
+    )
+    # Generated data should be different.
+    assert np.any(np.not_equal(before_attributes, after_attributes))
+    assert np.any(np.not_equal(before_features, after_features))
+
     synthetic_df = dg.generate_dataframe(5)
     assert synthetic_df.shape == (5, 6)
     assert list(synthetic_df.columns) == list(df.columns)
+
+
+def test_train_1_example(config: DGANConfig, feature_data):
+    features, feature_types = feature_data
+    # Keep 1 example
+    features = features[0:1, :]
+
+    dg = DGAN(config=config)
+
+    with pytest.raises(ValueError, match="multiple examples to train"):
+        dg.train_numpy(features=features, feature_types=feature_types)
 
 
 def test_train_dataframe_batch_size_not_divisible_by_dataset_length(config: DGANConfig):
