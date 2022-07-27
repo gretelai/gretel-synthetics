@@ -103,3 +103,50 @@ def test_numeric_binning_sanity():
             assert len(bins) < 500
 
     assert found_bad_column
+
+
+def test_correlations_with_inf():
+    df1 = pd.DataFrame(
+        [{"foo": 1, "bar": 1}, {"foo": 2, "bar": 2}, {"foo": 3, "bar": 3}] * 10
+    )
+    df1_corr = stats.calculate_correlation(df1)
+    assert not df1_corr.empty
+    df1_corr_opt = stats.calculate_correlation(df1, opt=True)
+    assert not df1_corr_opt.empty
+
+    df2 = pd.DataFrame(
+        [{"foo": 1.1, "bar": 1}, {"foo": 2.2, "bar": 2}, {"foo": np.inf, "bar": 3}] * 10
+    )
+    df2_corr = stats.calculate_correlation(df2)
+    assert not df2_corr.empty
+    df2_corr_opt = stats.calculate_correlation(df2, opt=True)
+    assert not df2_corr_opt.empty
+
+    df_multi_dtype_list = []
+    for i in range(100):
+        entry = {"foo": i, "foobie": i, "bar": i * 1.1, "baz": str(i) + "yoooo"}
+        if i % 3 == 0:
+            entry["foo"] = np.inf
+        if i % 11 == 0:
+            entry["foo"] = np.nan
+
+        if i % 5 == 0:
+            entry["bar"] = np.inf
+        if i % 13 == 0:
+            entry["bar"] = np.nan
+
+        if i % 7 == 0:
+            entry["baz"] = np.inf
+        if i % 17 == 0:
+            entry["baz"] = np.nan
+
+        df_multi_dtype_list.append(entry)
+    df_multi_type = pd.DataFrame(df_multi_dtype_list)
+    df_multi_type_corr = stats.calculate_correlation(
+        df_multi_type, nominal_columns=["baz"]
+    )
+    assert not df_multi_type_corr.empty
+    df_multi_type_corr_opt = stats.calculate_correlation(
+        df_multi_type, nominal_columns=["baz"], opt=True
+    )
+    assert not df_multi_type_corr_opt.empty

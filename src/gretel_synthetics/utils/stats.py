@@ -70,8 +70,9 @@ def get_numeric_distribution_bins(training: pd.Series, synthetic: pd.Series):
         bin_edges, numpy array of dtype float
 
     """
-    training = training.dropna().astype("float64")
-    synthetic = synthetic.dropna().astype("float64")
+    with pd.option_context("mode.use_inf_as_na", True):
+        training = training.dropna().astype("float64")
+        synthetic = synthetic.dropna().astype("float64")
     # Numeric data. Want the same bins between both df's. We bin based on scrubbed data.
     if len(training) == 0:
         min_value = np.nanmin(synthetic)
@@ -174,7 +175,8 @@ def calculate_pearsons_r(x, y, opt) -> Tuple[float, float]:
     if not opt:
         # drop missing values, when either the x or y value is null/nan
         arr = np.array([x, y]).transpose()
-        arr = arr[~pd.isnull(arr).any(axis=1)].transpose()
+        with pd.option_context("mode.use_inf_as_na", True):
+            arr = arr[~pd.isnull(arr).any(axis=1)].transpose()
         if (
             len(arr[0]) < 2
             or len(arr[1]) < 2
@@ -205,7 +207,8 @@ def calculate_correlation_ratio(x, y, opt):
     if not opt:
         # Drop missing values if y (the numeric column) is null/nan
         df = pd.DataFrame({"x": x, "y": y})
-        df.dropna(inplace=True)
+        with pd.option_context("mode.use_inf_as_na", True):
+            df.dropna(inplace=True)
         x = df["x"]
         y = df["y"]
     if len(x) < 2 or len(y) < 2:
@@ -231,7 +234,8 @@ def calculate_theils_u(x, y):
     """
     # Drop missing values if x or y is null/nan
     df = pd.DataFrame({"x": x, "y": y})
-    df.dropna(inplace=True)
+    with pd.option_context("mode.use_inf_as_na", True):
+        df.dropna(inplace=True)
     x = df["x"]
     y = df["y"]
     if len(x) == 0 or len(y) == 0:
@@ -264,7 +268,8 @@ def calculate_correlation(
 
     # If opt is True, then go the faster (just not quite as accurate) route of global replace missing with 0
     if opt:
-        df.fillna(_DEFAULT_REPLACE_VALUE, inplace=True)
+        with pd.option_context("mode.use_inf_as_na", True):
+            df.fillna(_DEFAULT_REPLACE_VALUE, inplace=True)
 
     columns = df.columns
     if nominal_columns is None:
@@ -471,7 +476,8 @@ def compute_pca(df: pd.DataFrame, n_components: int = 2) -> pd.DataFrame:
 
     """
     seed = 444
-    df = df.dropna(axis="columns", how="all")
+    with pd.option_context("mode.use_inf_as_na", True):
+        df = df.dropna(axis="columns", how="all")
     df_norm = normalize_dataset(df)
     pca = PCA_ANAL(n_components=n_components, random_state=seed)
     projected = pca.fit_transform(df_norm)
