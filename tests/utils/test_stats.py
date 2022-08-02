@@ -36,6 +36,33 @@ def test_count_memorized_lines(fake: faker.Faker):
     )
 
 
+def test_memorized_lines_differing_dtypes():
+    data_source = "https://gretel-public-website.s3.us-west-2.amazonaws.com/datasets/USAdultIncome5k.csv"
+    left = pd.read_csv(data_source)
+    right = pd.read_csv(data_source)
+
+    right.loc[0, "capital_gain"] = np.nan
+    right.loc[len(right)] = left.loc[0].values.tolist()
+
+    # Here, we cast within two numeric types and can find duplicates.  We drop duplicates _within_ each df to prevent overcounting.
+    assert stats.count_memorized_lines(left, right) == 4998
+
+    # If one field is already dumped directly from int to string before we can look at things, we still attempt uptying to find duplicates.
+    left_stringified = left.astype({"capital_gain": str})
+    assert stats.count_memorized_lines(left_stringified, right) == 4998
+
+    # BUT if we change one entry to a "real" string, the uptyping conversion will fail and we will skip this column.
+    # We proceed to floatify numeric columns (including "capital_gain" in the right df), then dump to string.
+    # The int format strings in left and float formatted strings will not match and we get 0 memorized lines.
+    left_stringified["capital_gain"][0] = "hello"
+    assert stats.count_memorized_lines(left_stringified, right) == 0
+
+    # BUT if the float field is stringified first, the int column will eventually match as we step down to object via float.
+    left_floated = left.astype({"capital_gain": "float"})
+    right_stringified = right.astype({"capital_gain": "object"})
+    assert stats.count_memorized_lines(left_floated, right_stringified) == 4998
+
+
 def test_get_categorical_field_distribution():
     df = pd.DataFrame(
         [{"foo": "bar"}] * 2 + [{"foo": "baz"}] * 2 + [{"foo": "barf"}] * 4

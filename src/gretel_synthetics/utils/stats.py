@@ -11,6 +11,7 @@ import pandas as pd
 
 from dython.nominal import correlation_ratio, theils_u
 from joblib import delayed, Parallel
+from pandas.api.types import is_numeric_dtype
 from scipy.spatial.distance import jensenshannon
 from scipy.stats import pearsonr
 from sklearn.decomposition import PCA as PCA_ANAL
@@ -32,9 +33,48 @@ def count_memorized_lines(df1: pd.DataFrame, df2: pd.DataFrame) -> int:
     Returns:
         int, the number of overlapping elements.
     """
-    set1 = set(df1.to_csv(header=False, index=False).strip("\n").split("\n"))
-    set2 = set(df2.to_csv(header=False, index=False).strip("\n").split("\n"))
-    return len(set1.intersection(set2))
+    # Look for cases where col is numeric in one df, object in the other. Attempt to cast to float.
+    def _uptype_object_to_float(
+        l: pd.DataFrame, r: pd.DataFrame
+    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
+        for col in set(l.columns).intersection(set(r.columns)):
+            if is_numeric_dtype(l[col]) or is_numeric_dtype(r[col]):
+                if not is_numeric_dtype(l[col]) or not is_numeric_dtype(r[col]):
+                    try:
+                        l = l.astype({col: "float"})
+                        r = r.astype({col: "float"})
+                    except Exception:
+                        # In particular ValueErrors if the non-numeric is not convertible, but catch everything.
+                        pass
+        return l, r
+
+    # Convert any numeric fields within a df to 'float' first.
+    def _floatify(df: pd.DataFrame) -> pd.DataFrame:
+        conversions = {}
+        for col in df.columns:
+            if is_numeric_dtype(df[col]):
+                conversions[col] = "float"
+        return df.astype(conversions)
+
+    # If one col in a df is numeric and the corresponding one in the other df is NOT, cast to 'object'.
+    def _objectify(
+        l: pd.DataFrame, r: pd.DataFrame
+    ) -> Tuple[pd.DataFrame, pd.DataFrame]:
+        conversions = {}
+        for col in l.columns:
+            if col in r:
+                if not is_numeric_dtype(l[col]) or not is_numeric_dtype(r[col]):
+                    conversions[col] = "object"
+        return (l.astype(conversions), r.astype(conversions))
+
+    # Do the casts.
+    l, r = _uptype_object_to_float(df1, df2)
+    l, r = _objectify(_floatify(l), _floatify(r))
+
+    # Do an inner join on the intersection of columns present in both dfs.
+    inner_join = pd.merge(l.drop_duplicates(), r.drop_duplicates())
+
+    return len(inner_join)
 
 
 def get_categorical_field_distribution(field: pd.Series) -> dict:
