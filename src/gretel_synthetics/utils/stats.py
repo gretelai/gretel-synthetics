@@ -324,7 +324,10 @@ def calculate_correlation(
         if df[c].nunique() == 1:
             single_value_columns.append(c)
         elif c not in nominal_columns:
-            numeric_columns.append(c)
+            if df[c].dtype == "object":
+                nominal_columns.append(c)
+            else:
+                numeric_columns.append(c)
 
     nominal = [x for x in nominal_columns if x not in single_value_columns]
     df_rows = df.shape[0]
