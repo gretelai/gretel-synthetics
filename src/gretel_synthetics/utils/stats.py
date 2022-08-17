@@ -315,12 +315,14 @@ def calculate_correlation(
     if nominal_columns is None:
         nominal_columns = list()
 
-    corr = pd.DataFrame(index=columns, columns=columns)
+    corr = np.zeros((len(columns), len(columns)))
     single_value_columns = []
     numeric_columns = []
 
+    column_to_index = {}
+
     # Set up all the column groupings needed for correlation
-    for c in columns:
+    for i, c in enumerate(columns):
         if df[c].nunique() == 1:
             single_value_columns.append(c)
         elif c not in nominal_columns:
@@ -328,6 +330,8 @@ def calculate_correlation(
                 nominal_columns.append(c)
             else:
                 numeric_columns.append(c)
+
+        column_to_index[c] = i
 
     nominal = [x for x in nominal_columns if x not in single_value_columns]
     df_rows = df.shape[0]
@@ -348,20 +352,26 @@ def calculate_correlation(
 
     # Do Theil's U shortcut for 100% unique nominal (Amy invention that is 99.9% correct, and saves massive time)
     for x in completely_unique_nominal:
-        corr.loc[x, :] = 1.0
+        x_index = column_to_index[x]
+
+        corr[x_index, :] = 1.0
         for y in columns:
+            y_index = column_to_index[y]
             if x == y:
-                corr.at[y, x] = 1.0
+                corr[y_index][x_index] = 1.0
             # Edge case, guard against ValueError in math.log when the other column is empty
             elif df[y].nunique() == 0:
-                corr.at[y, x] = 0.0
+                corr[y_index][x_index] = 0.0
             else:
-                corr.at[y, x] = math.log(df[y].nunique()) / math.log(df[x].nunique())
+                corr[y_index][x_index] = math.log(df[y].nunique()) / math.log(
+                    df[x].nunique()
+                )
 
     for x in single_value_columns:
-        corr.loc[:, x] = 0.0
-        corr.loc[x, :] = 0.0
-        corr.loc[x, x] = 1.0
+        x_index = column_to_index[x]
+        corr[:, x_index] = 0.0
+        corr[x_index, :] = 0.0
+        corr[x_index, x_index] = 1.0
 
     # Do nominal-nominal exluding any that are 100% unique (Theil's U)
     scores = Parallel(n_jobs=job_count)(
@@ -371,12 +381,14 @@ def calculate_correlation(
     )
     i = 0
     for field1 in notcompletely_unique_nominal:
+        field1_index = column_to_index[field1]
         for field2 in notcompletely_unique_nominal:
+            field2_index = column_to_index[field2]
             if field1 == field2:
-                corr.at[field1, field2] = 1.0
+                corr[field1_index][field2_index] = 1.0
             else:
                 # looks backward, but is correct
-                corr.at[field2, field1] = scores[i]
+                corr[field2_index][field1_index] = scores[i]
             i += 1
 
     # Do "not_high_unique_nominal with numeric" (Correlation Ratio)
@@ -387,9 +399,11 @@ def calculate_correlation(
     )
     i = 0
     for field1 in not_high_unique_nominal:
+        field1_index = column_to_index[field1]
         for field2 in numeric_columns:
-            corr.at[field1, field2] = scores[i]
-            corr.at[field2, field1] = scores[i]
+            field2_index = column_to_index[field2]
+            corr[field1_index][field2_index] = scores[i]
+            corr[field2_index][field1_index] = scores[i]
             i += 1
 
     # Do high_unique_nominal with numeric (Theil's U) (excluding 100% unique)
@@ -405,8 +419,10 @@ def calculate_correlation(
     )
     i = 0
     for field1 in high_unique_nominal:
+        field1_index = column_to_index[field1]
         for field2 in numeric_columns:
-            corr.at[field2, field1] = scores[i]
+            field2_index = column_to_index[field2]
+            corr[field2_index][field1_index] = scores[i]
             i += 1
 
     scores = Parallel(n_jobs=job_count)(
@@ -416,8 +432,10 @@ def calculate_correlation(
     )
     i = 0
     for field2 in high_unique_nominal:
+        field2_index = column_to_index[field2]
         for field1 in numeric_columns:
-            corr.at[field2, field1] = scores[i]
+            field1_index = column_to_index[field1]
+            corr[field2_index][field1_index] = scores[i]
             i += 1
 
     # Do numeric numeric (Pearson's)
@@ -434,26 +452,19 @@ def calculate_correlation(
         scores = Parallel(n_jobs=1)(delayed_calls)
         x = 0
         for i in range(num_len - 1):
+            num_columns_index = column_to_index[numeric_columns[i]]
             for j in range(i + 1, num_len):
-                corr.at[numeric_columns[i], numeric_columns[j]] = scores[x][0]
-                corr.at[numeric_columns[j], numeric_columns[i]] = scores[x][0]
+                num_columns_jindex = column_to_index[numeric_columns[j]]
+                corr[num_columns_index][num_columns_jindex] = scores[x][0]
+                corr[num_columns_jindex][num_columns_index] = scores[x][0]
                 x += 1
 
     for x in numeric_columns:
-        corr.at[x, x] = 1.0
+        x_index = column_to_index[x]
+        corr[x_index][x_index] = 1.0
 
-    corr_final = pd.DataFrame(index=columns, columns=columns)
-
-    for field1 in columns:
-        for field2 in columns:
-            if (
-                not np.isnan(corr.at[field1, field2])
-                and abs(corr.at[field1, field2]) < np.inf
-            ):
-                corr_final[field1][field2] = corr[field1][field2]
-            else:
-                corr_final[field1][field2] = 0
-
+    corr_final = pd.DataFrame(corr, index=columns, columns=columns)
+    corr_final[corr_final == np.inf] = 0
     corr_final.fillna(value=np.nan, inplace=True)
 
     return corr_final
