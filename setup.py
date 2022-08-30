@@ -41,7 +41,7 @@ setup(
     setup_requires=["setuptools_scm"],
     description="Synthetic Data Generation with optional Differential Privacy",
     url="https://github.com/gretelai/gretel-synthetics",
-    license="http://www.apache.org/licenses/LICENSE-2.0",
+    license="https://gretel.ai/license/source-available-license",
     long_description=long_description,
     long_description_content_type="text/markdown",
     package_dir={"": "src"},
@@ -53,7 +53,7 @@ setup(
     extras_require={"all": utils_reqs, "utils": utils_reqs, "test": test_reqs},
     classifiers=[
         "Programming Language :: Python :: 3",
-        "License :: OSI Approved :: Apache Software License",
+        "License :: Free To Use But Restricted",
         "Operating System :: POSIX :: Linux",
         "Operating System :: MacOS",
         "Operating System :: Microsoft :: Windows",

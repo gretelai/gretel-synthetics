@@ -2,12 +2,12 @@
 
 <p align="center">
     <a href="https://gretel.ai"><img width="128px" src="https://gretel-public-website.s3.amazonaws.com/assets/gobs_the_cat_@1x.png" alt="Gobs the Gretel.ai cat" /></a><br />
-    <i>An open source synthetic data library from Gretel.ai</i>
+    <i>A permissive synthetic data library from Gretel.ai</i>
 </p>
 
 ![gretel-synthetics workflows](https://github.com/gretelai/gretel-synthetics/workflows/gretel-synthetics%20workflows/badge.svg)
 [![Documentation Status](https://readthedocs.org/projects/gretel-synthetics/badge/?version=stable)](https://gretel-synthetics.readthedocs.io/en/stable/?badge=stable)
-![GitHub](https://img.shields.io/github/license/gretelai/gretel-synthetics)
+[![CLA assistant](https://cla-assistant.io/readme/badge/gretelai/gretel-synthetics)](https://cla-assistant.io/gretelai/gretel-synthetics)
 [![PyPI](https://badge.fury.io/py/gretel-synthetics.svg)](https://badge.fury.io/py/gretel-synthetics)
 [![Python](https://img.shields.io/pypi/pyversions/gretel-synthetics.svg)](https://github.com/gretelai/gretel-synthetics)
 [![Downloads](https://pepy.tech/badge/gretel-synthetics)](https://pepy.tech/project/gretel-synthetics)
