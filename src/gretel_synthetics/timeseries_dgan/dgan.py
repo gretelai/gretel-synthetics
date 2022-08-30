@@ -49,6 +49,7 @@ from __future__ import annotations
 
 import abc
 import logging
+import math
 
 from typing import Dict, List, Optional, Tuple
 
@@ -284,6 +285,27 @@ class DGAN:
                     discrete_columns=discrete_columns,
                 )
             elif df_style == DfStyle.LONG:
+                if example_id_column == None and attribute_columns:
+                    raise Exception(
+                        "Please provide an example id column, auto-splitting not available with only attribute columns."
+                    )
+                if example_id_column == None and attribute_columns == None:
+                    logging.warning(
+                        f"Example ID column not provided, DGAN will autosplit dataset into sequences of size {self.config.max_sequence_len}!"
+                    )
+                    df = df[
+                        : math.floor(len(df) / self.config.max_sequence_len)
+                        * self.config.max_sequence_len
+                    ].copy()
+                    if time_column != None:
+                        df[time_column] = pd.to_datetime(df[time_column])
+                        df = df.sort(time_column)
+                    example_id_column = "example_id"
+                    df[example_id_column] = np.repeat(
+                        range(len(df) // self.config.max_sequence_len),
+                        self.config.max_sequence_len,
+                    )
+
                 self.data_frame_converter = _LongDataFrameConverter.create(
                     df,
                     attribute_columns=attribute_columns,
