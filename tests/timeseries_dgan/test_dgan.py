@@ -488,6 +488,105 @@ def test_train_dataframe_long_no_attributes(config: DGANConfig):
     assert list(synthetic_df.columns) == list(df.columns)
 
 
+def test_train_dataframe_long(config: DGANConfig):
+    # Checking functionality and outputs of DGAN training on long style dataframe
+    # when exmaple_id is provided
+    n = 500
+    df = pd.DataFrame(
+        {
+            "example_id": np.repeat(range(n), 4),
+            "a1": np.repeat(np.random.randint(0, 3, size=n), 4),
+            "a2": np.repeat(np.random.rand(n), 4),
+            "f1": np.random.rand(4 * n),
+            "f2": np.random.rand(4 * n),
+        }
+    )
+
+    config.max_sequence_len = 4
+    config.sample_len = 2
+
+    dg = DGAN(config=config)
+
+    dg.train_dataframe(
+        df=df,
+        attribute_columns=["a1", "a2"],
+        example_id_column="example_id",
+        discrete_columns=["a1"],
+        df_style=DfStyle.LONG,
+    )
+
+    synthetic_df = dg.generate_dataframe(5)
+
+    assert synthetic_df.shape == (5 * 4, 5)
+    assert list(synthetic_df.columns) == list(df.columns)
+
+
+def test_train_dataframe_long_no_attributes_no_example_id(config: DGANConfig):
+    # Checking functionality of autosplit when no example id, but attributes are provided
+    # by the user. This test should catch the exception thrown by the function that tells
+    # the user that autosplitting is not available and that they need to provide an example
+    # id column.
+
+    n = 250
+    df = pd.DataFrame(
+        {
+            "a1": np.repeat(np.random.randint(0, 10, size=n), 6),
+            "a2": np.repeat(np.random.rand(n), 6),
+            "a3": np.repeat(np.random.rand(n), 6),
+            "f1": np.random.rand(6 * n),
+            "f2": np.random.rand(6 * n),
+            "f3": np.random.rand(6 * n),
+        }
+    )
+
+    config.max_sequence_len = 6
+    config.sample_len = 2
+
+    dg = DGAN(config=config)
+
+    with pytest.raises(Exception) as exc_info:
+        dg.train_dataframe(
+            df=df,
+            attribute_columns=["a1", "a2"],
+            discrete_columns=["a1"],
+            df_style=DfStyle.LONG,
+        )
+
+    assert (
+        str(exc_info.value)
+        == "Please provide an example id column, auto-splitting not available with only attribute columns."
+    )
+
+
+def test_train_dataframe_long_no_attributes_no_example_id(config: DGANConfig):
+    # Checking functionality of autosplit when no example id and no attributes are provided
+    # by the user
+
+    n = 500
+    df = pd.DataFrame(
+        {
+            "f1": np.random.rand(4 * n),
+            "f2": np.random.rand(4 * n),
+        }
+    )
+
+    config.max_sequence_len = 6
+    config.sample_len = 2
+
+    dg = DGAN(config=config)
+
+    dg.train_dataframe(
+        df=df,
+        df_style=DfStyle.LONG,
+    )
+
+    synthetic_df = dg.generate_dataframe(5)
+
+    assert synthetic_df.shape == (6 * 5, 3)
+    assert list(synthetic_df.columns)[-1] == "example_id"
+    assert synthetic_df["example_id"].value_counts()[0] == config.max_sequence_len
+
+
 def test_train_numpy_nans(config: DGANConfig, feature_data):
     features, feature_types = feature_data
     # Insert a NaN
