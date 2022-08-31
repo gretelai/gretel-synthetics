@@ -299,7 +299,7 @@ class DGAN:
                     ].copy()
                     if time_column != None:
                         df[time_column] = pd.to_datetime(df[time_column])
-                        df = df.sort(time_column)
+                        df = df.sort_values(time_column)
                     example_id_column = "example_id"
                     df[example_id_column] = np.repeat(
                         range(len(df) // self.config.max_sequence_len),
