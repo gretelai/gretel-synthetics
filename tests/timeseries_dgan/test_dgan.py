@@ -558,6 +558,34 @@ def test_train_dataframe_long_no_attributes_no_example_id(config: DGANConfig):
     )
 
 
+def test_train_dataframe_long_no_attributes_no_example_id_with_time(config: DGANConfig):
+    # Checking functionality of autosplit when no example id and no attributes, but the
+    # time column is provided by the user
+
+    n = 250
+    df = pd.DataFrame(
+        {
+            "date": pd.date_range(start="1/1/2018", periods=3 * n).tolist(),
+            "f1": np.random.rand(3 * n),
+            "f2": np.random.rand(3 * n),
+        }
+    )
+
+    config.max_sequence_len = 6
+    config.sample_len = 2
+
+    dg = DGAN(config=config)
+
+    dg.train_dataframe(df=df, df_style=DfStyle.LONG, time_column="date")
+
+    synthetic_df = dg.generate_dataframe(5)
+
+    assert synthetic_df.shape == (6 * 5, 4)
+    assert list(synthetic_df.columns)[-1] == "example_id"
+    assert list(synthetic_df.columns)[0] == "date"
+    assert synthetic_df["example_id"].value_counts()[0] == config.max_sequence_len
+
+
 def test_train_dataframe_long_no_attributes_no_example_id(config: DGANConfig):
     # Checking functionality of autosplit when no example id and no attributes are provided
     # by the user
