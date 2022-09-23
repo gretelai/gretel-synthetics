@@ -29,7 +29,7 @@ def test_output():
     )
     assert o2.name == "bar"
     assert o2.dim == 1
-    assert o2.apply_example_scaling == True
+    assert o2.apply_example_scaling
 
     with pytest.raises(FrozenInstanceError):
         o2.dim = 2
