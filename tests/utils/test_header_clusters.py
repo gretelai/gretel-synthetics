@@ -36,7 +36,8 @@ def test_no_empty_clusters(sample_df):
     assert [] not in clusters
 
 
-# sample_df doesn't have any fields that should be single batched, so independent of isolation flag, clusters should be the same
+# sample_df doesn't have any fields that should be single batched,
+# so independent of isolation flag, clusters should be the same
 def test_no_isolation(sample_df):
     old_clusters = hc.cluster(sample_df, maxsize=20, isolate_complex_field=False)
     new_clusters = hc.cluster(sample_df, maxsize=20)
