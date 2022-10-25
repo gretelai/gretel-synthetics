@@ -98,9 +98,9 @@ def test_record_factory_generate_all(safecast_model_dir):
     next(factory)
 
     # generate_all should reset our iterator for the full 10 records
-    assert len(factory.generate_all()) == 10
+    assert len(factory.generate_all().records) == 10
 
-    df = factory.generate_all(output="df")
+    df = factory.generate_all(output="df").records
     assert df.shape == (10, 16)
     assert str(df["payload.loc_lat"].dtype) == "float64"
 
@@ -123,7 +123,7 @@ def test_record_factory_generate_all_with_callback(safecast_model_dir, threading
         callback=callback_fn,
         callback_interval=1,
         callback_threading=threading,
-    )
+    ).records
     assert df.shape == (1000, 16)
 
     # assuming we get at least 5 bad records
@@ -337,7 +337,7 @@ def test_record_factory_smart_seed_buffer(safecast_model_dir):
         max_invalid=5000,
     )
 
-    df = factory.generate_all(output="df")
+    df = factory.generate_all(output="df").records
     assert len(df) == 8
     assert factory.summary["num_lines"] == 8
     assert factory.summary["valid_count"] == 8
@@ -348,7 +348,7 @@ def test_record_factory_multi_batch(hr_model_dir):
 
     factory = batcher.create_record_factory(num_lines=50, max_invalid=5000)
 
-    df = factory.generate_all(output="df")
+    df = factory.generate_all(output="df").records
     assert len(df) == 50
 
 
@@ -364,7 +364,7 @@ def test_record_factory_multi_batch_seed_list(hr_model_dir):
         validator=MyValidator(),
     )
 
-    df = factory.generate_all(output="df")
+    df = factory.generate_all(output="df").records
     assert len(df) == 50
     assert df["age"].nunique() == 50
 
@@ -376,7 +376,7 @@ def test_record_factory_multi_batch_seed_static(hr_model_dir):
         num_lines=10, max_invalid=5000, seed_fields={"age": 5}, validator=MyValidator()
     )
 
-    df = factory.generate_all(output="df")
+    df = factory.generate_all(output="df").records
     assert len(df) == 10
     assert df["age"].nunique() == 1
     assert df.iloc[0]["age"] == 5

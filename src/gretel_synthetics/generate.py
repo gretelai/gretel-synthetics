@@ -2,6 +2,8 @@
 Abstract module for generating data.  The ``generate_text`` function is the primary entrypoint for
 creating text.
 """
+import logging
+
 from abc import ABC, abstractmethod
 from collections import namedtuple
 from collections.abc import Iterator as IteratorClass
@@ -18,6 +20,7 @@ else:
     BaseConfig = None
 
 PredString = namedtuple("pred_string", ["data"])
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -241,6 +244,8 @@ def generate_text(
         raise RuntimeError(
             "When providing a list of start strings, parallelism cannot be used"
         )
+
+    logger.info(f"Using {num_workers} workers to generate records.")
     if num_workers == 1:
         gen = generator_class(settings)
         yield from gen.generate_next(_line_count)
