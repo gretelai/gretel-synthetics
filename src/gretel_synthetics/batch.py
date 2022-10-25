@@ -43,6 +43,7 @@ from gretel_synthetics.errors import TooManyInvalidError
 from gretel_synthetics.generate import generate_text, GenText, SeedingGenerator
 from gretel_synthetics.tokenizers import BaseTokenizerTrainer
 from gretel_synthetics.train import train
+from pandas.errors import EmptyDataError
 from tqdm.auto import tqdm
 
 logging.basicConfig()
@@ -392,8 +393,12 @@ class _BufferedDataFrame(_BufferedRecords):
     @property
     def df(self) -> pd.DataFrame:
         self.buffer.seek(0)
-        df = pd.read_csv(self.buffer, sep=self.delim)
-        return df[self.columns]
+        try:
+            df = pd.read_csv(self.buffer, sep=self.delim)
+            return df[self.columns]
+
+        except EmptyDataError:
+            return pd.DataFrame(columns=self.columns)
 
     def get_records(self) -> pd.DataFrame:
         return self.df
@@ -495,11 +500,12 @@ class _GenerationCallback:
                 current_valid_count=valid_count,
                 current_invalid_count=invalid_count,
                 new_valid_count=valid_count - self._last_progress.current_valid_count,
-                new_invalid_count=invalid_count
-                - self._last_progress.current_invalid_count,
-                completion_percent=0
-                if num_lines == 0
-                else round(valid_count / num_lines * 100, 2),
+                new_invalid_count=(
+                    invalid_count - self._last_progress.current_invalid_count
+                ),
+                completion_percent=(
+                    0 if num_lines == 0 else round(valid_count / num_lines * 100, 2)
+                ),
             )
 
             self._callback_fn(current_progress)
@@ -540,6 +546,14 @@ def _threading_generation_callback(
             event.set()
             break
         time.sleep(1)
+
+
+@dataclass
+class GenerationResult:
+    # Type depends on type of _BufferedRecords that was used.
+    records: Union[pd.DataFrame, List[dict]]
+    # If generation was stopped because of exception, it will be stored here.
+    exception: Optional[Exception] = None
 
 
 class RecordFactory:
@@ -821,7 +835,7 @@ class RecordFactory:
         callback: Optional[callable] = None,
         callback_interval: int = 30,
         callback_threading: bool = False,
-    ):
+    ) -> GenerationResult:
         """Attempt to generate the full number of records that was set when
         creating the ``RecordFactory.``  This method will create a buffer
         that holds all records and then returns the the buffer once
@@ -881,7 +895,7 @@ class RecordFactory:
         try:
             for rec in _iter:
                 # NOTE: This iterator will block while no records are being
-                # succesfully generated. If callbacks need to occur in this
+                # successfully generated. If callbacks need to occur in this
                 # situation, ensure the callback threading option is enabled
                 #
                 # If threading is enabled, and the callback encounters an exception,
@@ -905,18 +919,22 @@ class RecordFactory:
                 self._thread_event.set()
                 callback_thread.join()
 
-        # send final progress update
-        if progress_callback:
-            progress_callback.update_progress(
-                self._counter.num_lines,
-                self._counter.valid_count,
-                self._counter.invalid_count,
-                force_update=True,
-            )
-
         out_records = buffer.get_records()
         buffer.cleanup()
-        return out_records
+
+        try:
+            # send final progress update
+            if progress_callback:
+                progress_callback.update_progress(
+                    self._counter.num_lines,
+                    self._counter.valid_count,
+                    self._counter.invalid_count,
+                    force_update=True,
+                )
+            return GenerationResult(records=out_records)
+
+        except Exception as e:
+            return GenerationResult(records=out_records, exception=e)
 
     @property
     def summary(self):

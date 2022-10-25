@@ -153,7 +153,7 @@ def test_train_batch_sp_tok(train_df, tmp_path, tok_class):
 
     # Generate with a RecordFactory
     factory = batcher.create_record_factory(num_lines=_tok_gen_count, max_invalid=5000)
-    syn_df = factory.generate_all(output="df")
+    syn_df = factory.generate_all(output="df").records
     assert syn_df.shape[0] == _tok_gen_count
     assert list(syn_df.columns) == list(train_df.columns)
     assert factory.summary["valid_count"] == _tok_gen_count
