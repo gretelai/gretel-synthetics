@@ -11,24 +11,21 @@ from gretel_synthetics.tensorflow.train import (
     METRIC_LOSS,
     METRIC_VAL_ACCURACY,
     METRIC_VAL_LOSS,
+    train_rnn,
 )
-from gretel_synthetics.train import train
 
 
 @patch("gretel_synthetics.tensorflow.train.build_model")
 @patch("gretel_synthetics.tensorflow.train._save_history_csv")
-def test_train_rnn(save_history, model, tf_config):
+def test_train_rnn(save_history, model, training_params):
     mock_model = Mock()
     model.return_value = mock_model
-
-    train(tf_config)
-
+    train_rnn(training_params)
     model.assert_called_with(
         vocab_size=71,
-        batch_size=tf_config.batch_size,
-        store=tf_config,
+        batch_size=training_params.config.batch_size,
+        store=training_params.config,
     )
-
     mock_model.fit.assert_called()
 
 
