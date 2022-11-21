@@ -78,6 +78,10 @@ logging.basicConfig(
 AttributeFeaturePair = Tuple[Optional[np.ndarray], np.ndarray]
 NumpyArrayTriple = Tuple[np.ndarray, np.ndarray, np.ndarray]
 
+NAN_ERROR_MESSAGE = """
+DGAN does not support NaNs, please remove NaNs before training. If there are no NaNs in your input data and you see this error, please create a support ticket.
+"""
+
 
 class DGAN:
     """
@@ -189,7 +193,36 @@ class DGAN:
                     "First dimension of attributes and features must be the same length, i.e., the number of training examples."
                 )
 
-        _check_for_nans(attributes, features)
+        if attributes is not None and attribute_types is None:
+            # Automatically determine attribute types
+            attribute_types = []
+            for i in range(attributes.shape[1]):
+                try:
+                    # Here we treat integer columns as continuous, and thus the
+                    # generated values will be (unrounded) floats. This may not
+                    # be the right choice, and may be surprising to give integer
+                    # inputs and get back floats. An explicit list of
+                    # feature_types can be given (or constructed by passing
+                    # discrete_columns to train_dataframe) to control this
+                    # behavior. And we can look into a better fix in the future,
+                    # maybe using # of distinct values, and having an explicit
+                    # integer type so we appropriately round the final output.
+                    attributes[:, i].astype("float")
+                    attribute_types.append(OutputType.CONTINUOUS)
+                except ValueError:
+                    attribute_types.append(OutputType.DISCRETE)
+
+        if feature_types is None:
+            # Automatically determine feature types
+            feature_types = []
+            for i in range(features.shape[2]):
+                try:
+                    # Here we treat integer columns as continuous, see above
+                    # comment.
+                    features[:, :, i].astype("float")
+                    feature_types.append(OutputType.CONTINUOUS)
+                except ValueError:
+                    feature_types.append(OutputType.DISCRETE)
 
         if not self.is_built:
             attribute_outputs, feature_outputs = create_outputs_from_data(
@@ -213,6 +246,14 @@ class DGAN:
                 internal_additional_attributes,
             ) = transform(features, self.feature_outputs, variable_dim_index=2)
 
+            if np.any(np.isnan(internal_features)):
+                raise ValueError(f"NaN found in internal features. {NAN_ERROR_MESSAGE}")
+
+            if np.any(np.isnan(internal_additional_attributes)):
+                raise ValueError(
+                    f"NaN found in internal additional attributes. {NAN_ERROR_MESSAGE}"
+                )
+
         else:
             internal_features = transform(
                 features, self.feature_outputs, variable_dim_index=2
@@ -221,6 +262,9 @@ class DGAN:
                 np.full((internal_features.shape[0], 1), np.nan)
             )
 
+            if np.any(np.isnan(internal_features)):
+                raise ValueError(f"NaN found in internal features. {NAN_ERROR_MESSAGE}")
+
         internal_attributes = transform(
             attributes,
             self.attribute_outputs,
@@ -228,10 +272,11 @@ class DGAN:
             num_examples=internal_features.shape[0],
         )
 
-        internal_attributes_tensor = torch.Tensor(internal_attributes)
+        if self.attribute_outputs and np.any(np.isnan(internal_attributes)):
+            raise ValueError(f"NaN found in internal attributes. {NAN_ERROR_MESSAGE}")
 
         dataset = TensorDataset(
-            torch.Tensor(internal_attributes_tensor),
+            torch.Tensor(internal_attributes),
             torch.Tensor(internal_additional_attributes),
             torch.Tensor(internal_features),
         )
@@ -320,8 +365,6 @@ class DGAN:
                 )
 
         attributes, features = self.data_frame_converter.convert(df)
-
-        _check_for_nans(attributes, features)
 
         self.train_numpy(
             attributes=attributes,
@@ -941,24 +984,6 @@ class DGAN:
         return dgan
 
 
-def _check_for_nans(attributes: Optional[np.ndarray], features: np.ndarray):
-    """Helper function to raise an error if NaNs are found.
-
-    The DGAN model does not handle NaNs at this time, so we want to throw a
-    specific error instead of waiting for later steps to fail that are harder to
-    debug.
-    """
-    if attributes is not None and np.any(np.isnan(attributes)):
-        raise ValueError(
-            "NaN found in attributes. DGAN does not support NaNs, please remove NaNs before training."
-        )
-
-    if np.any(np.isnan(features)):
-        raise ValueError(
-            "NaN found in features. DGAN does not support NANs, please remove NaNs before training."
-        )
-
-
 class _DataFrameConverter(abc.ABC):
     """Abstract class for converting DGAN input to and from a DataFrame."""
 
@@ -1082,10 +1107,16 @@ class _WideDataFrameConverter(_DataFrameConverter):
 
         if discrete_columns is None:
             discrete_column_set = set()
-            discrete_columns = []
         else:
             discrete_column_set = set(discrete_columns)
-            discrete_columns = discrete_columns
+
+        # Check for string columns and ensure they are considered discrete.
+        for column_name in df.columns:
+            if df[column_name].dtype == "O":
+                logging.info(
+                    f"Marking column {column_name} as discrete because its type is string/object."
+                )
+                discrete_column_set.add(column_name)
 
         attribute_types = [
             OutputType.DISCRETE if c in discrete_column_set else OutputType.CONTINUOUS
@@ -1101,7 +1132,7 @@ class _WideDataFrameConverter(_DataFrameConverter):
         return _WideDataFrameConverter(
             attribute_columns=attribute_columns,
             feature_columns=feature_columns,
-            discrete_columns=discrete_columns,
+            discrete_columns=sorted(discrete_column_set),
             df_column_order=df_column_order,
             attribute_types=attribute_types,
             feature_types=feature_types,
@@ -1146,9 +1177,12 @@ class _WideDataFrameConverter(_DataFrameConverter):
 
         df = pd.DataFrame(data, columns=self._attribute_columns + self._feature_columns)
 
-        # Convert discrete columns to int to match inputs
+        # Convert discrete columns to int where possible.
         for c in self._discrete_columns:
-            df[c] = df[c].astype("int")
+            try:
+                df[c] = df[c].astype("int")
+            except ValueError:
+                pass
 
         # Ensure we match the original ordering
         return df[self._df_column_order]
@@ -1234,10 +1268,23 @@ class _LongDataFrameConverter(_DataFrameConverter):
 
         if discrete_columns is None:
             discrete_column_set = set()
-            discrete_columns = []
         else:
             discrete_column_set = set(discrete_columns)
-            discrete_columns = discrete_columns
+
+        # Check for string columns and ensure they are considered discrete.
+        for column_name in df.columns:
+            # Check all columns being used, except time_column and
+            # example_id_column which are not directly modeled.
+            if (
+                df[column_name].dtype == "O"
+                and column_name in given_columns
+                and column_name != time_column
+                and column_name != example_id_column
+            ):
+                logging.info(
+                    f"Marking column {column_name} as discrete because its type is string/object."
+                )
+                discrete_column_set.add(column_name)
 
         attribute_types = [
             OutputType.DISCRETE if c in discrete_column_set else OutputType.CONTINUOUS
@@ -1268,7 +1315,7 @@ class _LongDataFrameConverter(_DataFrameConverter):
             feature_columns=feature_columns,
             example_id_column=example_id_column,
             time_column=time_column,
-            discrete_columns=discrete_columns,
+            discrete_columns=sorted(discrete_column_set),
             df_column_order=df_column_order,
             attribute_types=attribute_types,
             feature_types=feature_types,
@@ -1313,12 +1360,34 @@ class _LongDataFrameConverter(_DataFrameConverter):
                 ]
 
                 # Check that attributes are the same for all rows with the same
-                # example id
-                attribute_mins = df_attributes.groupby(self._example_id_column).min()
-                attribute_maxes = df_attributes.groupby(self._example_id_column).max()
+                # example id. Use custom min and max functions that ignore nans.
+                # Using pandas min() and max() functions leads to errors when a
+                # single example has a mix of string and nan values for an
+                # attribute across different rows because str and float are not
+                # comparable.
+                def custom_min(a):
+                    return min((x for x in a if x is not np.nan), default=np.nan)
+
+                def custom_max(a):
+                    return max((x for x in a if x is not np.nan), default=np.nan)
+
+                attribute_mins = df_attributes.groupby(self._example_id_column).apply(
+                    lambda frame: frame.apply(custom_min)
+                )
+                attribute_maxes = df_attributes.groupby(self._example_id_column).apply(
+                    lambda frame: frame.apply(custom_max)
+                )
+
                 for column in self._attribute_columns:
-                    comparison = attribute_mins[column] != attribute_maxes[column]
-                    if comparison.any():
+                    # Use custom list comprehension for the comparison to allow
+                    # nan attribute values (nans don't compare equal so any
+                    # example with an attribute of nan would fail the min/max
+                    # equality check).
+                    comparison = [
+                        x is np.nan if y is np.nan else x == y
+                        for x, y in zip(attribute_mins[column], attribute_maxes[column])
+                    ]
+                    if not np.all(comparison):
                         raise ValueError(
                             f"Attribute {column} is not constant within each example."
                         )
@@ -1389,8 +1458,12 @@ class _LongDataFrameConverter(_DataFrameConverter):
                 columns=self._feature_columns,
             )
 
+        # Convert discrete columns to int where possible.
         for c in self._discrete_columns:
-            df[c] = df[c].astype("int")
+            try:
+                df[c] = df[c].astype("int")
+            except ValueError:
+                pass
 
         if self._example_id_column:
             # Use [0,1,2,...] for example_id

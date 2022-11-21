@@ -57,6 +57,9 @@ class DGANConfig:
             support for time series with highly variable ranges, e.g., in
             network data, a dial-up connection has bandwidth usage in [1kb,
             10kb], while a fiber connection is in [100mb, 1gb], Default: True
+        binary_encoder_cutoff: use binary encoder (instead of one hot encoder) for
+            any column with more than this many unique values. This helps reduce memory
+            consumption for datasets with a lot of unique values.
         forget_bias: initialize forget gate bias paramters to 1 in LSTM layers,
             when True initialization matches tf1 LSTMCell behavior, otherwise
             default pytorch initialization is used, Default: False
@@ -104,6 +107,7 @@ class DGANConfig:
     normalization: Normalization = Normalization.ZERO_ONE
     apply_feature_scaling: bool = True
     apply_example_scaling: bool = True
+    binary_encoder_cutoff: int = 150
 
     # Model initialization
     forget_bias: bool = False
