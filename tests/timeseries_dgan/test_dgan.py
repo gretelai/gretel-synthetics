@@ -18,8 +18,9 @@ from gretel_synthetics.timeseries_dgan.dgan import (
     DGAN,
 )
 from gretel_synthetics.timeseries_dgan.transformations import (
+    BinaryEncodedOutput,
     ContinuousOutput,
-    DiscreteOutput,
+    OneHotEncodedOutput,
 )
 from pandas.testing import assert_frame_equal
 
@@ -65,25 +66,26 @@ def test_generate():
         ContinuousOutput(
             name="a",
             normalization=Normalization.ZERO_ONE,
-            global_min=0,
-            global_max=1,
             apply_feature_scaling=False,
             apply_example_scaling=False,
+            global_min=0.0,
+            global_max=1.0,
         ),
-        DiscreteOutput(name="b", dim=3),
-        DiscreteOutput(name="c", dim=4),
+        OneHotEncodedOutput(name="b", dim=3),
+        BinaryEncodedOutput(name="c", dim=4),
     ]
     feature_outputs = [
-        DiscreteOutput(name="d", dim=4),
+        OneHotEncodedOutput(name="d", dim=4),
         ContinuousOutput(
             name="e",
             normalization=Normalization.ZERO_ONE,
-            global_min=0,
-            global_max=1,
             apply_feature_scaling=False,
             apply_example_scaling=False,
+            global_min=0.0,
+            global_max=1.0,
         ),
     ]
+
     config = DGANConfig(max_sequence_len=20, sample_len=5, batch_size=25)
 
     dg = DGAN(
@@ -129,23 +131,23 @@ def test_generate_example_normalized():
         ContinuousOutput(
             name="a",
             normalization=Normalization.ZERO_ONE,
-            global_min=0,
-            global_max=1,
             apply_feature_scaling=False,
             apply_example_scaling=False,
+            global_min=0.0,
+            global_max=1.0,
         ),
-        DiscreteOutput(name="b", dim=3),
-        DiscreteOutput(name="c", dim=4),
+        OneHotEncodedOutput(name="b", dim=3),
+        BinaryEncodedOutput(name="c", dim=4),
     ]
     feature_outputs = [
-        DiscreteOutput(name="d", dim=4),
+        OneHotEncodedOutput(name="d", dim=4),
         ContinuousOutput(
             name="e",
             normalization=Normalization.ZERO_ONE,
-            global_min=0,
-            global_max=1,
             apply_feature_scaling=True,
             apply_example_scaling=True,
+            global_min=0.0,
+            global_max=1.0,
         ),
     ]
 
@@ -643,6 +645,123 @@ def test_train_dataframe_nans(config: DGANConfig):
     dg = DGAN(config=config)
     with pytest.raises(ValueError, match="NaN"):
         dg.train_dataframe(df=df, df_style=DfStyle.WIDE)
+
+
+@pytest.mark.parametrize("binary_encoder_cutoff", [150, 1])
+def test_train_dataframe_with_strings(config: DGANConfig, binary_encoder_cutoff):
+    n = 50
+    expected_categories = set(["aa", "bb", "cc", "dd", "ee", "ff", "gg", "hh", ""])
+    df = pd.DataFrame(
+        {
+            "c": np.random.choice(sorted(list(expected_categories)), n),
+            "n1": np.random.rand(n),
+            "n2": np.random.rand(n),
+            "example_id": np.repeat(range(10), 5),
+        }
+    )
+
+    config.max_sequence_len = 5
+    config.binary_encoder_cutoff = binary_encoder_cutoff
+    dg = DGAN(config=config)
+    dg.train_dataframe(df=df, example_id_column="example_id", df_style=DfStyle.LONG)
+
+    synthetic_df = dg.generate_dataframe(5)
+
+    assert len(synthetic_df) == 5 * 5
+
+    for i in range(len(synthetic_df)):
+        value = synthetic_df.loc[i, "c"]
+        assert (
+            value in expected_categories
+        ), f"row {i} contained unexpected category='{value}'"
+
+
+@pytest.mark.parametrize("binary_encoder_cutoff", [150, 1])
+def test_train_dataframe_wide_with_strings(config: DGANConfig, binary_encoder_cutoff):
+
+    expected_categories = set(["aa", "bb", "cc", "dd", "ee"])
+    n = 50
+    df = pd.DataFrame(np.random.rand(n, 5))
+    df["attribute"] = np.random.choice(sorted(list(expected_categories)), n)
+
+    config.max_sequence_len = 5
+    config.binary_encoder_cutoff = binary_encoder_cutoff
+    dg = DGAN(config=config)
+    dg.train_dataframe(df=df, attribute_columns=["attribute"], df_style=DfStyle.WIDE)
+
+    synthetic_df = dg.generate_dataframe(100)
+
+    assert synthetic_df.shape == (100, 6)
+
+    for i in range(len(synthetic_df)):
+        value = synthetic_df.loc[i, "attribute"]
+        assert (
+            value in expected_categories
+        ), f"row {i} contained unexpected category='{value}'"
+
+
+def test_train_dataframe_long_attribute_mismatch_nans(config: DGANConfig):
+    # Reproduce error found in internal testing.
+    n = 50
+    df = pd.DataFrame(
+        {
+            "example_id": np.repeat(np.arange(10), repeats=5),
+            "a": "foo",
+            "f": np.random.rand(n),
+        }
+    )
+
+    # We tried to replace nans for the first example, but accidentally had an
+    # off-by-one index issue since DataFrame.loc slicing is inclusive on both
+    # endpoints.
+    df.loc[0:5, "a"] = np.nan
+    # And then the pandas groupby min() did not produce a result for all columns
+    # so we would get a key error instead of the expected error mesasge. Pandas
+    # appears to drop groupby results if there's any error, and taking min of a
+    # slice with a mix of nan and string fails. This only occurs when a example
+    # has a mix of nan and string attribute values in the different rows, so in
+    # standard usage this never happens because attribute values are constant
+    # for an example.
+
+    config.max_sequence_len = 5
+    dg = DGAN(config=config)
+
+    with pytest.raises(ValueError, match="not constant within each example"):
+        dg.train_dataframe(
+            df,
+            example_id_column="example_id",
+            attribute_columns=["a"],
+            df_style=DfStyle.LONG,
+        )
+
+
+def test_train_numpy_with_strings(config: DGANConfig):
+    n = 50
+    features = np.stack(
+        [
+            np.random.choice(["aa", "bb", "cc"], n),
+            np.random.rand(n),
+            np.random.rand(n),
+        ],
+        axis=1,
+    ).reshape(
+        -1, 5, 3
+    )  # convert to 3-d features array
+
+    config.max_sequence_len = 5
+    dg = DGAN(config=config)
+    dg.train_numpy(features=features)
+
+    synthetic_attributes, synthetic_features = dg.generate_numpy(5)
+
+    assert synthetic_attributes is None
+    assert synthetic_features.shape == (5, 5, 3)
+
+    expected_categories = set(["aa", "bb", "cc"])
+
+    assert np.all(
+        [x in expected_categories for x in synthetic_features[:, :, 0].flatten()]
+    )
 
 
 @pytest.fixture

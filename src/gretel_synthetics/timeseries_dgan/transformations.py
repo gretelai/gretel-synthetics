@@ -1,39 +1,365 @@
 """Module for converting data to and from internal DGAN representation."""
 
-from dataclasses import dataclass, field
+import abc
+import uuid
+
 from typing import cast, List, Optional, Tuple, Union
 
 import numpy as np
 
+from category_encoders import BinaryEncoder, OneHotEncoder
 from gretel_synthetics.timeseries_dgan.config import Normalization, OutputType
+from scipy.stats import mode
 
 
-@dataclass(frozen=True)
-class Output:
+def _new_uuid() -> str:
+    """Return a random uuid prefixed with 'gretel-'."""
+    return f"gretel-{uuid.uuid4().hex}"
+
+
+class Output(abc.ABC):
     """Stores metadata for a variable, used for both features and attributes."""
 
-    name: str
-    dim: int
+    def __init__(self, name: str):
+        self.name = name
+
+        self.is_fit = False
+
+    @property
+    @abc.abstractmethod
+    def dim(self) -> int:
+        """Dimension of the transformed data produced for this variable."""
+        ...
+
+    def fit(self, column: np.ndarray):
+        """Fit metadata and encoder params to data.
+
+        Args:
+            column: 1-d numpy array
+        """
+        if len(column.shape) != 1:
+            raise ValueError("Expected 1-d numpy array for fit()")
+
+        self._fit(column)
+        self.is_fit = True
+
+    def transform(self, column: np.ndarray) -> np.ndarray:
+        """Transform data to internal representation.
+
+        Args:
+            column: 1-d numpy array
+
+        Returns:
+            2-d numpy array
+        """
+        if len(column.shape) != 1:
+            raise ValueError("Expected 1-d numpy array for transform()")
+
+        if not self.is_fit:
+            raise RuntimeError("Cannot transform before output is fit()")
+        else:
+            return self._transform(column)
+
+    def inverse_transform(self, columns: np.ndarray) -> np.ndarray:
+        """Inverse transform from internal representation to original data space.
+
+        Args:
+            columns: 2-d numpy array
+
+        Returns:
+            1-d numpy array in original data space
+        """
+        if not self.is_fit:
+            raise RuntimeError("Cannot inverse transform before output is fit()")
+        else:
+            return self._inverse_transform(columns)
+
+    @abc.abstractmethod
+    def _fit(self, column: np.ndarray):
+        ...
+
+    @abc.abstractmethod
+    def _transform(self, columns: np.ndarray) -> np.ndarray:
+        ...
+
+    @abc.abstractmethod
+    def _inverse_transform(self, columns: np.ndarray) -> np.ndarray:
+        ...
 
 
-@dataclass(frozen=True)
-class DiscreteOutput(Output):
-    """Discrete (categorical) variable metadata."""
+class OneHotEncodedOutput(Output):
+    """Metadata for a one-hot encoded variable."""
 
-    pass
+    def __init__(self, name: str, dim=None):
+        """
+        Args:
+            name: name of variable
+            dim: use to directly setup encoder for [0,1,2,,...,dim-1] values, if
+                not None, calling fit() is not required. Provided for easier
+                backwards compatability. Preferred usage is dim=None and then
+                call fit() on the instance.
+        """
+        super().__init__(name)
+
+        if dim is not None:
+            self.fit(np.arange(dim))
+
+    @property
+    def dim(self) -> int:
+        """Dimension of the transformed data produced by one-hot encoding."""
+        if self.is_fit:
+            return len(self._encoder.get_feature_names())
+        else:
+            raise RuntimeError("Cannot return dim before output is fit()")
+
+    def _fit(self, column: np.ndarray):
+        """Fit one-hot encoder.
+
+        Args:
+            column: 1-d numpy array
+        """
+        # Use cols=0 to always do the encoding, even if the input is integer or
+        # float.
+        self._encoder = OneHotEncoder(cols=0, return_df=False)
+
+        self._encoder.fit(column)
+
+    def _transform(self, column: np.ndarray) -> np.ndarray:
+        """Apply one-hot encoding.
+
+        Args:
+            column: 1-d numpy array
+
+        Returns:
+            2-d numpy array of encoded data
+        """
+        return self._encoder.transform(column).astype("float", casting="safe")
+
+    def _inverse_transform(self, columns: np.ndarray) -> np.ndarray:
+        """Invert one-hot encoding.
+
+        Args:
+            columns: 2-d numpy array of floats or integers
+
+        Returns:
+            1-d numpy array
+        """
+        if len(columns.shape) != 2:
+            raise ValueError(
+                f"Expected 2-d numpy array, received shape={columns.shape}"
+            )
+        # Category encoders only inverts exact match binary rows, so need to do
+        # argmax and then convert back to full binary matrix.
+        # Might be more efficient to eventually do everything ourselves and not
+        # use OneHotEncoder.
+        indices = np.argmax(columns, axis=1)
+        b = np.zeros(columns.shape)
+        b[np.arange(len(indices)), indices] = 1
+
+        return self._encoder.inverse_transform(b).flatten()
 
 
-@dataclass(frozen=True)
+class BinaryEncodedOutput(Output):
+    """Metadata for a binary encoded variable."""
+
+    def __init__(self, name: str, dim=None):
+        """
+        Args:
+            name: name of variable
+            dim: use to directly setup encoder for [0,1,2,,...,dim-1] values, if
+                not None, calling fit() is not required. Provided for easier
+                backwards compatability. Preferred usage is dim=None and then
+                call fit() on the instance.
+        """
+        super().__init__(name)
+
+        self._convert_to_int = False
+
+        if dim is not None:
+            self.fit(np.arange(dim))
+
+    @property
+    def dim(self) -> int:
+        """Dimension of the transformed data produced by binary encoding."""
+        if self.is_fit:
+            return len(self._encoder.get_feature_names())
+        else:
+            raise RuntimeError("Cannot return dim before output is fit()")
+
+    def _fit(self, column: np.ndarray):
+        """Fit binary encoder.
+
+
+        Args:
+            column: 1-d numpy array
+        """
+        # Use cols=0 to always do the encoding, even if the input is integer or
+        # float.
+        self._encoder = BinaryEncoder(cols=0, return_df=False)
+
+        if type(column) != np.array:
+            column = np.array(column)
+        else:
+            column = column.copy()
+
+        # BinaryEncoder fails a lot if the input is integer (tries to cast to
+        # int during inverse transform, but often have NaNs). So force any
+        # numeric column to float.
+        if np.issubdtype(column.dtype, np.integer):
+            column = column.astype("float")
+            self._convert_to_int = True
+
+        # Use proxy value for nans if present so we can decode them explicitly
+        # and differentiate from decoding failures.
+        nan_mask = [x is np.nan for x in column]
+        if np.sum(nan_mask) > 0:
+            self._nan_proxy = _new_uuid()
+            # Always make a copy at beginning of this function, so in place
+            # change is okay.
+            column[nan_mask] = self._nan_proxy
+        else:
+            self._nan_proxy = None
+
+        # Store mode to use for unmapped binary codes.
+        self._mode = mode(column).mode[0]
+
+        self._encoder.fit(column)
+
+    def _transform(self, column: np.ndarray) -> np.ndarray:
+        """Apply binary encoding.
+
+        Args:
+            column: 1-d numpy array
+
+        Returns:
+            2-d numpy array of encoded data
+        """
+        column = column.copy()
+        if self._nan_proxy:
+            nan_mask = [x is np.nan for x in column]
+            column[nan_mask] = self._nan_proxy
+
+        return self._encoder.transform(column).astype("float", casting="safe")
+
+    def _inverse_transform(self, columns: np.ndarray) -> np.ndarray:
+        """Invert binary encoding.
+
+        Args:
+            columns: 2-d numpy array of floats or integers
+
+        Returns:
+            1-d numpy array
+        """
+        if len(columns.shape) != 2:
+            raise ValueError(
+                f"Expected 2-d numpy array, received shape={columns.shape}"
+            )
+
+        # Threshold to binary matrix
+        binary = (columns > 0.5).astype("int")
+
+        original_data = self._encoder.inverse_transform(binary).flatten()
+
+        nan_mask = [x is np.nan for x in original_data]
+
+        original_data[nan_mask] = self._mode
+
+        # Now that decoding failure nans are replaced with the mode, replace
+        # nan_proxy values with nans.
+        if self._nan_proxy:
+            nan_proxy_mask = [x == self._nan_proxy for x in original_data]
+            original_data[nan_proxy_mask] = np.nan
+
+        if self._convert_to_int:
+            # TODO: store original type for conversion?
+            original_data = original_data.astype("int")
+
+        return original_data
+
+
 class ContinuousOutput(Output):
-    """Continuous variable metadata."""
+    """Metadata for continuous variables."""
 
-    # All continuous outputs have dim=1
-    dim: int = field(init=False, default=1)
-    normalization: Normalization
-    global_min: float
-    global_max: float
-    apply_feature_scaling: bool
-    apply_example_scaling: bool
+    def __init__(
+        self,
+        name: str,
+        normalization: Normalization,
+        apply_feature_scaling: bool,
+        apply_example_scaling: bool,
+        *,
+        global_min: Optional[float] = None,
+        global_max: Optional[float] = None,
+    ):
+        """
+        Args:
+            name: name of variable
+            normalization: range of transformed value
+            apply_feature_scaling: should values be scaled
+            apply_example_scaling: should per-example scaling be used
+            global_min: backwards compatability to set range in constructor,
+                preferred to use fit()
+            global_max: backwards compatability to set range in constructor
+        """
+        super().__init__(name)
+
+        self.normalization = normalization
+
+        self.apply_feature_scaling = apply_feature_scaling
+        self.apply_example_scaling = apply_example_scaling
+
+        if (global_min is None) != (global_max is None):
+            raise ValueError("Must provide both global_min and global_max")
+
+        if global_min is not None:
+            self.is_fit = True
+            self.global_min = global_min
+            self.global_max = global_max
+
+    @property
+    def dim(self) -> int:
+        """Dimension of transformed data."""
+        return 1
+
+    def _fit(self, column):
+        """Fit continuous variable encoding/scaling.
+
+        Args:
+            column: 1-d numpy array
+        """
+        column = column.astype("float")
+        self.global_min = np.min(column)
+        self.global_max = np.max(column)
+
+    def _transform(self, column: np.ndarray) -> np.ndarray:
+        """Apply continuous variable encoding/scaling.
+
+        Args:
+            column: numpy array
+
+        Returns:
+            numpy array of rescaled data
+        """
+        column = column.astype("float")
+        if self.apply_feature_scaling:
+            return rescale(column, self.normalization, self.global_min, self.global_max)
+        else:
+            return column
+
+    def _inverse_transform(self, columns: np.ndarray) -> np.ndarray:
+        """Invert continus variable encoding/scaling.
+
+        Args:
+            columns: numpy array
+
+        Returns:
+            numpy array
+        """
+        if self.apply_feature_scaling:
+            return rescale_inverse(
+                columns, self.normalization, self.global_min, self.global_max
+            )
+        else:
+            return columns
 
 
 def create_outputs_from_data(
@@ -44,6 +370,7 @@ def create_outputs_from_data(
     normalization: Normalization,
     apply_feature_scaling: bool = False,
     apply_example_scaling: bool = False,
+    binary_encoder_cutoff: int = 150,
 ) -> Tuple[Optional[List[Output]], List[Output]]:
     """Create output metadata from data.
 
@@ -59,6 +386,8 @@ def create_outputs_from_data(
         apply_example_scaling: include midpoint and half-range as additional
             attributes for each feature and scale per example, improves
             performance when time series ranges are highly variable
+        binary_encoder_cutoff: use binary encoder (instead of one hot encoder) for
+            any column with more than this many unique values
     """
     attribute_outputs = None
     if attributes is not None:
@@ -79,6 +408,7 @@ def create_outputs_from_data(
                 # Attributes can never be normalized per example since there's
                 # only 1 value for each variable per example.
                 apply_example_scaling=False,
+                binary_encoder_cutoff=binary_encoder_cutoff,
             )
             for index, t in enumerate(attribute_types)
         ]
@@ -99,6 +429,7 @@ def create_outputs_from_data(
             normalization=normalization,
             apply_feature_scaling=apply_feature_scaling,
             apply_example_scaling=apply_example_scaling,
+            binary_encoder_cutoff=binary_encoder_cutoff,
         )
         for index, t in enumerate(feature_types)
     ]
@@ -113,6 +444,7 @@ def create_output(
     normalization: Normalization,
     apply_feature_scaling: bool,
     apply_example_scaling: bool,
+    binary_encoder_cutoff: int,
 ) -> Output:
     """Create a single output from data.
 
@@ -123,6 +455,7 @@ def create_output(
         normalization: see documentation in create_outputs_from_data
         apply_feature_scaling: see documentation in create_outputs_from_data
         apply_example_scaling: see documentation in create_outputs_from_data
+        binary_encoder_cutoff: see documentation in create_outputs_from_data
 
     Returns:
         Output metadata instance
@@ -131,18 +464,29 @@ def create_output(
         output = ContinuousOutput(
             name="a" + str(index),
             normalization=normalization,
-            global_min=np.min(data),
-            global_max=np.max(data),
             apply_feature_scaling=apply_feature_scaling,
             apply_example_scaling=apply_example_scaling,
         )
+
     elif t == OutputType.DISCRETE:
-        output = DiscreteOutput(
-            name="a" + str(index),
-            dim=1 + np.int32(np.max(data)),
-        )
+        if data.dtype == "float":
+            unique_count = len(np.unique(data))
+        else:
+            # Convert to str to ensure all elements are comparable (so unique
+            # works as expected). In particular, this converts nan to "nan"
+            # which is comparable.
+            unique_count = len(np.unique(data.astype("str")))
+
+        if unique_count > binary_encoder_cutoff:
+            output = BinaryEncodedOutput(name="a" + str(index))
+        else:
+            output = OneHotEncodedOutput(name="a" + str(index))
+
     else:
         raise RuntimeError(f"Unknown output type={t}")
+
+    output.fit(data.flatten())
+
     return output
 
 
@@ -245,32 +589,25 @@ def transform(
         # NOTE: isinstance(output, DiscreteOutput) does not work consistently
         #       with all import styles in jupyter notebooks, using string
         #       comparison instead.
-        if "DiscreteOutput" in str(output.__class__):
-            output = cast(DiscreteOutput, output)
+        if "OneHotEncodedOutput" in str(
+            output.__class__
+        ) or "BinaryEncodedOutput" in str(output.__class__):
 
             if variable_dim_index == 1:
-                indices = original_data[:, index].astype(int)
+                original_column = original_data[:, index]
+                target_shape = (original_data.shape[0], -1)
             elif variable_dim_index == 2:
-                indices = original_data[:, :, index].astype(int)
+                original_column = original_data[:, :, index]
+                target_shape = (original_data.shape[0], original_data.shape[1], -1)
             else:
                 raise RuntimeError(
                     f"Unsupported variable_dim_index={variable_dim_index}"
                 )
 
-            if variable_dim_index == 1:
-                b = np.zeros((len(indices), output.dim))
-                b[np.arange(len(indices)), indices] = 1
-            elif variable_dim_index == 2:
-                b = np.zeros((indices.shape[0], indices.shape[1], output.dim))
-                # From https://stackoverflow.com/questions/36960320/convert-a-2d-matrix-to-a-3d-one-hot-matrix-numpy
-                def all_idx(idx, axis):
-                    grid = np.ogrid[tuple(map(slice, idx.shape))]
-                    grid.insert(axis, idx)
-                    return tuple(grid)
+            transformed_data = output.transform(original_column.flatten())
 
-                b[all_idx(indices, axis=2)] = 1
+            parts.append(transformed_data.reshape(target_shape))
 
-            parts.append(b)
         elif "ContinuousOutput" in str(output.__class__):
             output = cast(ContinuousOutput, output)
 
@@ -283,12 +620,7 @@ def transform(
                     f"Unsupported variable_dim_index={variable_dim_index}"
                 )
 
-            if output.apply_feature_scaling:
-                feature_scaled = rescale(
-                    raw, output.normalization, output.global_min, output.global_max
-                )
-            else:
-                feature_scaled = raw
+            feature_scaled = output.transform(raw.flatten()).reshape(raw.shape)
 
             if output.apply_example_scaling:
                 if variable_dim_index != 2:
@@ -331,11 +663,11 @@ def transform(
 
     if additional_attribute_parts:
         return (
-            np.concatenate(parts, axis=variable_dim_index),
-            np.concatenate(additional_attribute_parts, axis=1),
+            np.concatenate(parts, axis=variable_dim_index, dtype="float"),
+            np.concatenate(additional_attribute_parts, axis=1, dtype="float"),
         )
     else:
-        return np.concatenate(parts, axis=variable_dim_index)
+        return np.concatenate(parts, axis=variable_dim_index, dtype="float")
 
 
 def inverse_transform(
@@ -365,28 +697,28 @@ def inverse_transform(
     if np.isnan(transformed_data).any():
         return None
     for output in outputs:
-        if "DiscreteOutput" in str(output.__class__):
-            output = cast(DiscreteOutput, output)
+        if "OneHotEncodedOutput" in str(
+            output.__class__
+        ) or "BinaryEncodedOutput" in str(output.__class__):
 
             if variable_dim_index == 1:
-                onehot = transformed_data[
+                v = transformed_data[
                     :, transformed_index : (transformed_index + output.dim)
                 ]
+                target_shape = (transformed_data.shape[0], 1)
             elif variable_dim_index == 2:
-                onehot = transformed_data[
+                v = transformed_data[
                     :, :, transformed_index : (transformed_index + output.dim)
                 ]
+                target_shape = (transformed_data.shape[0], transformed_data.shape[1], 1)
             else:
                 raise RuntimeError(
                     f"Unsupported variable_dim_index={variable_dim_index}"
                 )
-            indices = np.argmax(onehot, axis=variable_dim_index)
 
-            target_shape = list(transformed_data.shape)
-            target_shape[-1] = 1
-            indices = indices.reshape(target_shape)
+            original = output.inverse_transform(v.reshape((-1, v.shape[-1])))
 
-            parts.append(indices)
+            parts.append(original.reshape(target_shape))
             transformed_index += output.dim
         elif "ContinuousOutput" in str(output.__class__):
             output = cast(ContinuousOutput, output)
@@ -429,15 +761,7 @@ def inverse_transform(
             else:
                 example_scaled = transformed
 
-            if output.apply_feature_scaling:
-                original = rescale_inverse(
-                    example_scaled,
-                    output.normalization,
-                    output.global_min,
-                    output.global_max,
-                )
-            else:
-                original = example_scaled
+            original = output.inverse_transform(example_scaled)
 
             target_shape = list(transformed_data.shape)
             target_shape[-1] = 1
@@ -478,14 +802,16 @@ def create_additional_attribute_outputs(feature_outputs: List[Output]) -> List[O
                     ContinuousOutput(
                         name=output.name + "_midpoint",
                         normalization=output.normalization,
+                        apply_feature_scaling=False,
+                        apply_example_scaling=False,
+                        # TODO: are min/max really needed here since we aren't
+                        # doing any scaling, could add an IdentityOutput instead?
                         global_min=(
                             0.0
                             if output.normalization == Normalization.ZERO_ONE
                             else -1.0
                         ),
                         global_max=1.0,
-                        apply_feature_scaling=False,
-                        apply_example_scaling=False,
                     )
                 )
                 # The half-range variable always uses ZERO_ONE normalization
@@ -494,10 +820,10 @@ def create_additional_attribute_outputs(feature_outputs: List[Output]) -> List[O
                     ContinuousOutput(
                         name=output.name + "_half_range",
                         normalization=Normalization.ZERO_ONE,
-                        global_min=0.0,
-                        global_max=1.0,
                         apply_feature_scaling=False,
                         apply_example_scaling=False,
+                        global_min=0.0,
+                        global_max=1.0,
                     )
                 )
 

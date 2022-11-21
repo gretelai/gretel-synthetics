@@ -8,8 +8,9 @@ import torch
 
 from gretel_synthetics.timeseries_dgan.config import Normalization
 from gretel_synthetics.timeseries_dgan.transformations import (
+    BinaryEncodedOutput,
     ContinuousOutput,
-    DiscreteOutput,
+    OneHotEncodedOutput,
     Output,
 )
 
@@ -70,8 +71,8 @@ class OutputDecoder(torch.nn.Module):
         self.generators = torch.nn.ModuleList()
 
         for output in outputs:
-            if "DiscreteOutput" in str(output.__class__):
-                output = cast(DiscreteOutput, output)
+            if "OneHotEncodedOutput" in str(output.__class__):
+                output = cast(OneHotEncodedOutput, output)
                 self.generators.append(
                     torch.nn.Sequential(
                         OrderedDict(
@@ -81,6 +82,24 @@ class OutputDecoder(torch.nn.Module):
                                     torch.nn.Linear(int(input_dim), int(output.dim)),
                                 ),
                                 ("softmax", torch.nn.Softmax(dim=int(dim_index))),
+                            ]
+                        )
+                    )
+                )
+            elif "BinaryEncodedOutput" in str(output.__class__):
+                output = cast(BinaryEncodedOutput, output)
+                self.generators.append(
+                    torch.nn.Sequential(
+                        OrderedDict(
+                            [
+                                (
+                                    "linear",
+                                    torch.nn.Linear(int(input_dim), int(output.dim)),
+                                ),
+                                (
+                                    "sigmoid",
+                                    torch.nn.Sigmoid(),
+                                ),
                             ]
                         )
                     )
