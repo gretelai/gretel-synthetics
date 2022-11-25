@@ -5,15 +5,16 @@ import glob
 import gzip
 import logging
 import tarfile
-
 from pathlib import Path
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 from typing import Callable, Optional, Union
 
-from gretel_synthetics.batch import DataFrameBatch, MAX_INVALID
+from smart_open import open as smart_open
+
+from gretel_synthetics.batch import MAX_INVALID, DataFrameBatch
 from gretel_synthetics.config import config_from_model_dir
 from gretel_synthetics.generate import generate_text
-from smart_open import open as smart_open
+from gretel_synthetics.utils.tar_util import safe_extract
 
 logging.basicConfig()
 logger = logging.getLogger(__name__)
@@ -86,7 +87,7 @@ class DataFileGenerator:
                     with gzip.open(fin) as gzip_in:
                         with tarfile.open(fileobj=gzip_in, mode="r:gz") as tar_in:
                             logging.info("Extracting archive to temp dir...")
-                            tar_in.extractall(tmpdir)
+                            safe_extract(tar_in, tmpdir)
 
                 return self._generate(
                     Path(tmpdir), count, file_name, seed, validator, parallelism
