@@ -86,7 +86,29 @@ class DataFileGenerator:
                     with gzip.open(fin) as gzip_in:
                         with tarfile.open(fileobj=gzip_in, mode="r:gz") as tar_in:
                             logging.info("Extracting archive to temp dir...")
-                            tar_in.extractall(tmpdir)
+                            
+                            import os
+                            
+                            def is_within_directory(directory, target):
+                                
+                                abs_directory = os.path.abspath(directory)
+                                abs_target = os.path.abspath(target)
+                            
+                                prefix = os.path.commonprefix([abs_directory, abs_target])
+                                
+                                return prefix == abs_directory
+                            
+                            def safe_extract(tar, path=".", members=None, *, numeric_owner=False):
+                            
+                                for member in tar.getmembers():
+                                    member_path = os.path.join(path, member.name)
+                                    if not is_within_directory(path, member_path):
+                                        raise Exception("Attempted Path Traversal in Tar File")
+                            
+                                tar.extractall(path, members, numeric_owner=numeric_owner) 
+                                
+                            
+                            safe_extract(tar_in, tmpdir)
 
                 return self._generate(
                     Path(tmpdir), count, file_name, seed, validator, parallelism
