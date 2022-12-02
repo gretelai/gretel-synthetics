@@ -2,26 +2,26 @@ from dataclasses import asdict, dataclass
 from enum import Enum
 
 
-class OutputType(Enum):
+class OutputType(str, Enum):
     """Supported variables types.
 
     Determines internal representation of variables and output layers in
     generation network.
     """
 
-    DISCRETE = 0
-    CONTINUOUS = 1
+    DISCRETE = "discrete"
+    CONTINUOUS = "continuous"
 
 
-class Normalization(Enum):
+class Normalization(str, Enum):
     """Normalization types for continuous variables.
 
     Determines if a sigmoid (ZERO_ONE) or tanh (MINUSONE_ONE) activation is used
     for the output layers in the generation network.
     """
 
-    ZERO_ONE = 0
-    MINUSONE_ONE = 1
+    ZERO_ONE = "zero_one"
+    MINUSONE_ONE = "minusone_one"
 
 
 @dataclass
