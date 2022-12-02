@@ -240,14 +240,30 @@ class DGAN:
                 feature_outputs,
             )
 
+        continuous_features_ind = [
+            ind
+            for ind, val in enumerate(self.feature_outputs)
+            if "ContinuousOutput" in str(val.__class__)
+        ]
+
+        valid_examples = validation_check(
+            features[:, :, continuous_features_ind].astype("float")
+        )
+        # Only using valid examples for the entire dataset.
+        features = features[valid_examples]
+        # Apply linear interpolations for continuous features:
+        features[:, :, continuous_features_ind] = nan_linear_interpolation(
+            features[:, :, continuous_features_ind].astype("float")
+        )
+
+        if attributes is not None:
+            attributes = attributes[valid_examples]
+
         if self.additional_attribute_outputs:
             (
                 internal_features,
                 internal_additional_attributes,
             ) = transform(features, self.feature_outputs, variable_dim_index=2)
-
-            if np.any(np.isnan(internal_features)):
-                raise ValueError(f"NaN found in internal features. {NAN_ERROR_MESSAGE}")
 
             if np.any(np.isnan(internal_additional_attributes)):
                 raise ValueError(
@@ -261,9 +277,6 @@ class DGAN:
             internal_additional_attributes = torch.Tensor(
                 np.full((internal_features.shape[0], 1), np.nan)
             )
-
-            if np.any(np.isnan(internal_features)):
-                raise ValueError(f"NaN found in internal features. {NAN_ERROR_MESSAGE}")
 
         internal_attributes = transform(
             attributes,
@@ -1498,3 +1511,118 @@ CONVERTER_CLASS_MAP = {
     "WideDataFrameConverter": _WideDataFrameConverter,
     "LongDataFrameConverter": _LongDataFrameConverter,
 }
+
+
+def find_max_consecutive_nans(array: np.array) -> int:
+    """
+    Returns the maximum number of consecutive NaNs in an array.
+
+    Args:
+        array: 1-d numpy array of time series per example.
+
+    Returns:
+        max_cons_nan: The maximum number of consecutive NaNs in a times series array.
+
+    """
+    # The number of consecutive nans are listed based on the index difference between the non-null values.
+    max_cons_nan = np.max(
+        np.diff(np.concatenate(([-1], np.where(~np.isnan(array))[0], [len(array)]))) - 1
+    )
+    return max_cons_nan
+
+
+def validation_check(
+    array: np.ndarray,
+    invalid_examples_ratio_cutoff: float = 0.5,
+    nans_ratio_cutoff: float = 0.1,
+    consecutive_nans_max: int = 5,
+    consecutive_nans_ratio_cutoff: float = 0.05,
+) -> np.array:
+
+    """Checks if continuous features of examples are valid.
+
+    Returns a 1-d numpy array of booleans with shape (#examples) indicating
+    valid examples.
+    Examples with continuous features fall into 3 categories: good, valid (fixable) and
+    invalid (non-fixable).
+    - "Good" examples have no NaNs.
+    - "Valid" examples have a low percentage of nans and a below a threshold number of
+    consecutive NaNs.
+    - "Invalid" are the rest, and are marked "False" in the returned array.  Later on,
+    these are omitted from training. If there are too many, later, we error out.
+
+    Args:
+        array: 3-d numpy array of continuous features with
+        shape (#examples,max_sequence_length, #continuous features).
+        invalid_examples_ratio_cutoff: Error out if the invalid examples ratio in the dataset
+        is higher than this value.
+        nans_ratio_cutoff: If the percentage of nans for any continuous feature in an example
+        is greater than this value, the example is invalid.
+        consecutive_nans_max: If the maximum number of consecutive nans in a continuous
+        feature is greater than this number, then that example is invalid.
+        consecutive_nans_ratio_cutoff: If the maximum number of consecutive nans in a
+        continuous feature is greater than this ratio times the length of the example
+        (number samples), then the example is invalid.
+
+    Returns:
+        valid_examples : 1-d numpy array of booleans indicating valid examples with
+        shape (#examples).
+
+    """
+    # Check for the nans ratio per examples and feature.
+    # nan_ratio_feature is a 2-d numpy array of size (#examples,#features)
+
+    nan_ratio_feature = np.mean(np.isnan(array), axis=1)
+    nan_ratio = nan_ratio_feature < nans_ratio_cutoff
+
+    # Check for max number of consecutive NaN values per example and feature.
+    # cons_nans_feature is a 2-d numpy array of size (#examples,#features)
+    cons_nans_feature = np.apply_along_axis(find_max_consecutive_nans, 1, array)
+    cons_nans = cons_nans_feature < min(
+        consecutive_nans_max,
+        max(2, int(consecutive_nans_ratio_cutoff * array.shape[1])),
+    )
+
+    # The two above checks should pass for a valid example for all features, otherwise
+    #  the example is invalid.
+    valid_examples_per_feature = np.logical_and(nan_ratio, cons_nans)
+    valid_examples = np.all(valid_examples_per_feature, axis=1)
+
+    if np.mean(valid_examples) < invalid_examples_ratio_cutoff:
+        raise ValueError(
+            f"More than {100*invalid_examples_ratio_cutoff}% invalid examples in the continuous features. Please reduce the ratio of the NaNs and try again!"
+        )
+
+    if (~valid_examples).any():
+        logger.warning(
+            f"There are {sum(~valid_examples)} examples that have too many nan values in numeric features, accounting for {np.mean(~valid_examples)*100}% of all examples. These invalid examples will be omitted from training.",
+            extra={"user_log": True},
+        )
+
+    return valid_examples
+
+
+def nan_linear_interpolation(arrays: np.ndarray) -> np.ndarray:
+    """Replaces all NaNs via linear interpolation.
+
+    Args:
+        arrays: 3-d numpy array of continuous features, with shape
+        (#examples, max_sequence_length, #continuous features)
+
+    Returns:
+        arrays: 3-d numpy array where NaNs are replaced via
+        linear interpolation.
+
+    """
+    examples = arrays.shape[0]
+    features = arrays.shape[2]
+
+    for exp in range(examples):
+        for f in range(features):
+            array = arrays[exp, :, f]
+            if np.isnan(array).any():
+                nans = np.isnan(array)
+                ind_func = lambda z: z.nonzero()[0]
+                array[nans] = np.interp(ind_func(nans), ind_func(~nans), array[~nans])
+
+    return arrays

@@ -16,6 +16,9 @@ from gretel_synthetics.timeseries_dgan.dgan import (
     _LongDataFrameConverter,
     _WideDataFrameConverter,
     DGAN,
+    find_max_consecutive_nans,
+    nan_linear_interpolation,
+    validation_check,
 )
 from gretel_synthetics.timeseries_dgan.transformations import (
     BinaryEncodedOutput,
@@ -617,18 +620,119 @@ def test_train_dataframe_long_no_attributes_no_example_id(config: DGANConfig):
     assert synthetic_df["example_id"].value_counts()[0] == config.max_sequence_len
 
 
-def test_train_numpy_nans(config: DGANConfig, feature_data):
-    features, feature_types = feature_data
-    # Insert a NaN
-    features[11, 3, 1] = np.NaN
+def test_find_max_consecutive_nans():
+    # Checking the output of the "find_max_consecutive_nans" function.
+    # We create a 1-d random array, insert nans in different locations and lengths,
+    # testing the maximum consecutive nans in the data.
+    n = 50
+    features = np.random.rand(n)
+    features[0:5] = features[7:21] = features[30:40] = features[-2:] = np.nan
+
+    assert find_max_consecutive_nans(features) == 14
+
+    features = np.random.rand(n)
+    features[0:12] = features[20:22] = features[-3:] = np.nan
+
+    assert find_max_consecutive_nans(features) == 12
+
+    features = np.random.rand(n)
+    features[0:8] = features[20:22] = features[-17:] = np.nan
+
+    assert find_max_consecutive_nans(features) == 17
+
+
+def test_nan_linear_interpolation():
+    # Checks the functionality and output of the "nan_linear_interpolation" function.
+    # Inserting nans in different length and locations of a 3-d array.
+    # np interpolation uses padding for values in the begining and the end of an array.
+
+    features = np.array(
+        [
+            [[0.0, 1.0, 2.0], [np.nan, 7, 5.0], [np.nan, 4, 8.0], [8.0, 10.0, np.nan]],
+            [
+                [np.nan, 13.0, 14.0],
+                [np.nan, 16.0, 17.0],
+                [18.0, 19.0, 20.0],
+                [21.0, 22.0, 23.0],
+            ],
+        ]
+    )
+
+    features = nan_linear_interpolation(features)
+
+    assert (features[0, 1:3, 0] == np.array([8 / 3, (8 / 3 + 8) / 2])).all()
+    assert (np.diff(features[0, 2:, 2]) == 0).all()
+    assert (np.diff(features[1, 0:3, 0]) == 0).all()
+    assert np.isnan(features).sum() == 0
+
+
+def test_validation_check():
+
+    # Checking the functionality and output of the validation check for 3
+    # scenarios of:
+    # 1. Erroring out when invalid records are too high.
+    # 2. Dropping invalid records with lower ratio.
+    # 3. keeping the fixable valid examples.
+
+    n = 50
+    # Set nans for feature 2 , time points 2 and 3, and the first 26 examples. All
+    # the examples are considered invalid. The check will raise an error since there are
+    # too many invalid examples.
+    invalid_examples = np.random.rand(n, 20, 3)
+    invalid_examples[0:26, 2:4, 2] = np.nan
+    with pytest.raises(ValueError, match="NaN"):
+        validation_check(invalid_examples)
+
+    # Set nans for various features. Features 1 and 2 have fixable invalid examples,
+    # while feature 0 has 10 invalid examples which should be dropped (high consecutive nans)
+    invalid_examples_dropped = np.random.rand(n, 20, 3)
+    invalid_examples_dropped[0:2, 2:3, 2] = np.nan
+    invalid_examples_dropped[20:30, 10:20, 0] = np.nan
+    invalid_examples_dropped[30:40, 15, 1] = np.nan
+
+    test_boolean = np.array([True] * n)
+    test_boolean[20:30] = False
+    assert (validation_check(invalid_examples_dropped) == test_boolean).all()
+
+    # inserting small number of nans for each feature, non should be dropped during
+    # the check.
+    valid_examples = np.random.rand(n, 20, 3)
+    valid_examples[5:7, 2, 2] = np.nan
+    valid_examples[15:20, 15, 0] = np.nan
+    valid_examples[-5:, 8, 1] = np.nan
+    assert validation_check(valid_examples).all()
+
+
+def test_train_numpy_nans(config: DGANConfig):
+    # checking the functionality of the "train_numpy" when including continuous NaNs.
+    # Since the interpolation is done before the transformation, we check if no NaNs are
+    # generated.
+
+    n = 100
+    features = np.concatenate(
+        (
+            np.random.randint(0, 4, size=(n, 20, 1)),
+            np.random.rand(n, 20, 1),
+            np.random.rand(n, 20, 1),
+        ),
+        axis=2,
+    )
+    feature_types = [OutputType.DISCRETE, OutputType.CONTINUOUS, OutputType.CONTINUOUS]
+    # insert sparse NaNs in continuous feature #1.
+    features[11, 3, 1] = features[65:73, 17, 1] = np.NaN
+    # insert cosecutive NaNs in continuous feature #2.
+    features[5:10, 2:4, 2] = features[80:90, 4:10, 2] = np.NaN
 
     dg = DGAN(config=config)
+    dg.train_numpy(features=features, feature_types=feature_types)
+    synthetic_attributes, synthetic_features = dg.generate_numpy(50)
 
-    with pytest.raises(ValueError, match="NaN"):
-        dg.train_numpy(features=features, feature_types=feature_types)
+    assert synthetic_attributes is None
+    assert np.isnan(synthetic_features).sum() == 0
 
 
-def test_train_dataframe_nans(config: DGANConfig):
+def test_train_dataframe_wide_nans_all_invalid_examples(config: DGANConfig):
+    # check the functionality of "train_dataframe_wide" when all examples are invalid.
     n = 50
     df = pd.DataFrame(
         {
@@ -645,6 +749,59 @@ def test_train_dataframe_nans(config: DGANConfig):
     dg = DGAN(config=config)
     with pytest.raises(ValueError, match="NaN"):
         dg.train_dataframe(df=df, df_style=DfStyle.WIDE)
+
+
+def test_train_dataframe_wide_nans_some_valid_examples(config: DGANConfig):
+    # check the functionality of "train_dataframe_wide" when some examples are NaNs.
+    n = 50
+    df = pd.DataFrame(
+        {
+            "2022-01-01": np.random.rand(n),
+            "2022-02-01": np.random.rand(n),
+            "2022-03-01": np.random.rand(n),
+            "2022-04-01": np.random.rand(n),
+            "2022-05-01": np.random.rand(n),
+            "2022-06-01": np.random.rand(n),
+            "2022-07-01": np.random.rand(n),
+            "2022-08-01": np.random.rand(n),
+            "2022-09-01": np.random.rand(n),
+            "2022-10-01": np.random.rand(n),
+            "2022-11-01": np.random.rand(n),
+            "2022-12-01": np.nan,
+        }
+    )
+
+    config.max_sequence_len = 12
+    config.sample_len = 1
+
+    dg = DGAN(config=config)
+    dg.train_dataframe(df=df, df_style=DfStyle.WIDE)
+    synthetic_df = dg.generate_dataframe(30)
+
+    assert not pd.isna(synthetic_df).any().any()
+
+
+def test_train_dataframe_long_nans(config: DGANConfig):
+    n = 50
+    df = pd.DataFrame(
+        {
+            "example_id": np.repeat(range(n), 20),
+            "f1": np.random.rand(20 * n),
+            "f2": np.random.rand(20 * n),
+        }
+    )
+
+    df.iloc[0, 2] = df.iloc[500, 1] = df.iloc[900, 1] = np.nan
+    dg = DGAN(config=config)
+
+    dg.train_dataframe(
+        df=df,
+        example_id_column="example_id",
+        df_style=DfStyle.LONG,
+    )
+
+    synthetic_df = dg.generate_dataframe(n)
+    assert not pd.isna(synthetic_df).any().any()
 
 
 @pytest.mark.parametrize("binary_encoder_cutoff", [150, 1])

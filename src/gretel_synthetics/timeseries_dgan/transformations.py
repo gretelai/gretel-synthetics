@@ -327,8 +327,8 @@ class ContinuousOutput(Output):
             column: 1-d numpy array
         """
         column = column.astype("float")
-        self.global_min = np.min(column)
-        self.global_max = np.max(column)
+        self.global_min = np.nanmin(column)
+        self.global_max = np.nanmax(column)
 
     def _transform(self, column: np.ndarray) -> np.ndarray:
         """Apply continuous variable encoding/scaling.
