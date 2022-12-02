@@ -20,28 +20,28 @@ TEXT_COL_LIMIT = 1500
 
 def _is_field_complex(field: pd.Series) -> bool:
     """
-    Function to determine if field is a complex ID requiring special handling.
+    Function to determine if the field is a complex ID requiring special handling.
 
     Args:
-        field: column values that are being evaluated to determine if field is complex
+        field: column values that are being evaluated to determine if the field is complex.
 
     Returns:
         A boolean value that signifies whether the field is complex or not.
     """
 
-    # Return False if field has no valid values
+    # Return False if the field has no valid values
 
     field = field.dropna()
     if len(field) == 0:
         return False
 
-    # Return False if field is less than 85% unique
+    # Return False if the field is less than 85% unique
 
     perc_unique = field.nunique() / len(field)
     if perc_unique < COMPLEX_ID_PERC_UNIQ:
         return False
 
-    # Return False if field has avg len less than 16 characters
+    # Return False if the field has average length less than 16 characters
 
     textcol = field.to_csv(header=False, index=False)
     avg_len = (len(textcol) - 2 * len(field)) / len(field)
@@ -55,7 +55,7 @@ def _is_field_complex(field: pd.Series) -> bool:
     if not contains_digit:
         return False
 
-    # Return True if field contains only numbers, letters, underscore or hyphen, else return False
+    # Return True if the field contains only numbers, letters, underscore or hyphen, else return False
 
     return bool(
         re.match("^[a-zA-Z0-9\-\_]+$", textcol[0:TEXT_COL_LIMIT].replace("\n", ""))
@@ -243,12 +243,11 @@ def cluster(
     Args:
         df: The dataframe to cluster headers from.
         header_prefix: List of columns to remove before cluster generation.
-        maxsize: The max number of header clusters to generate
-            from the input dataframe.
-        average_record_length_threshold: Threshold for how long a clusters records can be
+        maxsize: The max number of fields in a cluster.
+        average_record_length_threshold: Threshold for how long a cluster's records can be.
             The default, 0, turns off the average record length (arl) logic. To use arl,
             use a positive value. Based on our research we recommend setting this value
-            to 250.0
+            to 250.0.
         method: Linkage method used to compute header cluster
             distances. For more information please refer to the scipy
             docs, https://docs.scipy.org/doc/scipy/reference/generated/scipy.cluster.hierarchy.linkage.html#scipy-cluster-hierarchy-linkage.  # noqa
@@ -258,10 +257,10 @@ def cluster(
             may be used to define additional categorical fields that may
             not automatically get identified as such.
         plot: Plot header list as a dendogram.
-        isolate_complex_field: Enables isolation of complex fields when clustering
+        isolate_complex_field: Enables isolation of complex fields when clustering.
 
     Returns:
-        A list of lists of column names, each column name list being an identified cluster
+        A list of lists of column names, each column name list being an identified cluster.
     """
 
     def prepare_response(
@@ -285,7 +284,7 @@ def cluster(
     if df.shape[1] == 1:
         return prepare_response([list(df.columns)], header_prefix)
 
-    # Check for complex fields which will require their own batch
+    # Check for complex fields which will require their batch
     single_batch_columns = []
     if isolate_complex_field:
         cluster_columns = list(df.columns)
@@ -311,7 +310,7 @@ def cluster(
 
     start = len(Lopt) - 1
 
-    # Start at the top of the cluster hierachy with the final two clusters that were merged together
+    # Start at the top of the cluster hierarchy with the final two clusters that were merged together
     # We will recursively work our way down, fetching the subclusters of a cluster if the current
     # cluster size > maxsize
     clusters = _traverse_node(
@@ -324,7 +323,7 @@ def cluster(
         len(columns),
     )
 
-    # At this point we have one list of column ids, where groups are seperated by -1, translate it into a list of
+    # At this point we have one list of column ids, where groups are separated by -1, translate it into a list of
     # header lists, and if plot=True, plot the dendogram
     col_list = _merge_clusters(
         df,
@@ -336,7 +335,7 @@ def cluster(
         plot,
     )
 
-    # Re add columns that were isolated, as individual batches
+    # Re-add columns that were isolated, as individual batches
     for col in single_batch_columns:
         col_list.append([col])
 
