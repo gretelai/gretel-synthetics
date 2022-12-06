@@ -193,6 +193,16 @@ class DGAN:
                     "First dimension of attributes and features must be the same length, i.e., the number of training examples."
                 )
 
+        if features.shape[1] != self.config.max_sequence_len:
+            raise ValueError(
+                "The time dimension of the training data "
+                f"({features.shape[1]}) does not match "
+                "config.max_sequence_len "
+                f"({self.config.max_sequence_len}). This often happens when "
+                "the chosen config.df_style of wide or long does not match "
+                "the input data."
+            )
+
         if attributes is not None and attribute_types is None:
             # Automatically determine attribute types
             attribute_types = []

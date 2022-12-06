@@ -921,6 +921,21 @@ def test_train_numpy_with_strings(config: DGANConfig):
     )
 
 
+def test_train_numpy_max_sequence_len_error(config: DGANConfig):
+    n = 50
+
+    features = np.random.random((n, 25, 5))
+
+    # Set max_sequence_len to the number of features, instead of number of time
+    # points (25) as it should be.
+    config.max_sequence_len = 5
+
+    dg = DGAN(config=config)
+
+    with pytest.raises(ValueError, match="max_sequence_len"):
+        dg.train_numpy(features=features)
+
+
 @pytest.fixture
 def df_wide() -> pd.DataFrame:
     return pd.DataFrame(
