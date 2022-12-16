@@ -9,3 +9,11 @@ class GenerationError(Exception):
 
 class TooManyInvalidError(RuntimeError):
     pass
+
+
+class TooFewRecordsError(RuntimeError):
+    pass
+
+
+class InvalidSeedError(RuntimeError):
+    pass

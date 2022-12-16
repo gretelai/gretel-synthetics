@@ -39,7 +39,7 @@ from gretel_synthetics.config import (
     CONFIG_MAP,
     LocalConfig,
 )
-from gretel_synthetics.errors import TooManyInvalidError
+from gretel_synthetics.errors import InvalidSeedError, TooManyInvalidError
 from gretel_synthetics.generate import generate_text, GenText, SeedingGenerator
 from gretel_synthetics.tokenizers import BaseTokenizerTrainer
 from gretel_synthetics.train import train
@@ -298,7 +298,7 @@ def _validate_batch_seed_values(
 
     for seed in seed_values:
         if len(seed) > len(batch.headers):
-            raise RuntimeError(
+            raise InvalidSeedError(
                 "The number of seed fields is greater than the number of columns in the first batch"
             )
 
@@ -307,7 +307,7 @@ def _validate_batch_seed_values(
         for header in headers_to_seed:
             value = seed.get(header)
             if value is None:
-                raise RuntimeError(
+                raise InvalidSeedError(
                     f"The header: {header} is not in the seed values mapping"
                 )  # noqa
             tmp.append(str(value))

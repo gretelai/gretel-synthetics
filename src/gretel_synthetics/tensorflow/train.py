@@ -24,6 +24,7 @@ from gretel_synthetics.const import (
     METRIC_VAL_ACCURACY,
     METRIC_VAL_LOSS,
 )
+from gretel_synthetics.errors import TooFewRecordsError
 from gretel_synthetics.tensorflow.dp_model import compute_epsilon
 from gretel_synthetics.tensorflow.model import build_model, load_model
 from gretel_synthetics.tokenizers import BaseTokenizer
@@ -308,11 +309,11 @@ def train_rnn(params: TrainingParams):
                 best_val = early_stopping_callback.best
             except AttributeError:
                 best_val = None
-    except (ValueError, IndexError):
-        raise RuntimeError(
+    except (ValueError, IndexError) as exc:
+        raise TooFewRecordsError(
             "Model training failed. Your training data may have too few records in it. "
             "Please try increasing your training rows and try again"
-        )
+        ) from exc
     except KeyboardInterrupt:
         ...
     _save_history_csv(
