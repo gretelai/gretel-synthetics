@@ -28,8 +28,7 @@ def reqs(file, without=None):
         ]
 
 
-compat_reqs = ['dataclasses==0.7;python_version<"3.7"']
-
+base_reqs = reqs("requirements.txt", without=["tensorflow==", "torch==", "sdv"])
 utils_reqs = reqs("utils-requirements.txt")
 test_reqs = reqs("test-requirements.txt")
 
@@ -47,9 +46,7 @@ setup(
     package_dir={"": "src"},
     packages=find_packages("src"),
     python_requires=">=3.7",
-    install_requires=(
-        reqs("requirements.txt", without=["tensorflow==", "torch=="]) + compat_reqs
-    ),
+    install_requires=base_reqs,
     extras_require={"all": utils_reqs, "utils": utils_reqs, "test": test_reqs},
     classifiers=[
         "Programming Language :: Python :: 3",

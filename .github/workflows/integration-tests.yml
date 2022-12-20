@@ -20,7 +20,7 @@ jobs:
     - name: Install TF
       run:  pip install tensorflow==2.8
     - name: Install gretel-synthetics
-      run: pip install -e .[all,test]
+      run: pip install -e .[all,test] --use-deprecated=legacy-resolver
     - name: Test
       run: pytest -s -vv --cov src --cov-report term-missing tests-integration/
     - uses: 8398a7/action-slack@v2
