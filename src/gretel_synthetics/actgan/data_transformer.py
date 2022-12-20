@@ -1,6 +1,6 @@
-"""DataTransformer module."""
 import logging
 import uuid
+import warnings
 
 from typing import Any, Dict, FrozenSet, List, Optional, Sequence, Union
 
@@ -23,10 +23,12 @@ logging.basicConfig()
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-OHE_CUTOFF = 500
+warnings.simplefilter(action="ignore", category=FutureWarning)
+
+OHE_CUTOFF = 150
 """
 The max number of unique values that should be used before swtiching
-away from OHE
+away from one hot encoding
 """
 
 ValidEncoderT = Union[BinaryEncoder, OneHotEncoder]
@@ -52,7 +54,7 @@ class BinaryEncodingTransformer(BaseTransformer):
     _mode_values: FrozenSet[Any]
     """For the series we are operating on, this will contain the list of modes in the dataset
     """
-    _nan_proxy: str = None
+    _nan_proxy: Optional[str] = None
     handle_rounding_nan: Optional[str]
 
     def __init__(self, handle_rounding_nan: Optional[str] = None):
@@ -72,9 +74,10 @@ class BinaryEncodingTransformer(BaseTransformer):
         """Transform data to appropriate format.
         If data is a valid list or a list of lists, transforms it into an np.array,
         otherwise returns it.
+
         Args:
-            data (pandas.Series or pandas.DataFrame):
-                Data to prepare.
+            data: Data to prepare.
+
         Returns:
             pandas.Series or numpy.ndarray
         """
@@ -121,8 +124,7 @@ class BinaryEncodingTransformer(BaseTransformer):
         Get the pandas `category codes` which will be used later on for BinaryEncoding.
 
         Args:
-            data (pandas.Series or pandas.DataFrame):
-                Data to fit the transformer to.
+            data: Data to fit the transformer to.
         """
         self.encoder = BinaryEncoder()
         data = self._prepare_data(data)
@@ -139,7 +141,7 @@ class BinaryEncodingTransformer(BaseTransformer):
         # NOTE: We set `dummies` here since a `DataTransformer` instance
         # will use the size of this list in order to determine the
         # number of categorical columns. Because both the OHE and Binary Encoder
-        # can be embedded in the `DataTranformer` instance, both encoders
+        # can be embedded in the `DataTransformer` instance, both encoders
         # should have the `dummies` attr.
         self.dummies = self.encoder.get_feature_names().copy()
 
@@ -226,6 +228,7 @@ class DataTransformer:
     _column_transform_info_list: List[ColumnTransformInfo]
     _binary_encoder_cutoff: int
     _binary_encoder_han_handler: Optional[str]
+    _verbose: bool
     dataframe: bool
     output_dimensions: int
     output_info_list: List[SpanInfo]
@@ -236,40 +239,38 @@ class DataTransformer:
         weight_threshold: float = 0.005,
         binary_encoder_cutoff: int = OHE_CUTOFF,
         binary_encoder_nan_handler: Optional[str] = None,
+        verbose: bool = False,
     ):
         """Create a data transformer.
 
         Args:
-            max_clusters (int):
+            max_clusters:
                 Maximum number of Gaussian distributions in Bayesian GMM.
-            weight_threshold (float):
+            weight_threshold:
                 Weight threshold for a Gaussian distribution to be kept.
-            binary_encoder_cutoff (int):
+            binary_encoder_cutoff:
                 What column value cardinality to use to control the switch to a Binary Encoder instead of OHE
-            binary_encoder_nan_handler: (str):
+            binary_encoder_nan_handler:
                 If NaN's are produced from the binary encoding reverse transform, this drives how to replace those
                 NaN's with actual values
+            verbose: Provide detailed logging on data transformation details.
         """
         self._max_clusters = max_clusters
         self._weight_threshold = weight_threshold
         self._binary_encoder_cutoff = binary_encoder_cutoff
         self._binary_encoder_han_handler = binary_encoder_nan_handler
+        self._verbose = verbose
 
     def _fit_continuous(self, data: pd.DataFrame) -> ColumnTransformInfo:
-        """Train Bayesian GMM for continuous columns.
-
-        Args:
-            data (pd.DataFrame):
-                A dataframe containing a column.
-
-        Returns:
-            namedtuple:
-                A ``ColumnTransformInfo`` object.
-        """
+        """Train Bayesian GMM for continuous columns."""
         column_name = data.columns[0]
         gm = ClusterBasedNormalizer(
             model_missing_values=True, max_clusters=min(len(data), 10)
         )
+        if self._verbose:
+            logger.info(
+                f"Transforming continuous column: {column_name!r} with {gm.__class__.__name__}"
+            )
         gm.fit(data, column_name)
         num_components = sum(gm.valid_component_indicator)
 
@@ -285,19 +286,9 @@ class DataTransformer:
         )
 
     def _fit_discrete(self, data: pd.DataFrame) -> ColumnTransformInfo:
-        """Fit one hot encoder for discrete column.
-
-        Args:
-            data (pd.DataFrame):
-                A dataframe containing a column.
-
-        Returns:
-            namedtuple:
-                A ``ColumnTransformInfo`` object.
-        """
+        """Fit one hot encoder for discrete column."""
         column_name = data.columns[0]
         if data[column_name].nunique() >= self._binary_encoder_cutoff:
-            logging.info(f"Using binary encoder for {column_name}")
             encoder = BinaryEncodingTransformer(
                 handle_rounding_nan=self._binary_encoder_han_handler
             )
@@ -305,6 +296,10 @@ class DataTransformer:
         else:
             encoder = OneHotEncoder()
             activation = ActivationFn.SOFTMAX
+        if self._verbose:
+            logger.info(
+                f"Transforming discrete column: {column_name!r} with {encoder.__class__.__name__}"
+            )
         encoder.fit(data, column_name)
         num_categories = len(encoder.dummies)
 
@@ -343,6 +338,10 @@ class DataTransformer:
 
         self._column_raw_dtypes = raw_data.infer_objects().dtypes
         self._column_transform_info_list = []
+        if self._verbose:
+            logger.info(
+                f"Starting data transforms on {len(raw_data.columns)} columns..."
+            )
         for column_name in raw_data.columns:
             if column_name in discrete_columns:
                 column_transform_info = self._fit_discrete(raw_data[[column_name]])
@@ -353,7 +352,9 @@ class DataTransformer:
             self.output_dimensions += column_transform_info.output_dimensions
             self._column_transform_info_list.append(column_transform_info)
 
-    def _transform_continuous(self, column_transform_info, data):
+    def _transform_continuous(
+        self, column_transform_info: ColumnTransformInfo, data: pd.DataFrame
+    ) -> np.ndarray:
         column_name = data.columns[0]
         data[column_name] = data[column_name].to_numpy().flatten()
         gm = column_transform_info.transform
@@ -369,17 +370,18 @@ class DataTransformer:
 
         return output
 
-    def _transform_discrete(self, column_transform_info: ColumnTransformInfo, data):
+    def _transform_discrete(
+        self, column_transform_info: ColumnTransformInfo, data: pd.DataFrame
+    ) -> np.ndarray:
         encoder = column_transform_info.transform
         return encoder.transform(data).to_numpy()
 
     def _synchronous_transform(
-        self, raw_data, column_transform_info_list: List[ColumnTransformInfo]
-    ):
-        """Take a Pandas DataFrame and transform columns synchronous.
-
-        Outputs a list with Numpy arrays.
-        """
+        self,
+        raw_data: pd.DataFrame,
+        column_transform_info_list: List[ColumnTransformInfo],
+    ) -> List[np.ndarray]:
+        """Take a Pandas DataFrame and transform columns synchronously"""
         column_data_list = []
         for column_transform_info in column_transform_info_list:
             column_name = column_transform_info.column_name
@@ -396,12 +398,11 @@ class DataTransformer:
         return column_data_list
 
     def _parallel_transform(
-        self, raw_data, column_transform_info_list: List[ColumnTransformInfo]
-    ):
-        """Take a Pandas DataFrame and transform columns in parallel.
-
-        Outputs a list with Numpy arrays.
-        """
+        self,
+        raw_data: pd.DataFrame,
+        column_transform_info_list: List[ColumnTransformInfo],
+    ) -> List[np.ndarray]:
+        """Take a Pandas DataFrame and transform columns in parallel."""
         processes = []
         for column_transform_info in column_transform_info_list:
             column_name = column_transform_info.column_name
@@ -437,7 +438,11 @@ class DataTransformer:
         return np.concatenate(column_data_list, axis=1).astype(float)
 
     def _inverse_transform_continuous(
-        self, column_transform_info, column_data, sigmas, st
+        self,
+        column_transform_info: ColumnTransformInfo,
+        column_data: pd.Series,
+        sigmas,
+        st,
     ):
         gm = column_transform_info.transform
         data = pd.DataFrame(column_data[:, :2], columns=list(gm.get_output_sdtypes()))

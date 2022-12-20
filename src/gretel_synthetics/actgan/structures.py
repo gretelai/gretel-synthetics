@@ -48,6 +48,12 @@ class ColumnIdInfo:
 
 @dataclass
 class EpochInfo:
+    """
+    When creating a model such as ACTGAN if the ``epoch_callback`` attribute is set to
+    a callable, then after each epoch the provided callable will be called with
+    an instance of this class as the only argument.
+    """
+
     epoch: int
     loss_g: float
     loss_d: float

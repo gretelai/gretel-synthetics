@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 
-from typing import Callable, Dict, List, Optional, Sequence, TYPE_CHECKING, Union
+from typing import Callable, Dict, List, Optional, Sequence, Tuple, TYPE_CHECKING, Union
 
 import numpy as np
 import pandas as pd
@@ -13,9 +13,12 @@ from gretel_synthetics.detectors.sdv import SDVTableMetadata
 from sdv.tabular.base import BaseTabularModel
 
 if TYPE_CHECKING:
+    from gretel_synthetics.actgan.structures import EpochInfo
+    from numpy.random import RandomState
+    from rdt.transformers import BaseTransformer
     from sdv.constraints import Constraint
     from sdv.metadata import Metadata
-
+    from torch import Generator
 
 EPOCH_CALLBACK = "epoch_callback"
 
@@ -24,8 +27,10 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-class ACTGANModel(BaseTabularModel):
-    """ACTGAN Model, extends SDV base tabular model"""
+class _ACTGANModel(BaseTabularModel):
+    """ACTGAN Model, extends SDV base tabular model. Should not be
+    used directly, instead use ``ACTGAN()``.
+    """
 
     _MODEL_CLASS = None
     _model_kwargs = None
@@ -37,14 +42,16 @@ class ACTGANModel(BaseTabularModel):
     Should be set by the concrete subclass constructor
     """
 
+    _verbose: bool
+
     def _build_model(self):
         return self._MODEL_CLASS(**self._model_kwargs)
 
     def fit(self, data: Union[pd.DataFrame, str]) -> None:
         """
-        Overloaded method so we can do any pre-processing hooks.
-        The pre-processing currently only works when the provided
-        data is a DataFrame.
+        Fit the ACTGAN model to the provided data. Prior to fitting,
+        specific auto-detection of data types will be done if the
+        provided ``data`` is a DataFrame.
         """
         if not isinstance(data, pd.DataFrame):
             return super().fit(data)
@@ -57,22 +64,24 @@ class ACTGANModel(BaseTabularModel):
         )
 
         if self._auto_transform_datetimes:
-            logger.info("Attempting datetime auto-detection...")
+            if self._verbose:
+                logger.info("Attempting datetime auto-detection...")
             detector.fit_datetime(data, with_suffix=True)
 
         detector.fit_empty_columns(data)
-        logger.info(f"Using field types: {detector.field_types}")
-        logger.info(f"Using field transformers: {detector.field_transformers}")
+        if self._verbose:
+            logger.info(f"Using field types: {detector.field_types}")
+            logger.info(f"Using field transformers: {detector.field_transformers}")
         self._metadata._field_types = detector.field_types
         self._metadata._field_transformers = detector.field_transformers
 
         super().fit(data)
 
-    def _fit(self, table_data):
+    def _fit(self, table_data: pd.DataFrame) -> None:
         """Fit the model to the table.
+
         Args:
-            table_data (pandas.DataFrame):
-                Data to be learned.
+            table_data: Data to be learned.
         """
         self._model: ACTGANSynthesizer = self._build_model()
 
@@ -101,18 +110,19 @@ class ACTGANModel(BaseTabularModel):
 
         self._model.fit(table_data, discrete_columns=categoricals)
 
-    def _sample(self, num_rows, conditions=None):
+    def _sample(self, num_rows: int, conditions: Optional[dict] = None) -> pd.DataFrame:
         """Sample the indicated number of rows from the model.
+
         Args:
-            num_rows (int):
+            num_rows:
                 Amount of rows to sample.
-            conditions (dict):
+            conditions:
                 If specified, this dictionary maps column names to the column
                 value. Then, this method generates `num_rows` samples, all of
                 which are conditioned on the given variables.
+
         Returns:
-            pandas.DataFrame:
-                Sampled data.
+            Sampled data
         """
         if conditions is None:
             return self._model.sample(num_rows)
@@ -121,15 +131,21 @@ class ACTGANModel(BaseTabularModel):
             f"{self._MODEL_CLASS} doesn't support conditional sampling."
         )
 
-    def _set_random_state(self, random_state):
+    def _set_random_state(
+        self, random_state: Union[int, Tuple[RandomState, Generator], None]
+    ) -> None:
         """Set the random state of the model's random number generator.
+
         Args:
-            random_state (int, tuple[np.random.RandomState, torch.Generator], or None):
-                Seed or tuple of random states to use.
+            random_state: Seed or tuple of random states to use.
         """
         self._model.set_random_state(random_state)
 
     def save(self, path: str) -> None:
+        """
+        Save the model to disk for re-use later. When saving, certain attributes will
+        not be saved such as any epoch callbacks that are attached to the model.
+        """
         self._model: ACTGANSynthesizer
 
         # Temporarily remove any epoch callback so pickling can be done
@@ -139,25 +155,25 @@ class ACTGANModel(BaseTabularModel):
 
         super().save(path)
 
-        # Restor our callback for continued use of the model
+        # Restore our callback for continued use of the model
         self._model._epoch_callback = _tmp_callback
         self._model_kwargs[EPOCH_CALLBACK] = _tmp_callback
 
 
-class ACTGAN(ACTGANModel):
+class ACTGAN(_ACTGANModel):
     """
     Args:
-        field_names (list[str]):
+        field_names:
             List of names of the fields that need to be modeled
             and included in the generated output data. Any additional
             fields found in the data will be ignored and will not be
             included in the generated output.
             If ``None``, all the fields found in the data are used.
-        field_types (dict[str, dict]):
+        field_types:
             Dictinary specifying the data types and subtypes
             of the fields that will be modeled. Field types and subtypes
             combinations must be compatible with the SDV Metadata Schema.
-        field_transformers (dict[str, str]):
+        field_transformers:
             Dictinary specifying which transformers to use for each field.
             Available transformers are:
 
@@ -169,87 +185,94 @@ class ACTGAN(ACTGANModel):
                 * ``LabelEncoder_noised``: Uses a ``LabelEncoder`` adding gaussian noise.
                 * ``BinaryEncoder``: Uses a ``BinaryEncoder``.
                 * ``UnixTimestampEncoder``: Uses a ``UnixTimestampEncoder``.
-        auto_transform_datetimes (bool): If set, prior to fitting, each column will be checked for
+
+            NOTE: Specifically for ACTGAN, some attributes such as ``auto_transform_datetimes`` will
+            automatically attempt to detect field types and will automatically set the ``field_transformers``
+            dictionary at construction time. However, autodetection of ``field_types`` and ``field_transformers``
+            will not be over-written by any concrete values that were provided to this constructor.
+        auto_transform_datetimes: If set, prior to fitting, each column will be checked for
             being a potential "datetime" type. For each column that is discovered as a "datetime" the
             `field_types` and `field_transformers` SDV metadata dicts will be automatically updated
             such that datetimes are transformed to Unix timestamps. NOTE: if fields are already
             specified in `field_types` or `field_transformers` these fields will be skipped
             by the auto detector.
-        anonymize_fields (dict[str, str]):
+        anonymize_fields:
             Dict specifying which fields to anonymize and what faker
             category they belong to.
-        primary_key (str):
+        primary_key:
             Name of the field which is the primary key of the table.
-        constraints (list[Constraint, dict]):
+        constraints:
             List of Constraint objects or dicts.
-        table_metadata (dict or metadata.Table):
+        table_metadata:
             Table metadata instance or dict representation.
             If given alongside any other metadata-related arguments, an
             exception will be raised.
             If not given at all, it will be built using the other
             arguments or learned from the data.
-        embedding_dim (int):
+        embedding_dim:
             Size of the random sample passed to the Generator. Defaults to 128.
-        generator_dim (tuple or list of ints):
+        generator_dim:
             Size of the output samples for each one of the Residuals. A Residual Layer
             will be created for each one of the values provided. Defaults to (256, 256).
-        discriminator_dim (tuple or list of ints):
+        discriminator_dim:
             Size of the output samples for each one of the Discriminator Layers. A Linear Layer
             will be created for each one of the values provided. Defaults to (256, 256).
-        generator_lr (float):
+        generator_lr:
             Learning rate for the generator. Defaults to 2e-4.
-        generator_decay (float):
+        generator_decay:
             Generator weight decay for the Adam Optimizer. Defaults to 1e-6.
-        discriminator_lr (float):
+        discriminator_lr:
             Learning rate for the discriminator. Defaults to 2e-4.
-        discriminator_decay (float):
+        discriminator_decay:
             Discriminator weight decay for the Adam Optimizer. Defaults to 1e-6.
-        batch_size (int):
+        batch_size:
             Number of data samples to process in each step.
-        discriminator_steps (int):
+        discriminator_steps:
             Number of discriminator updates to do for each generator update.
             From the WGAN paper: https://arxiv.org/abs/1701.07875. WGAN paper
             default is 5. Default used is 1 to match original CTGAN implementation.
-        binary_encoder_cutoff (int):
+        binary_encoder_cutoff:
             For any given column, the number of unique values that should exist before
             switching over to binary encoding instead of OHE. This will help reduce
             memory consumption for datasets with a lot of unique values.
-        binary_encoder_nan_handler: (str):
+        binary_encoder_nan_handler:
             Binary encoding currently may produce errant NaN values during reverse transformation. By default
             these NaN's will be left in place, however if this value is set to "mode" then those NaN' will
             be replaced by a random value that is a known mode for a given column.
-        log_frequency (boolean):
+        log_frequency:
             Whether to use log frequency of categorical levels in conditional
             sampling. Defaults to ``True``.
-        verbose (boolean):
+        verbose:
             Whether to have print statements for progress results. Defaults to ``False``.
-        epochs (int):
+        epochs:
             Number of training epochs. Defaults to 300.
-        epoch_callback (callable, optional):
+        epoch_callback:
             An optional function to call after each epoch, the argument will be a
             ``EpochInfo`` instance
-        pac (int):
+        pac:
             Number of samples to group together when applying the discriminator.
             Defaults to 10.
-        cuda (bool or str):
+        cuda:
             If ``True``, use CUDA. If a ``str``, use the indicated device.
             If ``False``, do not use cuda at all.
-        learn_rounding_scheme (bool):
+        learn_rounding_scheme:
             Define rounding scheme for ``FloatFormatter``. If ``True``, the data returned by
             ``reverse_transform`` will be rounded to that place. Defaults to ``True``.
-        enforce_min_max_values (bool):
+        enforce_min_max_values:
             Specify whether or not to clip the data returned by ``reverse_transform`` of
             the numerical transformer, ``FloatFormatter``, to the min and max values seen
             during ``fit``. Defaults to ``True``.
     """
 
     _MODEL_CLASS = ACTGANSynthesizer
+    _auto_transform_datetimes: bool
+    _verbose: bool
 
     def __init__(
         self,
         field_names: Optional[List[str]] = None,
         field_types: Optional[Dict[str, dict]] = None,
-        field_transformers: Optional[Dict[str, str]] = None,
+        field_transformers: Optional[Dict[str, Union[BaseTransformer, str]]] = None,
         auto_transform_datetimes: bool = False,
         anonymize_fields: Optional[Dict[str, str]] = None,
         primary_key: Optional[str] = None,
@@ -269,7 +292,7 @@ class ACTGAN(ACTGANModel):
         log_frequency: bool = True,
         verbose: bool = False,
         epochs: int = 300,
-        epoch_callback: Optional[Callable] = None,
+        epoch_callback: Optional[Callable[[EpochInfo], None]] = None,
         pac: int = 10,
         cuda: bool = True,
         learn_rounding_scheme: bool = True,
@@ -288,6 +311,7 @@ class ACTGAN(ACTGANModel):
         )
 
         self._auto_transform_datetimes = auto_transform_datetimes
+        self._verbose = verbose
 
         self._model_kwargs = {
             "embedding_dim": embedding_dim,

@@ -1,7 +1,4 @@
-"""ACTGANSynthesizer module."""
-
 import logging
-import warnings
 
 from typing import Callable, Optional, Sequence
 
@@ -119,54 +116,52 @@ class Generator(Module):
 class ACTGANSynthesizer(BaseSynthesizer):
     """Anyway Conditional Table GAN Synthesizer.
 
-    This is the core class of the ACTGAN project
-    For more details about the process, please check the [Modeling Tabular data using
-    Conditional GAN](https://arxiv.org/abs/1907.00503) paper and our blogs
+    This is the core class of the ACTGAN interface.
 
     Args:
-        embedding_dim (int):
+        embedding_dim:
             Size of the random sample passed to the Generator. Defaults to 128.
-        generator_dim (tuple or list of ints):
+        generator_dim:
             Size of the output samples for each one of the Residuals. A Residual Layer
             will be created for each one of the values provided. Defaults to (256, 256).
-        discriminator_dim (tuple or list of ints):
+        discriminator_dim:
             Size of the output samples for each one of the Discriminator Layers. A Linear Layer
             will be created for each one of the values provided. Defaults to (256, 256).
-        generator_lr (float):
+        generator_lr:
             Learning rate for the generator. Defaults to 2e-4.
-        generator_decay (float):
+        generator_decay:
             Generator weight decay for the Adam Optimizer. Defaults to 1e-6.
-        discriminator_lr (float):
+        discriminator_lr:
             Learning rate for the discriminator. Defaults to 2e-4.
-        discriminator_decay (float):
+        discriminator_decay:
             Discriminator weight decay for the Adam Optimizer. Defaults to 1e-6.
-        batch_size (int):
+        batch_size:
             Number of data samples to process in each step.
-        discriminator_steps (int):
+        discriminator_steps:
             Number of discriminator updates to do for each generator update.
             From the WGAN paper: https://arxiv.org/abs/1701.07875. WGAN paper
             default is 5. Default used is 1 to match original CTGAN implementation.
-        binary_encoder_cutoff (int):
+        binary_encoder_cutoff:
             For any given column, the number of unique values that should exist before
             switching over to binary encoding instead of OHE. This will help reduce
             memory consumption for datasets with a lot of unique values.
-        binary_encoder_nan_handler: (str):
+        binary_encoder_nan_handler:
             Binary encoding currently may produce errant NaN values during reverse transformation. By default
             these NaN's will be left in place, however if this value is set to "mode" then those NaN's will
             be replaced by a random value that is a known mode for a given column.
-        log_frequency (boolean):
+        log_frequency:
             Whether to use log frequency of categorical levels in conditional
             sampling. Defaults to ``True``.
-        verbose (boolean):
+        verbose:
             Whether to have log progress results. Defaults to ``False``.
-        epochs (int):
+        epochs:
             Number of training epochs. Defaults to 300.
-        epoch_callback (callable, optional):
+        epoch_callback:
             If set to a callable, call the function with `EpochInfo` as the arg
-        pac (int):
+        pac:
             Number of samples to group together when applying the discriminator.
             Defaults to 10.
-        cuda (bool):
+        cuda:
             Whether to attempt to use cuda for GPU computation.
             If this is False or CUDA is not available, CPU will be used.
             Defaults to ``True``.
@@ -324,9 +319,8 @@ class ACTGANSynthesizer(BaseSynthesizer):
         """Check whether ``discrete_columns`` exists in ``train_data``.
 
         Args:
-            train_data (numpy.ndarray or pandas.DataFrame):
-                Training Data. It must be a 2-dimensional numpy array or a pandas.DataFrame.
-            discrete_columns (list-like):
+            train_data: Training Data. It must be a 2-dimensional numpy array or a pandas.DataFrame.
+            discrete_columns:
                 List of discrete columns to be used to generate the Conditional
                 Vector. If ``train_data`` is a Numpy array, this list should
                 contain the integer indices of the columns. Otherwise, if it is
@@ -347,45 +341,40 @@ class ACTGANSynthesizer(BaseSynthesizer):
 
     @random_state
     def fit(
-        self,
-        train_data: DFLike,
-        discrete_columns: Optional[Sequence[str]] = None,
-        epochs: Optional[int] = None,
+        self, train_data: DFLike, discrete_columns: Optional[Sequence[str]] = None
     ) -> None:
-        """Fit the ACTGAN Synthesizer models to the training data.
+        transformed_train_data = self._pre_fit_transform(
+            train_data, discrete_columns=discrete_columns
+        )
+        self._actual_fit(transformed_train_data)
 
-        Args:
-            train_data (numpy.ndarray or pandas.DataFrame):
-                Training Data. It must be a 2-dimensional numpy array or a pandas.DataFrame.
-            discrete_columns (list-like):
-                List of discrete columns to be used to generate the Conditional
-                Vector. If ``train_data`` is a Numpy array, this list should
-                contain the integer indices of the columns. Otherwise, if it is
-                a ``pandas.DataFrame``, this list should contain the column names.
-        """
+    def _pre_fit_transform(
+        self, train_data: DFLike, discrete_columns: Optional[Sequence[str]] = None
+    ) -> np.ndarray:
         if discrete_columns is None:
             discrete_columns = ()
 
         self._validate_discrete_columns(train_data, discrete_columns)
 
-        if epochs is None:
-            epochs = self._epochs
-        else:
-            warnings.warn(
-                (
-                    "`epochs` argument in `fit` method has been deprecated and will be removed "
-                    "in a future version. Please pass `epochs` to the constructor instead"
-                ),
-                DeprecationWarning,
-            )
-
         self._transformer = DataTransformer(
             binary_encoder_cutoff=self._binary_encoder_cutoff,
             binary_encoder_nan_handler=self._binary_encoder_nan_handler,
+            verbose=self._verbose,
         )
         self._transformer.fit(train_data, discrete_columns)
 
         train_data = self._transformer.transform(train_data)
+
+        return train_data
+
+    def _actual_fit(self, train_data: DFLike) -> None:
+        """Fit the ACTGAN Synthesizer models to the training data.
+
+        Args:
+            train_data: Training Data. It must be a 2-dimensional numpy array or a pandas.DataFrame.
+        """
+
+        epochs = self._epochs
 
         self._data_sampler = DataSampler(
             train_data, self._transformer.output_info_list, self._log_frequency
@@ -424,7 +413,7 @@ class ACTGANSynthesizer(BaseSynthesizer):
 
         steps_per_epoch = max(len(train_data) // self._batch_size, 1)
         for i in range(epochs):
-            for id_ in range(steps_per_epoch):
+            for _ in range(steps_per_epoch):
 
                 for n in range(self._discriminator_steps):
                     fakez = torch.normal(mean=mean, std=std)
@@ -522,19 +511,16 @@ class ACTGANSynthesizer(BaseSynthesizer):
         n: int,
         condition_column: Optional[str] = None,
         condition_value: Optional[str] = None,
-    ):
+    ) -> pd.DataFrame:
         """Sample data similar to the training data.
 
         Choosing a condition_column and condition_value will increase the probability of the
         discrete condition_value happening in the condition_column.
 
         Args:
-            n (int):
-                Number of rows to sample.
-            condition_column (string):
-                Name of a discrete column.
-            condition_value (string):
-                Name of the category in the condition_column which we wish to increase the
+            n: Number of rows to sample.
+            condition_column: Name of a discrete column.
+            condition_value: Name of the category in the condition_column which we wish to increase the
                 probability of happening.
 
         Returns:
@@ -554,7 +540,7 @@ class ACTGANSynthesizer(BaseSynthesizer):
 
         steps = n // self._batch_size + 1
         data = []
-        for i in range(steps):
+        for _ in range(steps):
             mean = torch.zeros(self._batch_size, self._embedding_dim)
             std = mean + 1
             fakez = torch.normal(mean=mean, std=std).to(self._device)
@@ -581,7 +567,7 @@ class ACTGANSynthesizer(BaseSynthesizer):
         transformed_data = self._transformer.inverse_transform(data)
         return transformed_data
 
-    def set_device(self, device):
+    def set_device(self, device: str) -> None:
         """Set the `device` to be used ('GPU' or 'CPU)."""
         self._device = device
         if self._generator is not None:

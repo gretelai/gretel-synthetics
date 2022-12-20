@@ -5,3 +5,4 @@ pandas>=1.1.0
 pylint==2.14.3
 pytest==6.1.2
 pytest-cov==2.11.1
+sdv<0.18.0
