@@ -17,7 +17,7 @@ jobs:
     - name: Install Dependencies
       run:  pip install -r requirements.txt
     - name: Install gretel-synthetics
-      run: pip install -e .[all,test]
+      run: pip install -e .[all,test] --use-deprecated=legacy-resolver
     - name: Lint
       run: |
         # stop the build if there are Python syntax errors or undefined names

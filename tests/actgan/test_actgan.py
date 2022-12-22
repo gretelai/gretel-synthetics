@@ -29,7 +29,8 @@ def test_auto_transform_datetimes(test_df):
     model._fit = Mock()
     model.fit(test_df)
 
-    transformed_df = model._fit.mock_calls[0].args[0]
+    _, args, _ = model._fit.mock_calls[0]
+    transformed_df = args[0]
     assert is_number(transformed_df[transformed_df.columns[0]][0])
 
 

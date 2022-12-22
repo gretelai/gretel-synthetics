@@ -5,7 +5,6 @@
     <i>A permissive synthetic data library from Gretel.ai</i>
 </p>
 
-![gretel-synthetics workflows](https://github.com/gretelai/gretel-synthetics/workflows/gretel-synthetics%20workflows/badge.svg)
 [![Documentation Status](https://readthedocs.org/projects/gretel-synthetics/badge/?version=stable)](https://gretel-synthetics.readthedocs.io/en/stable/?badge=stable)
 [![CLA assistant](https://cla-assistant.io/readme/badge/gretelai/gretel-synthetics)](https://cla-assistant.io/gretelai/gretel-synthetics)
 [![PyPI](https://badge.fury.io/py/gretel-synthetics.svg)](https://badge.fury.io/py/gretel-synthetics)
@@ -31,8 +30,26 @@ Check out additional examples [here](https://github.com/gretelai/gretel-syntheti
 
 ## Getting Started
 
-By default, we do not install Tensorflow via pip as many developers and cloud services such as Google Colab are
-running customized versions for their hardware.
+This section will guide you through installation of `gretel-synthetics` and dependencies that are not directly installed by the Python package manager.
+
+### Dependency Requirements
+
+By default, we do not install certain core requirements, the following dependencies should be installed _external to the installation_
+of `gretel-synthetics`, depending on which model(s) you plan to use.
+
+- Tensorflow: Used by the LSTM model, we recommend version 2.8.x
+- Torch: Used by Timeseries DGAN and ACTGAN (for ACTGAN, Torch is installed by SDV)
+- SDV (Synthetic Data Vault): Used by ACTGAN, we recommned version 0.17.x
+
+These dependencies can be installed by doing the following:
+
+```
+pip install tensorflow==2.8 # for LSTM
+pip install sdv<0.18 # for ACTGAN
+pip install torch==1.13.1 # for Timeseries DGAN
+```
+
+To install the actual `gretel-synthetics` package, first clone the repo and then...
 
 ```
 pip install -U .
@@ -72,17 +89,33 @@ $ conda activate tf
 The last step will install all the necessary software packages for GPU usage, `tensorflow=2.8` and `gretel-synthetics`.
 Note that this script works only for Ubuntu 18.04. You might need to modify it for other OS versions.
 
-### Getting started with the timeseries DGAN model
+## Timeseries DGAN Overview
 
-The [timeseries DGAN module](https://synthetics.docs.gretel.ai/en/stable/models/timeseries_dgan.html#timeseries-dgan) contains a PyTorch implementation of a DoppelGANger model that is optimized for timeseries data. Similar to tensorflow, you will need to manually install pytorch
+The [timeseries DGAN module](https://synthetics.docs.gretel.ai/en/stable/models/timeseries_dgan.html#timeseries-dgan) contains a PyTorch implementation of a DoppelGANger model that is optimized for timeseries data. Similar to tensorflow, you will need to manually install pytorch:
 
 ```
-pip install torch==1.11.0
+pip install torch==1.13.1
 ```
 
 [This notebook](https://github.com/gretelai/gretel-synthetics/blob/master/examples/timeseries_dgan.ipynb) shows basic usage on a small data set of smart home sensor readings.
 
-## Overview
+## ACTGAN Overview
+
+ACTGAN (Anyway CTGAN) is an extension of the popular [CTGAN implementation](https://sdv.dev/SDV/user_guides/single_table/ctgan.html) that provides
+some additiona functionality to improve memory usage, autodetection and transformation of columns, and more.
+
+To use this model, you will need to manually install SDV:
+
+```
+pip install sdv<0.18
+```
+
+Keep in mind that this will also install several dependencies like PyTorch that SDV relies on, which may conflict with PyTorch
+versions installed for use with other models like Timeseries DGAN.
+
+The ACTGAN interface is a superset of the CTGAN interface. To see the additional features, please take a look at the ACTGAN demo notebook in the `examples` directory of this repo.
+
+## LSTM Overview
 
 This package allows developers to quickly get immersed with synthetic data generation through the use of neural networks. The more complex pieces of working with libraries like Tensorflow and differential privacy are bundled into friendly Python classes and functions. There are two high level modes that can be utilized.
 
@@ -106,7 +139,7 @@ There are four primary components to be aware of when using this library.
 
 4. Generation. Once a model is trained, any number of new lines or records can be generated. Optionally, a record validator can be provided to ensure that the generated data meets any constraints that are necessary. See our notebooks for examples on validators.
 
-#### Utilities
+### Utilities
 
 In addition to the four primary components, the `gretel-synthetics` package also ships with a set of utilities that are helpful for training advanced synthetics models and evaluating synthetic datasets.
 
@@ -118,7 +151,7 @@ pip install gretel-synthetics[utils]
 
 For additional details, please refer to the [Utility module API docs](https://synthetics.docs.gretel.ai/en/latest/utils/index.html).
 
-## Differential Privacy
+### Differential Privacy
 
 Differential privacy support for our TensorFlow mode is built on the great work being done by the Google TF team and their [TensorFlow Privacy library](https://github.com/tensorflow/privacy).
 
