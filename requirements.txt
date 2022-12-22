@@ -9,5 +9,5 @@ sdv<0.18.0
 tensorflow_estimator==2.8
 tensorflow_privacy==0.7.3
 tensorflow_probability==0.16.0
-torch==1.11.0
+torch==1.13.1
 tqdm<5.0

@@ -34,8 +34,7 @@ This section will guide you through installation of `gretel-synthetics` and depe
 
 ### Dependency Requirements
 
-By default, we do not certain core requirements via pip as many developers and cloud services such as Google Colab are
-running customized versions for their hardware, the following dependencies should be installed _external to the installation_
+By default, we do not install certain core requirements, the following dependencies should be installed _external to the installation_
 of `gretel-synthetics`, depending on which model(s) you plan to use.
 
 - Tensorflow: Used by the LSTM model, we recommend version 2.8.x
@@ -47,7 +46,7 @@ These dependencies can be installed by doing the following:
 ```
 pip install tensorflow==2.8 # for LSTM
 pip install sdv<0.18 # for ACTGAN
-pip install torch==1.11.0 # for Timeseries DGAN
+pip install torch==1.13.1 # for Timeseries DGAN
 ```
 
 To install the actual `gretel-synthetics` package, first clone the repo and then...
@@ -95,7 +94,7 @@ Note that this script works only for Ubuntu 18.04. You might need to modify it f
 The [timeseries DGAN module](https://synthetics.docs.gretel.ai/en/stable/models/timeseries_dgan.html#timeseries-dgan) contains a PyTorch implementation of a DoppelGANger model that is optimized for timeseries data. Similar to tensorflow, you will need to manually install pytorch:
 
 ```
-pip install torch==1.11.0
+pip install torch==1.13.1
 ```
 
 [This notebook](https://github.com/gretelai/gretel-synthetics/blob/master/examples/timeseries_dgan.ipynb) shows basic usage on a small data set of smart home sensor readings.
