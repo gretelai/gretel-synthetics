@@ -10,6 +10,7 @@ import pandas as pd
 
 from gretel_synthetics.actgan.actgan import ACTGANSynthesizer
 from gretel_synthetics.detectors.sdv import SDVTableMetadata
+from gretel_synthetics.utils import torch_utils
 from sdv.tabular.base import BaseTabularModel
 
 if TYPE_CHECKING:
@@ -158,6 +159,18 @@ class _ACTGANModel(BaseTabularModel):
         # Restore our callback for continued use of the model
         self._model._epoch_callback = _tmp_callback
         self._model_kwargs[EPOCH_CALLBACK] = _tmp_callback
+
+    @classmethod
+    def load_v2(cls, path: str) -> ACTGAN:
+        """
+        An updated version of loading that will allow reading in a pickled model
+        that can be used on a CPU or GPU for sampling.
+        """
+        device = torch_utils.determine_device()
+        with open(path, "rb") as fin:
+            loaded_model: ACTGAN = torch_utils.patched_torch_unpickle(fin, device)
+            loaded_model._model.set_device(device)
+        return loaded_model
 
 
 class ACTGAN(_ACTGANModel):
