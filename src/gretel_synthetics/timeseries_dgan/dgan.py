@@ -51,13 +51,14 @@ import abc
 import logging
 import math
 
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 import torch
 
 from gretel_synthetics.timeseries_dgan.config import DfStyle, DGANConfig, OutputType
+from gretel_synthetics.timeseries_dgan.structures import ProgressInfo
 from gretel_synthetics.timeseries_dgan.torch_modules import Discriminator, Generator
 from gretel_synthetics.timeseries_dgan.transformations import (
     create_additional_attribute_outputs,
@@ -150,6 +151,7 @@ class DGAN:
         feature_types: Optional[List[OutputType]] = None,
         attributes: Optional[np.ndarray] = None,
         attribute_types: Optional[List[OutputType]] = None,
+        progress_callback: Optional[Callable[[ProgressInfo]]] = None,
     ):
         """Train DGAN model on data in numpy arrays.
 
@@ -304,7 +306,7 @@ class DGAN:
             torch.Tensor(internal_features),
         )
 
-        self._train(dataset)
+        self._train(dataset, progress_callback=progress_callback)
 
     def train_dataframe(
         self,
@@ -315,6 +317,7 @@ class DGAN:
         time_column: Optional[str] = None,
         discrete_columns: Optional[List[str]] = None,
         df_style: DfStyle = DfStyle.WIDE,
+        progress_callback: Optional[Callable[[ProgressInfo]]] = None,
     ):
         """Train DGAN model on data in pandas DataFrame.
 
@@ -394,6 +397,7 @@ class DGAN:
             features=features,
             attribute_types=self.data_frame_converter.attribute_types,
             feature_types=self.data_frame_converter.feature_types,
+            progress_callback=progress_callback,
         )
 
     def generate_numpy(
@@ -619,6 +623,7 @@ class DGAN:
     def _train(
         self,
         dataset: Dataset,
+        progress_callback: Optional[Callable[[ProgressInfo]]] = None,
     ):
         """Internal method for training DGAN model.
 
@@ -685,7 +690,7 @@ class DGAN:
         for epoch in range(self.config.epochs):
             logger.info(f"epoch: {epoch}")
 
-            for real_batch in loader:
+            for batch_idx, real_batch in enumerate(loader):
                 global_step += 1
 
                 with torch.cuda.amp.autocast(
@@ -787,6 +792,16 @@ class DGAN:
                     scaler.scale(loss).backward()
                     scaler.step(opt_generator)
                     scaler.update()
+
+                if progress_callback is not None:
+                    progress_callback(
+                        ProgressInfo(
+                            epoch=epoch,
+                            total_epochs=self.config.epochs,
+                            batch=batch_idx,
+                            total_batches=len(loader),
+                        )
+                    )
 
     def _generate(
         self, attribute_noise: torch.Tensor, feature_noise: torch.Tensor
