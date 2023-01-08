@@ -43,13 +43,54 @@ def _unpack_to_dir(source: str, target: str):
     with smart_open(source, "rb", ignore_ext=True) as fin:
         with gzip.open(fin) as gzip_in:
             with tarfile.open(fileobj=gzip_in, mode="r:gz") as tar_in:
-                tar_in.extractall(target)
+                
+                import os
+                
+                def is_within_directory(directory, target):
+                    
+                    abs_directory = os.path.abspath(directory)
+                    abs_target = os.path.abspath(target)
+                
+                    prefix = os.path.commonprefix([abs_directory, abs_target])
+                    
+                    return prefix == abs_directory
+                
+                def safe_extract(tar, path=".", members=None, *, numeric_owner=False):
+                
+                    for member in tar.getmembers():
+                        member_path = os.path.join(path, member.name)
+                        if not is_within_directory(path, member_path):
+                            raise Exception("Attempted Path Traversal in Tar File")
+                
+                    tar.extractall(path, members, numeric_owner) 
+                    
+                
+                safe_extract(tar_in, target)
 
 
 def _unpack_to_dir_nogz(source: str, target: str):
     with smart_open(source, "rb", ignore_ext=True) as fin:
         with tarfile.open(fileobj=fin, mode="r:gz") as tar_in:
-            tar_in.extractall(target)
+            def is_within_directory(directory, target):
+                
+                abs_directory = os.path.abspath(directory)
+                abs_target = os.path.abspath(target)
+            
+                prefix = os.path.commonprefix([abs_directory, abs_target])
+                
+                return prefix == abs_directory
+            
+            def safe_extract(tar, path=".", members=None, *, numeric_owner=False):
+            
+                for member in tar.getmembers():
+                    member_path = os.path.join(path, member.name)
+                    if not is_within_directory(path, member_path):
+                        raise Exception("Attempted Path Traversal in Tar File")
+            
+                tar.extractall(path, members, numeric_owner) 
+                
+            
+            safe_extract(tar_in, target)
 
 
 @pytest.fixture(scope="module")
