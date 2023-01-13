@@ -46,3 +46,23 @@ def test_enc_dec_with_mode():
     df = pd.DataFrame(data=[[1, 1, 0]], columns=columns)
     check = encoder.reverse_transform(df)
     assert list(check["foo"])[0] == "A"
+
+
+def test_encoder_with_regex_metachars():
+    """
+    FIXME(PROD-309): This is a test covering this `category_encoders` issue:
+    https://github.com/scikit-learn-contrib/category_encoders/issues/392
+
+    We need our own fix for now, which can be removed once we migrate to
+    version with the fix upstream.
+    """
+    col_name = "column*+{} (keep it secret!) [ab12-x]"
+
+    df = pd.DataFrame(data={col_name: ["A", "A", "B", "C", "D"]})
+    encoder = BinaryEncodingTransformer()
+    transformed = encoder.fit_transform(df, col_name)
+
+    transformed_sample = transformed.head(1)
+    check = encoder.reverse_transform(transformed_sample)
+
+    assert check[col_name].equals(pd.Series(["A"]))

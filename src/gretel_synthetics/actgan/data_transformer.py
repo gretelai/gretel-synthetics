@@ -1,13 +1,15 @@
 import logging
+import re
 import uuid
 import warnings
 
+from types import MethodType
 from typing import Any, Dict, FrozenSet, List, Optional, Sequence, Union
 
 import numpy as np
 import pandas as pd
 
-from category_encoders import BinaryEncoder
+from category_encoders import BaseNEncoder, BinaryEncoder
 from gretel_synthetics.actgan.structures import (
     ActivationFn,
     ColumnIdInfo,
@@ -127,6 +129,8 @@ class BinaryEncodingTransformer(BaseTransformer):
             data: Data to fit the transformer to.
         """
         self.encoder = BinaryEncoder()
+        _patch_basen_to_integer(self.encoder.base_n_encoder)
+
         data = self._prepare_data(data)
         if not isinstance(data, pd.Series):
             data = pd.Series(data)
@@ -212,6 +216,42 @@ class BinaryEncodingTransformer(BaseTransformer):
             to_replace=self._nan_proxy, value=np.nan
         )
         return transformed_data
+
+
+def _patch_basen_to_integer(basen_encoder: BaseNEncoder) -> None:
+    """
+    FIXME(PROD-309): Temporary patch for https://github.com/scikit-learn-contrib/category_encoders/issues/392
+    """
+
+    def _patched_basen_to_integer(self, X, cols, base):
+        """
+        Copied from https://github.com/scikit-learn-contrib/category_encoders/blob/1def42827df4a9404553f41255878c45d754b1a0/category_encoders/basen.py#L266-L281
+        and applied this fix: https://github.com/scikit-learn-contrib/category_encoders/pull/393/files
+        """
+        out_cols = X.columns.values.tolist()
+
+        for col in cols:
+            col_list = [
+                col0
+                for col0 in out_cols
+                if re.match(re.escape(str(col)) + "_\\d+", str(col0))
+            ]
+            insert_at = out_cols.index(col_list[0])
+
+            if base == 1:
+                value_array = np.array([int(col0.split("_")[-1]) for col0 in col_list])
+            else:
+                len0 = len(col_list)
+                value_array = np.array([base ** (len0 - 1 - i) for i in range(len0)])
+            X.insert(insert_at, col, np.dot(X[col_list].values, value_array.T))
+            X.drop(col_list, axis=1, inplace=True)
+            out_cols = X.columns.values.tolist()
+
+        return X
+
+    basen_encoder.basen_to_integer = MethodType(
+        _patched_basen_to_integer, basen_encoder
+    )
 
 
 class DataTransformer:
