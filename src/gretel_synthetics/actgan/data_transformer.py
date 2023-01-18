@@ -3,7 +3,7 @@ import re
 import uuid
 import warnings
 
-from types import MethodType
+from functools import partial
 from typing import Any, Dict, FrozenSet, List, Optional, Sequence, Union
 
 import numpy as np
@@ -249,9 +249,7 @@ def _patch_basen_to_integer(basen_encoder: BaseNEncoder) -> None:
 
         return X
 
-    basen_encoder.basen_to_integer = MethodType(
-        _patched_basen_to_integer, basen_encoder
-    )
+    basen_encoder.basen_to_integer = partial(_patched_basen_to_integer, basen_encoder)
 
 
 class DataTransformer:
