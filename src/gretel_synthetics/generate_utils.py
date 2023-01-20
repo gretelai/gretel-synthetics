@@ -13,6 +13,7 @@ from typing import Callable, Optional, Union
 from gretel_synthetics.batch import DataFrameBatch, MAX_INVALID
 from gretel_synthetics.config import config_from_model_dir
 from gretel_synthetics.generate import generate_text
+from gretel_synthetics.utils.tar_util import safe_extractall
 from smart_open import open as smart_open
 
 logging.basicConfig()
@@ -86,7 +87,7 @@ class DataFileGenerator:
                     with gzip.open(fin) as gzip_in:
                         with tarfile.open(fileobj=gzip_in, mode="r:gz") as tar_in:
                             logging.info("Extracting archive to temp dir...")
-                            tar_in.extractall(tmpdir)
+                            safe_extractall(tar_in, tmpdir)
 
                 return self._generate(
                     Path(tmpdir), count, file_name, seed, validator, parallelism
