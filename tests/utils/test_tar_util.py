@@ -59,6 +59,7 @@ class TestTarUtil(unittest.TestCase):
     def test_is_directory_is_fine(self):
         self.assertTrue(_is_within_directory("abc", "abc/def"))
         self.assertFalse(_is_within_directory("../123", "abc"))
+        self.assertFalse(_is_within_directory("/usr/lib", "/usr/lib64/libfoo.so"))
 
 
 if __name__ == "__main__":
