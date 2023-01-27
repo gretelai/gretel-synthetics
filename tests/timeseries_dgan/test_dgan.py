@@ -892,6 +892,29 @@ def test_train_dataframe_long_attribute_mismatch_nans(config: DGANConfig):
         )
 
 
+def test_train_dataframe_long_float_example_id(config: DGANConfig):
+    # Reproduce error from production where example_id_column is float and
+    # there's no 0.0 value. Should train with no errors.
+    n = 50
+    df = pd.DataFrame(
+        {
+            "example_id": np.repeat(np.arange(10.0, 15.0, 0.5), repeats=5),
+            "time": [str(x) for x in pd.date_range("2022-01-01", periods=n)],
+            "f": np.random.rand(n),
+        }
+    )
+
+    config.max_sequence_len = 5
+    dg = DGAN(config=config)
+
+    dg.train_dataframe(
+        df,
+        example_id_column="example_id",
+        time_column="time",
+        df_style=DfStyle.LONG,
+    )
+
+
 def test_train_numpy_with_strings(config: DGANConfig):
     n = 50
     features = np.stack(
@@ -1458,6 +1481,35 @@ def test_long_data_frame_converter_example_id_object(df_long):
     assert attributes is not None
     assert attributes.dtype == "float64"
     assert features.dtype == "float64"
+
+
+def test_long_data_frame_converter_example_id_float():
+    # Check converter creation with a float example id column that has no values
+    # of 0.0.
+
+    df_long = pd.DataFrame(
+        {
+            "example_id": [1.0, 1.0, 2.0, 2.0],
+            "time": [
+                "2022-01-01",
+                "2022-01-02",
+                "2022-01-03",
+                "2022-01-04",
+            ],
+            "f": [2.0, 3.0, 4.0, 5.0],
+        }
+    )
+
+    converter = _LongDataFrameConverter.create(
+        df_long,
+        example_id_column="example_id",
+        time_column="time",
+    )
+
+    attributes, features = converter.convert(df_long)
+    assert attributes is None
+    assert features.dtype == "float64"
+    assert features.shape == (2, 2, 1)
 
 
 def test_long_data_frame_converter_save_and_load(df_long):

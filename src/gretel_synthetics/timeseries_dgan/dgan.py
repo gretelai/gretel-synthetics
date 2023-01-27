@@ -1338,9 +1338,14 @@ class _LongDataFrameConverter(_DataFrameConverter):
                 # Assume all examples are for the same time points, e.g., always
                 # from 2020 even if df has examples from different years.
                 df_time_example = df[[time_column, example_id_column]]
-                time_values = df_time_example.groupby(example_id_column).apply(
-                    pd.DataFrame.to_numpy
-                )[0][:, 0]
+                # Use first example grouping (iloc[0]), then grab the time
+                # column values used by that example from the numpy array
+                # ([:,0]).
+                time_values = (
+                    df_time_example.groupby(example_id_column)
+                    .apply(pd.DataFrame.to_numpy)
+                    .iloc[0][:, 0]
+                )
 
                 time_column_values = list(sorted(time_values))
             else:
