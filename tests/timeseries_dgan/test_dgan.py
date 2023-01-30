@@ -13,6 +13,7 @@ from gretel_synthetics.timeseries_dgan.config import (
 )
 from gretel_synthetics.timeseries_dgan.dgan import (
     _DataFrameConverter,
+    _discrete_cols_to_int,
     _LongDataFrameConverter,
     _WideDataFrameConverter,
     DGAN,
@@ -25,6 +26,7 @@ from gretel_synthetics.timeseries_dgan.transformations import (
     ContinuousOutput,
     OneHotEncodedOutput,
 )
+from pandas.api.types import is_numeric_dtype, is_object_dtype
 from pandas.testing import assert_frame_equal
 
 
@@ -62,6 +64,20 @@ def config() -> DGANConfig:
         batch_size=10,
         epochs=10,
     )
+
+
+def test_discrete_cols_to_int():
+    df = pd.DataFrame(
+        data=zip(["1", "2", "3", "4"], ["one", "two", "three", "four"]),
+        columns=["value", "str"],
+    )
+
+    assert df.equals(_discrete_cols_to_int(df.copy(), None))
+    assert df.equals(_discrete_cols_to_int(df.copy(), ["missing"]))
+
+    check_df = _discrete_cols_to_int(df.copy(), ["value", "str", "missing"])
+    assert is_numeric_dtype(check_df["value"])
+    assert is_object_dtype(check_df["str"])
 
 
 def test_generate():
@@ -230,7 +246,7 @@ def test_train_numpy_no_attributes_1(
 
     attributes, features = dg.generate_numpy(18)
 
-    assert attributes == None
+    assert attributes is None
     assert features.shape == (18, 20, 2)
 
 
@@ -245,7 +261,7 @@ def test_train_numpy_no_attributes_2(config: DGANConfig):
     )
 
     assert type(model_attributes_blank) == DGAN
-    assert synthetic_attributes == None
+    assert synthetic_attributes is None
     assert synthetic_features.shape == (n_samples, features.shape[1], features.shape[2])
 
     model_attributes_none = DGAN(config)
@@ -255,7 +271,7 @@ def test_train_numpy_no_attributes_2(config: DGANConfig):
     )
 
     assert type(model_attributes_none) == DGAN
-    assert synthetic_attributes == None
+    assert synthetic_attributes is None
     assert synthetic_features.shape == (n_samples, features.shape[1], features.shape[2])
 
 
@@ -466,6 +482,65 @@ def test_train_dataframe_long(config: DGANConfig):
     assert list(synthetic_df.columns) == list(df.columns)
 
 
+def test_example_id_must_be_unique(config: DGANConfig):
+    n = 500
+    df = pd.DataFrame(
+        {
+            "example_id": np.repeat(range(n), 4),
+            "a1": np.repeat(np.random.randint(0, 3, size=n), 4),
+            "a2": np.repeat(np.random.rand(n), 4),
+            "f1": np.random.rand(4 * n),
+            "f2": np.random.rand(4 * n),
+        }
+    )
+
+    config.max_sequence_len = 4
+    config.sample_len = 2
+
+    dg = DGAN(config=config)
+
+    with pytest.raises(ValueError) as err:
+        dg.train_dataframe(
+            df=df,
+            attribute_columns=["a1", "a2"],
+            example_id_column="example_id",
+            discrete_columns=["a1", "example_id"],
+            df_style=DfStyle.LONG,
+        )
+    assert "any other column lists" in str(err.value)
+
+
+def test_time_col_example_id_col_not_equal(config: DGANConfig):
+    n = 500
+    df = pd.DataFrame(
+        {
+            "example_id": np.repeat(range(n), 4),
+            "a1": np.repeat(np.random.randint(0, 3, size=n), 4),
+            "a2": np.repeat(np.random.rand(n), 4),
+            "f1": np.random.rand(4 * n),
+            "f2": np.random.rand(4 * n),
+        }
+    )
+
+    config.max_sequence_len = 4
+    config.sample_len = 2
+
+    dg = DGAN(config=config)
+
+    # The `time_column` here is nonsense but just to validate that
+    # both that and the example ID column can't be the same
+    with pytest.raises(ValueError) as err:
+        dg.train_dataframe(
+            df=df,
+            attribute_columns=["a1", "a2"],
+            example_id_column="example_id",
+            time_column="example_id",
+            discrete_columns=["a1"],
+            df_style=DfStyle.LONG,
+        )
+    assert "values cannot be the same" in str(err.value)
+
+
 def test_train_dataframe_long_no_attributes(config: DGANConfig):
     n = 500
     df = pd.DataFrame(
@@ -490,39 +565,6 @@ def test_train_dataframe_long_no_attributes(config: DGANConfig):
     synthetic_df = dg.generate_dataframe(5)
 
     assert synthetic_df.shape == (5 * 4, 3)
-    assert list(synthetic_df.columns) == list(df.columns)
-
-
-def test_train_dataframe_long(config: DGANConfig):
-    # Checking functionality and outputs of DGAN training on long style dataframe
-    # when exmaple_id is provided
-    n = 500
-    df = pd.DataFrame(
-        {
-            "example_id": np.repeat(range(n), 4),
-            "a1": np.repeat(np.random.randint(0, 3, size=n), 4),
-            "a2": np.repeat(np.random.rand(n), 4),
-            "f1": np.random.rand(4 * n),
-            "f2": np.random.rand(4 * n),
-        }
-    )
-
-    config.max_sequence_len = 4
-    config.sample_len = 2
-
-    dg = DGAN(config=config)
-
-    dg.train_dataframe(
-        df=df,
-        attribute_columns=["a1", "a2"],
-        example_id_column="example_id",
-        discrete_columns=["a1"],
-        df_style=DfStyle.LONG,
-    )
-
-    synthetic_df = dg.generate_dataframe(5)
-
-    assert synthetic_df.shape == (5 * 4, 5)
     assert list(synthetic_df.columns) == list(df.columns)
 
 
@@ -557,10 +599,7 @@ def test_train_dataframe_long_no_attributes_no_example_id(config: DGANConfig):
             df_style=DfStyle.LONG,
         )
 
-    assert (
-        str(exc_info.value)
-        == "Please provide an example id column, auto-splitting not available with only attribute columns."
-    )
+    assert "auto-splitting not available" in str(exc_info.value)
 
 
 def test_train_dataframe_long_no_attributes_no_example_id_with_time(config: DGANConfig):
@@ -591,7 +630,9 @@ def test_train_dataframe_long_no_attributes_no_example_id_with_time(config: DGAN
     assert synthetic_df["example_id"].value_counts()[0] == config.max_sequence_len
 
 
-def test_train_dataframe_long_no_attributes_no_example_id(config: DGANConfig):
+def test_train_dataframe_long_no_attributes_no_example_id_auto_split(
+    config: DGANConfig,
+):
     # Checking functionality of autosplit when no example id and no attributes are provided
     # by the user
 
@@ -1061,7 +1102,7 @@ def test_wide_data_frame_converter_no_attributes(df_wide):
     )
     attributes, features = converter.convert(df_wide)
 
-    assert attributes == None
+    assert attributes is None
     assert features.shape == (6, 3, 1)
 
     np.testing.assert_allclose(features, expected_features)
@@ -1087,7 +1128,7 @@ def test_wide_data_frame_converter_no_attributes_no_column_name(df_wide):
     converter = _WideDataFrameConverter.create(df_wide)
     attributes, features = converter.convert(df_wide)
 
-    assert attributes == None
+    assert attributes is None
     assert features.shape == (6, 3, 1)
 
     np.testing.assert_allclose(features, expected_features)
@@ -1640,7 +1681,8 @@ def test_save_and_load_no_attributes(
         attribute_noise=attribute_noise, feature_noise=feature_noise
     )
 
-    assert attributes == expected_attributes == None
+    assert attributes is None
+    assert expected_attributes is None
     assert features.shape == expected_features.shape
     np.testing.assert_allclose(features, expected_features)
 
@@ -1678,6 +1720,34 @@ def test_save_and_load_dataframe_with_attributes(config: DGANConfig, tmp_path):
 
     assert type(loaded_dg) == DGAN
     assert list(synthetic_df.columns) == list(df.columns)
+
+
+def test_attribute_and_feature_overlap(config: DGANConfig):
+    df = pd.DataFrame(
+        {
+            "a1": np.random.randint(0, 3, size=6),
+            "a2": np.random.rand(6),
+            "2022-01-01": np.random.rand(6),
+            "2022-02-01": np.random.rand(6),
+            "2022-03-01": np.random.rand(6),
+            "2022-04-01": np.random.rand(6),
+        }
+    )
+    config.max_sequence_len = 4
+    config.sample_len = 1
+    config.epochs = 1
+
+    dg = DGAN(config=config)
+
+    with pytest.raises(ValueError) as err:
+        dg.train_dataframe(
+            df=df,
+            attribute_columns=["a1", "a2"],
+            feature_columns=["a1"],
+            discrete_columns=["a1"],
+            df_style=DfStyle.WIDE,
+        )
+    assert "not have overlapping" in str(err.value)
 
 
 def test_save_and_load_dataframe_no_attributes(config: DGANConfig, tmp_path):

@@ -80,8 +80,32 @@ AttributeFeaturePair = Tuple[Optional[np.ndarray], np.ndarray]
 NumpyArrayTriple = Tuple[np.ndarray, np.ndarray, np.ndarray]
 
 NAN_ERROR_MESSAGE = """
-DGAN does not support NaNs, please remove NaNs before training. If there are no NaNs in your input data and you see this error, please create a support ticket.
+DGAN does not support NaNs, please remove NaNs before training. If there are no NaNs in your input data and you see this error, please create a support ticket.  # noqa
 """
+
+
+def _discrete_cols_to_int(
+    df: pd.DataFrame, discrete_columns: Optional[List[str]]
+) -> pd.DataFrame:
+    # Convert discrete columns to int where possible.
+    if discrete_columns is None:
+        return df
+
+    missing_discrete = set()
+    for c in discrete_columns:
+        try:
+            df[c] = df[c].astype("int")
+        except ValueError:
+            continue
+        except KeyError:
+            missing_discrete.add(c)
+
+    if missing_discrete:
+        logger.warning(
+            f"The following discrete columns ({missing_discrete}) were not in the generated DataFrame, you may want to ensure this is intended!"  # noqa
+        )
+
+    return df
 
 
 class DGAN:
@@ -152,7 +176,7 @@ class DGAN:
         attributes: Optional[np.ndarray] = None,
         attribute_types: Optional[List[OutputType]] = None,
         progress_callback: Optional[Callable[[ProgressInfo]]] = None,
-    ):
+    ) -> None:
         """Train DGAN model on data in numpy arrays.
 
         Training data is passed in 2 numpy arrays, one for attributes (2d) and
@@ -192,7 +216,7 @@ class DGAN:
         if attributes is not None:
             if attributes.shape[0] != features.shape[0]:
                 raise RuntimeError(
-                    "First dimension of attributes and features must be the same length, i.e., the number of training examples."
+                    "First dimension of attributes and features must be the same length, i.e., the number of training examples."  # noqa
                 )
 
         if features.shape[1] != self.config.max_sequence_len:
@@ -318,7 +342,7 @@ class DGAN:
         discrete_columns: Optional[List[str]] = None,
         df_style: DfStyle = DfStyle.WIDE,
         progress_callback: Optional[Callable[[ProgressInfo]]] = None,
-    ):
+    ) -> None:
         """Train DGAN model on data in pandas DataFrame.
 
         Training data can be in either "wide" or "long" format. "Wide" format
@@ -331,14 +355,18 @@ class DGAN:
         Args:
             df: DataFrame of training data
             attribute_columns: list of column names containing attributes, if None,
-                no attribute columns are used, Default: None
+                no attribute columns are used. Must be disjoint from
+                the feature columns.
             feature_columns: list of column names containing features, if None
-                all non-attribute columns are used, Default: None
+                all non-attribute columns are used. Must be disjoint from
+                attribute columns.
             example_id_column: column name used to split "long" format data
                 frame into multiple examples, if None, data is treated as a
-                single example
+                single example. This value must be unique from the other
+                column list parameters.
             time_column: column name used to sort "long" format data frame,
-                if None, data frame order of rows/time points is used
+                if None, data frame order of rows/time points is used. This
+                value must be unique from the other column list parameters.
             discrete_columns: column names (either attributes or features) to
                 use discrete, onehot encoding, discrete values must be integer
                 in [0,1,2,3...]
@@ -348,6 +376,13 @@ class DGAN:
 
         if self.data_frame_converter is None:
 
+            # attribute columns should be disjoint from feature columns
+            if attribute_columns is not None and feature_columns is not None:
+                if set(attribute_columns).intersection(set(feature_columns)):
+                    raise ValueError(
+                        "The `attribute_columns` and `feature_columns` lists must not have overlapping values!"
+                    )
+
             if df_style == DfStyle.WIDE:
                 self.data_frame_converter = _WideDataFrameConverter.create(
                     df,
@@ -356,19 +391,44 @@ class DGAN:
                     discrete_columns=discrete_columns,
                 )
             elif df_style == DfStyle.LONG:
-                if example_id_column == None and attribute_columns:
-                    raise Exception(
-                        "Please provide an example id column, auto-splitting not available with only attribute columns."
+                if time_column is not None and example_id_column is not None:
+                    if time_column == example_id_column:
+                        raise ValueError(
+                            "The `time_column` and `example_id_column` values cannot be the same!"
+                        )
+
+                if example_id_column is not None:
+                    # It should not be contained in any other lists
+                    other_columns = set()
+                    if discrete_columns is not None:
+                        other_columns.update(discrete_columns)
+                    if feature_columns is not None:
+                        other_columns.update(feature_columns)
+                    if attribute_columns is not None:
+                        other_columns.update(attribute_columns)
+
+                    if (
+                        example_id_column in other_columns
+                        or time_column in other_columns
+                    ):
+                        raise ValueError(
+                            "The `example_id_column` and `time_column` must not be present in any other column lists!"
+                        )
+
+                # neither of these should be in any of the other lists
+                if example_id_column is None and attribute_columns:
+                    raise ValueError(
+                        "Please provide an `example_id_column`, auto-splitting not available with only attribute columns."  # noqa
                     )
-                if example_id_column == None and attribute_columns == None:
+                if example_id_column is None and attribute_columns is None:
                     logging.warning(
-                        f"Example ID column not provided, DGAN will autosplit dataset into sequences of size {self.config.max_sequence_len}!"
+                        f"The `example_id_column` was not provided, DGAN will autosplit dataset into sequences of size {self.config.max_sequence_len}!"  # noqa
                     )
                     df = df[
                         : math.floor(len(df) / self.config.max_sequence_len)
                         * self.config.max_sequence_len
                     ].copy()
-                    if time_column != None:
+                    if time_column is not None:
                         df[time_column] = pd.to_datetime(df[time_column])
                         df = df.sort_values(time_column)
                     example_id_column = "example_id"
@@ -440,8 +500,15 @@ class DGAN:
             # Convert from list of tuples to tuple of lists with zip(*) and
             # concatenate into single numpy arrays for attributes, additional
             # attributes (if present), and features.
+            #
+            # NOTE: Despite linter complaints, the np.array(d) == None statement
+            # is special because it checks for None values along the array like so:
+            # In [4]: np.array([1,2,3,4]) == None
+            # Out[4]: array([False, False, False, False])
             internal_data = tuple(
-                np.concatenate(d, axis=0) if not (np.array(d) == None).any() else None
+                np.concatenate(d, axis=0)
+                if not (np.array(d) == None).any()  # noqa
+                else None
                 for d in zip(*internal_data_list)
             )
 
@@ -1216,11 +1283,7 @@ class _WideDataFrameConverter(_DataFrameConverter):
         df = pd.DataFrame(data, columns=self._attribute_columns + self._feature_columns)
 
         # Convert discrete columns to int where possible.
-        for c in self._discrete_columns:
-            try:
-                df[c] = df[c].astype("int")
-            except ValueError:
-                pass
+        df = _discrete_cols_to_int(df, self._discrete_columns)
 
         # Ensure we match the original ordering
         return df[self._df_column_order]
@@ -1502,11 +1565,7 @@ class _LongDataFrameConverter(_DataFrameConverter):
             )
 
         # Convert discrete columns to int where possible.
-        for c in self._discrete_columns:
-            try:
-                df[c] = df[c].astype("int")
-            except ValueError:
-                pass
+        df = _discrete_cols_to_int(df, self._discrete_columns)
 
         if self._example_id_column:
             # Use [0,1,2,...] for example_id
@@ -1620,12 +1679,12 @@ def validation_check(
 
     if np.mean(valid_examples) < invalid_examples_ratio_cutoff:
         raise ValueError(
-            f"More than {100*invalid_examples_ratio_cutoff}% invalid examples in the continuous features. Please reduce the ratio of the NaNs and try again!"
+            f"More than {100*invalid_examples_ratio_cutoff}% invalid examples in the continuous features. Please reduce the ratio of the NaNs and try again!"  # noqa
         )
 
     if (~valid_examples).any():
         logger.warning(
-            f"There are {sum(~valid_examples)} examples that have too many nan values in numeric features, accounting for {np.mean(~valid_examples)*100}% of all examples. These invalid examples will be omitted from training.",
+            f"There are {sum(~valid_examples)} examples that have too many nan values in numeric features, accounting for {np.mean(~valid_examples)*100}% of all examples. These invalid examples will be omitted from training.",  # noqa
             extra={"user_log": True},
         )
 
@@ -1652,7 +1711,7 @@ def nan_linear_interpolation(arrays: np.ndarray) -> np.ndarray:
             array = arrays[exp, :, f]
             if np.isnan(array).any():
                 nans = np.isnan(array)
-                ind_func = lambda z: z.nonzero()[0]
+                ind_func = lambda z: z.nonzero()[0]  # noqa
                 array[nans] = np.interp(ind_func(nans), ind_func(~nans), array[~nans])
 
     return arrays
