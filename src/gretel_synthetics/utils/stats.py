@@ -129,7 +129,7 @@ def get_numeric_distribution_bins(training: pd.Series, synthetic: pd.Series):
     # We also bin across the training and synthetic Series combined since we are binning across the combined range, otherwise we can see OOM's or sigkill's.
     try:
         bins = np.histogram_bin_edges(
-            training.append(synthetic), bins="doane", range=(min_value, max_value)
+            pd.concat([training, synthetic]), bins="doane", range=(min_value, max_value)
         )
     except Exception:
         pass
@@ -137,7 +137,7 @@ def get_numeric_distribution_bins(training: pd.Series, synthetic: pd.Series):
     if len(bins) == 0 or len(bins) > 500:
         try:
             bins = np.histogram_bin_edges(
-                training, bins=500, range=(min_value, max_value)
+                pd.concat([training, synthetic]), bins=500, range=(min_value, max_value)
             )
         except Exception:
             pass
@@ -301,7 +301,6 @@ def calculate_correlation(
         A dataframe of correlation values.
 
     """
-
     # If opt is True, then go the faster (just not quite as accurate) route of global replace missing with 0
     if opt:
         with pd.option_context("mode.use_inf_as_na", True):
