@@ -224,7 +224,7 @@ class TensorFlowConfig(BaseConfig):
         dp_microbatches (optional): Each batch of data is split into smaller units called micro-batches.
             Computational overhead can be reduced by increasing the size of micro-batches to include
             more than one training example. The number of micro-batches should divide evenly into
-            the overall ``batch_size``. Default is ``64``.
+            the overall ``batch_size``. Default is ``1``.
         gen_temp (optional): Controls the randomness of predictions by scaling the logits before
             applying softmax. Low temperatures result in more predictable text. Higher temperatures
             result in more surprising text. Experiment to find the best setting. Default is ``1.0``.
@@ -263,7 +263,7 @@ class TensorFlowConfig(BaseConfig):
     dp: bool = False
     dp_noise_multiplier: float = 0.1
     dp_l2_norm_clip: float = 3.0
-    dp_microbatches: int = 64
+    dp_microbatches: int = 1
 
     # Generation settings
     gen_temp: float = 1.0
@@ -284,10 +284,6 @@ class TensorFlowConfig(BaseConfig):
                     "Running in differential privacy mode requires TensorFlow 2.4.x or greater. "
                     "Please see the README for details"
                 )
-            if self.batch_size % self.dp_microbatches != 0:
-                raise ValueError(
-                    "Number of dp_microbatches should divide evenly into batch_size"
-                )
 
             # TODO: To enable micro-batch size greater than 1, we need to update the differential privacy
             #  optimizer loss function to compute the vector of per-example losses, rather than the mean
@@ -295,7 +291,8 @@ class TensorFlowConfig(BaseConfig):
             if self.dp_microbatches != 1:
                 logging.warning(
                     "***** Currently only a differential privacy micro-batch size of 1 is supported. "
-                    "Setting micro-batch size to 1. *****"
+                    "Setting micro-batch size to 1. *****",
+                    extra={"user_log": True},
                 )
                 self.dp_microbatches = 1
 

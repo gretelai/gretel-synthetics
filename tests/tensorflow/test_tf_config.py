@@ -53,7 +53,7 @@ def test_local_config_settings(mkdir):
         "learning_rate": 0.01,
         "dp_noise_multiplier": 0.1,
         "dp_l2_norm_clip": 3.0,
-        "dp_microbatches": 64,
+        "dp_microbatches": 1,
         "gen_temp": 1.0,
         "gen_chars": 0,
         "gen_lines": 1000,
