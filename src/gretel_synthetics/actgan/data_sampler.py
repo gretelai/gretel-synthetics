@@ -85,6 +85,7 @@ class DataSampler:
                 self._discrete_column_category_prob[
                     current_id, : span_info.dim
                 ] = category_prob
+                self._discrete_column_matrix_st[current_id] = st
                 self._discrete_column_cond_st[current_id] = current_cond_st
                 self._discrete_column_n_category[current_id] = span_info.dim
                 current_cond_st += span_info.dim
@@ -171,7 +172,7 @@ class DataSampler:
     ) -> np.ndarray:
         """Generate the condition vector."""
         vec = np.zeros((batch_size, self._n_categories), dtype="float32")
-        id_ = self._discrete_column_matrix_st[condition_info.discrete_column_id]
+        id_ = self._discrete_column_cond_st[condition_info.discrete_column_id]
         id_ += condition_info.value_id
         vec[:, id_] = 1
         return vec
