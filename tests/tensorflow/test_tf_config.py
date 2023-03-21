@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
+from gretel_synthetics.batch import PATH_HOLDER
 from gretel_synthetics.config import TensorFlowConfig
 from gretel_synthetics.const import METRIC_LOSS, METRIC_VAL_LOSS
 
@@ -114,3 +115,43 @@ def test_bad_max_train_time(mkdir):
         TensorFlowConfig(
             checkpoint_dir="foo", input_data_path="bar", max_training_time_seconds="foo"
         )
+
+
+@pytest.mark.skip(reason="microbatch parameter is currently ignored")
+def test_bad_microbatch_size(tmp_path):
+    with pytest.raises(ValueError) as err:
+        TensorFlowConfig(
+            epochs=1,
+            field_delimiter=",",
+            checkpoint_dir=tmp_path,
+            input_data_path=PATH_HOLDER,
+            batch_size=64,
+            dp=True,
+            dp_microbatches=65000,
+        )
+    assert "Number of dp_microbatches should divide evenly into batch_size" in str(err)
+
+
+def test_ignore_bad_microbatch_size(tmp_path):
+    cfg = TensorFlowConfig(
+        epochs=1,
+        field_delimiter=",",
+        checkpoint_dir=tmp_path,
+        input_data_path=PATH_HOLDER,
+        batch_size=64,
+        dp=True,
+        dp_microbatches=65000,
+    )
+    assert cfg.dp_microbatches == 1
+
+
+def test_bad_epoch_callback(tmp_path):
+    with pytest.raises(ValueError) as err:
+        TensorFlowConfig(
+            epochs=1,
+            field_delimiter=",",
+            checkpoint_dir=tmp_path,
+            input_data_path=PATH_HOLDER,
+            epoch_callback=1,
+        )
+    assert "must be a callable" in str(err)
