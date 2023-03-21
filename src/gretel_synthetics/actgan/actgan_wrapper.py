@@ -10,7 +10,7 @@ import pandas as pd
 
 from gretel_synthetics.actgan.actgan import ACTGANSynthesizer
 from gretel_synthetics.detectors.sdv import SDVTableMetadata
-from gretel_synthetics.utils import torch_utils
+from gretel_synthetics.utils import rdt_patches, torch_utils
 from sdv.tabular.base import BaseTabularModel
 
 if TYPE_CHECKING:
@@ -345,3 +345,18 @@ class ACTGAN(_ACTGANModel):
             "pac": pac,
             "cuda": cuda,
         }
+
+    def fit(self, *args, **kwargs):
+        # Float formatter should not affect anything during model fitting, but it's
+        # hard to know with certainty what exactly is going on under the hood. Therefore,
+        # take a conservative approach.
+        with rdt_patches.patch_float_formatter_rounding_bug():
+            return super().fit(*args, **kwargs)
+
+    def sample(self, *args, **kwargs):
+        with rdt_patches.patch_float_formatter_rounding_bug():
+            return super().sample(*args, **kwargs)
+
+    def sample_remaining_columns(self, *args, **kwargs):
+        with rdt_patches.patch_float_formatter_rounding_bug():
+            return super().sample_remaining_columns(*args, **kwargs)
