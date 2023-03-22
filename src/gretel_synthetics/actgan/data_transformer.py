@@ -266,6 +266,7 @@ class DataTransformer:
     _column_transform_info_list: List[ColumnTransformInfo]
     _binary_encoder_cutoff: int
     _binary_encoder_han_handler: Optional[str]
+    _cbn_sample_size: Optional[int]
     _verbose: bool
     dataframe: bool
     output_dimensions: int
@@ -277,6 +278,7 @@ class DataTransformer:
         weight_threshold: float = 0.005,
         binary_encoder_cutoff: int = OHE_CUTOFF,
         binary_encoder_nan_handler: Optional[str] = None,
+        cbn_sample_size: Optional[int] = None,
         verbose: bool = False,
     ):
         """Create a data transformer.
@@ -291,16 +293,22 @@ class DataTransformer:
             binary_encoder_nan_handler:
                 If NaN's are produced from the binary encoding reverse transform, this drives how to replace those
                 NaN's with actual values
+            cbn_sample_size:
+                How many rows to sample for identifying clusters in float columns. None means no sampling.
             verbose: Provide detailed logging on data transformation details.
         """
         self._max_clusters = max_clusters
         self._weight_threshold = weight_threshold
         self._binary_encoder_cutoff = binary_encoder_cutoff
         self._binary_encoder_han_handler = binary_encoder_nan_handler
+        self._cbn_sample_size = cbn_sample_size
         self._verbose = verbose
 
     def _fit_continuous(self, data: pd.DataFrame) -> ColumnTransformInfo:
         """Train Bayesian GMM for continuous columns."""
+        if self._cbn_sample_size is not None and self._cbn_sample_size < len(data):
+            # Train on only a sample of the data, if requested.
+            data = data.sample(n=self._cbn_sample_size)
         column_name = data.columns[0]
         gm = ClusterBasedNormalizer(
             model_missing_values=True, max_clusters=min(len(data), 10)

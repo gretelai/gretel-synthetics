@@ -252,6 +252,10 @@ class ACTGAN(_ACTGANModel):
             Binary encoding currently may produce errant NaN values during reverse transformation. By default
             these NaN's will be left in place, however if this value is set to "mode" then those NaN' will
             be replaced by a random value that is a known mode for a given column.
+        cbn_sample_size:
+            Number of rows to sample from each column for identifying clusters for the cluster-based normalizer.
+            This only applies to float columns. By default, no sampling is done and all values are considered,
+            which may be very slow.
         log_frequency:
             Whether to use log frequency of categorical levels in conditional
             sampling. Defaults to ``True``.
@@ -302,6 +306,7 @@ class ACTGAN(_ACTGANModel):
         discriminator_steps: int = 1,
         binary_encoder_cutoff: int = 500,
         binary_encoder_nan_handler: Optional[str] = None,
+        cbn_sample_size: Optional[int] = None,
         log_frequency: bool = True,
         verbose: bool = False,
         epochs: int = 300,
@@ -338,6 +343,7 @@ class ACTGAN(_ACTGANModel):
             "discriminator_steps": discriminator_steps,
             "binary_encoder_cutoff": binary_encoder_cutoff,
             "binary_encoder_nan_handler": binary_encoder_nan_handler,
+            "cbn_sample_size": cbn_sample_size,
             "log_frequency": log_frequency,
             "verbose": verbose,
             "epochs": epochs,
