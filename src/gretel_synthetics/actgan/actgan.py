@@ -1,17 +1,24 @@
 import logging
 
-from typing import Callable, Optional, Sequence
+from typing import Callable, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
 import torch
 
 from gretel_synthetics.actgan.base import BaseSynthesizer, random_state
+from gretel_synthetics.actgan.column_encodings import (
+    BinaryColumnEncoding,
+    FloatColumnEncoding,
+    OneHotColumnEncoding,
+)
 from gretel_synthetics.actgan.data_sampler import DataSampler
 from gretel_synthetics.actgan.data_transformer import DataTransformer
-from gretel_synthetics.actgan.structures import ActivationFn, EpochInfo
+from gretel_synthetics.actgan.structures import ColumnType, EpochInfo
+from gretel_synthetics.actgan.train_data import TrainData
 from gretel_synthetics.typing import DFLike
 from packaging import version
+from rdt.transformers.base import BaseTransformer
 from torch import optim
 from torch.nn import (
     BatchNorm1d,
@@ -111,6 +118,32 @@ class Generator(Module):
         """Apply the Generator to the `input_`."""
         data = self.seq(input_)
         return data
+
+
+def _gumbel_softmax_stabilized(logits, tau=1, hard=False, eps=1e-10, dim=-1):
+    """Deals with the instability of the gumbel_softmax for older versions of torch.
+    For more details about the issue:
+    https://drive.google.com/file/d/1AA5wPfZ1kquaRtVruCd6BiYZGcDeNxyP/view?usp=sharing
+    Args:
+        logits […, num_features]:
+            Unnormalized log probabilities
+        tau:
+            Non-negative scalar temperature
+        hard (bool):
+            If True, the returned samples will be discretized as one-hot vectors,
+            but will be differentiated as if it is the soft sample in autograd
+        dim (int):
+            A dimension along which softmax will be computed. Default: -1.
+    Returns:
+        Sampled tensor of same shape as logits from the Gumbel-Softmax distribution.
+    """
+    for i in range(10):
+        transformed = functional.gumbel_softmax(
+            logits, tau=tau, hard=hard, eps=eps, dim=dim
+        )
+        if not torch.isnan(transformed).any():
+            return transformed
+    raise ValueError("gumbel_softmax returning NaN.")
 
 
 class ACTGANSynthesizer(BaseSynthesizer):
@@ -229,91 +262,39 @@ class ACTGANSynthesizer(BaseSynthesizer):
         self._data_sampler = None
         self._generator = None
 
+        self._activation_fns: List[
+            Tuple[int, int, Callable[[torch.Tensor], torch.Tensor]]
+        ] = []
+        self._cond_loss_col_ranges: List[Tuple[int, int, int, int]] = []
+
         if self._epoch_callback is not None and not callable(self._epoch_callback):
             raise ValueError("`epoch_callback` must be a callable or `None`")
 
-    @staticmethod
-    def _gumbel_softmax(logits, tau=1, hard=False, eps=1e-10, dim=-1):
-        """Deals with the instability of the gumbel_softmax for older versions of torch.
-
-        For more details about the issue:
-        https://drive.google.com/file/d/1AA5wPfZ1kquaRtVruCd6BiYZGcDeNxyP/view?usp=sharing
-
-        Args:
-            logits […, num_features]:
-                Unnormalized log probabilities
-            tau:
-                Non-negative scalar temperature
-            hard (bool):
-                If True, the returned samples will be discretized as one-hot vectors,
-                but will be differentiated as if it is the soft sample in autograd
-            dim (int):
-                A dimension along which softmax will be computed. Default: -1.
-
-        Returns:
-            Sampled tensor of same shape as logits from the Gumbel-Softmax distribution.
-        """
-        if version.parse(torch.__version__) < version.parse("1.2.0"):
-            for i in range(10):
-                transformed = functional.gumbel_softmax(
-                    logits, tau=tau, hard=hard, eps=eps, dim=dim
-                )
-                if not torch.isnan(transformed).any():
-                    return transformed
-            raise ValueError("gumbel_softmax returning NaN.")
-
-        return functional.gumbel_softmax(logits, tau=tau, hard=hard, eps=eps, dim=dim)
+    _gumbel_softmax = staticmethod(
+        functional.gumbel_softmax
+        if version.parse(torch.__version__) >= version.parse("1.2.0")
+        else _gumbel_softmax_stabilized
+    )
 
     def _apply_activate(self, data):
         """Apply proper activation function to the output of the generator."""
-        data_t = []
-        st = 0
-        for column_info in self._transformer.output_info_list:
-            for span_info in column_info:
-                if span_info.activation_fn == ActivationFn.TANH:
-                    ed = st + span_info.dim
-                    data_t.append(torch.tanh(data[:, st:ed]))
-                    st = ed
-                elif span_info.activation_fn == ActivationFn.SIGMOID:
-                    ed = st + span_info.dim
-                    data_t.append(torch.sigmoid(data[:, st:ed]))
-                    st = ed
-                elif span_info.activation_fn == ActivationFn.SOFTMAX:
-                    ed = st + span_info.dim
-                    transformed = self._gumbel_softmax(data[:, st:ed], tau=0.2)
-                    data_t.append(transformed)
-                    st = ed
-                else:
-                    raise ValueError(
-                        f"Unexpected activation function {span_info.activation_fn}."
-                    )
+        data_t = [
+            activation_fn(data[:, st:ed])
+            for st, ed, activation_fn in self._activation_fns
+        ]
 
         return torch.cat(data_t, dim=1)
 
     def _cond_loss(self, data, c, m):
         """Compute the cross entropy loss on the fixed discrete column."""
-        loss = []
-        st = 0
-        st_c = 0
-        for column_info in self._transformer.output_info_list:
-            for span_info in column_info:
-                if (
-                    len(column_info) != 1
-                    or span_info.activation_fn != ActivationFn.SOFTMAX
-                ):
-                    # not discrete column
-                    st += span_info.dim
-                else:
-                    ed = st + span_info.dim
-                    ed_c = st_c + span_info.dim
-                    tmp = functional.cross_entropy(
-                        data[:, st:ed],
-                        torch.argmax(c[:, st_c:ed_c], dim=1),
-                        reduction="none",
-                    )
-                    loss.append(tmp)
-                    st = ed
-                    st_c = ed_c
+        loss = [
+            functional.cross_entropy(
+                data[:, st:ed],
+                torch.argmax(c[:, st_c:ed_c], dim=1),
+                reduction="none",
+            )
+            for st, ed, st_c, ed_c in self._cond_loss_col_ranges
+        ]
 
         loss = torch.stack(loss, dim=1)  # noqa: PD013
 
@@ -356,7 +337,7 @@ class ACTGANSynthesizer(BaseSynthesizer):
 
     def _pre_fit_transform(
         self, train_data: DFLike, discrete_columns: Optional[Sequence[str]] = None
-    ) -> np.ndarray:
+    ) -> TrainData:
         if discrete_columns is None:
             discrete_columns = ()
 
@@ -370,11 +351,36 @@ class ACTGANSynthesizer(BaseSynthesizer):
         )
         self._transformer.fit(train_data, discrete_columns)
 
-        train_data = self._transformer.transform(train_data)
+        train_data_dec = self._transformer.transform_decoded(train_data)
 
-        return train_data
+        self._activation_fns = []
+        self._cond_loss_col_ranges = []
 
-    def _actual_fit(self, train_data: DFLike) -> None:
+        st = 0
+        st_c = 0
+        for column_info in train_data_dec.column_infos:
+            for enc in column_info.encodings:
+                ed = st + enc.encoded_dim
+                if isinstance(enc, FloatColumnEncoding):
+                    self._activation_fns.append((st, ed, torch.tanh))
+                elif isinstance(enc, BinaryColumnEncoding):
+                    self._activation_fns.append((st, ed, torch.sigmoid))
+                elif isinstance(enc, OneHotColumnEncoding):
+                    self._activation_fns.append(
+                        (st, ed, lambda data: self._gumbel_softmax(data, tau=0.2))
+                    )
+                    if column_info.column_type == ColumnType.DISCRETE:
+                        ed_c = st_c + enc.encoded_dim
+                        self._cond_loss_col_ranges.append((st, ed, st_c, ed_c))
+                        st_c = ed_c
+                else:
+                    raise ValueError(f"Unexpected column encoding {type(enc)}")
+
+                st = ed
+
+        return train_data_dec
+
+    def _actual_fit(self, train_data: TrainData) -> None:
         """Fit the ACTGAN Synthesizer models to the training data.
 
         Args:
@@ -384,10 +390,11 @@ class ACTGANSynthesizer(BaseSynthesizer):
         epochs = self._epochs
 
         self._data_sampler = DataSampler(
-            train_data, self._transformer.output_info_list, self._log_frequency
+            train_data,
+            self._log_frequency,
         )
 
-        data_dim = self._transformer.output_dimensions
+        data_dim = train_data.encoded_dim
 
         self._generator = Generator(
             self._embedding_dim + self._data_sampler.dim_cond_vec(),
@@ -557,9 +564,7 @@ class ACTGANSynthesizer(BaseSynthesizer):
             else:
                 condvec = self._data_sampler.sample_original_condvec(self._batch_size)
 
-            if condvec is None:
-                pass
-            else:
+            if condvec is not None:
                 c1 = condvec
                 c1 = torch.from_numpy(c1).to(self._device)
                 fakez = torch.cat([fakez, c1], dim=1)

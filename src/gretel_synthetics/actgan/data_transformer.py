@@ -1,25 +1,28 @@
 import logging
-import re
-import uuid
 import warnings
 
-from functools import partial
 from typing import Any, Dict, FrozenSet, List, Optional, Sequence, Union
 
 import numpy as np
 import pandas as pd
 
-from category_encoders import BaseNEncoder, BinaryEncoder
+from gretel_synthetics.actgan.column_encodings import (
+    BinaryColumnEncoding,
+    FloatColumnEncoding,
+    OneHotColumnEncoding,
+)
 from gretel_synthetics.actgan.structures import (
-    ActivationFn,
     ColumnIdInfo,
     ColumnTransformInfo,
     ColumnType,
-    SpanInfo,
 )
-from gretel_synthetics.typing import DFLike, ListOrSeriesOrDF, SeriesOrDFLike
-from joblib import delayed, Parallel
-from rdt.transformers import BaseTransformer, ClusterBasedNormalizer, OneHotEncoder
+from gretel_synthetics.actgan.train_data import TrainData
+from gretel_synthetics.actgan.transformers import (
+    BinaryEncodingTransformer,
+    ClusterBasedNormalizer,
+)
+from gretel_synthetics.typing import DFLike
+from rdt.transformers import BinaryEncoder, OneHotEncoder
 
 logging.basicConfig()
 logger = logging.getLogger(__name__)
@@ -34,222 +37,6 @@ away from one hot encoding
 """
 
 ValidEncoderT = Union[BinaryEncoder, OneHotEncoder]
-
-MODE = "mode"
-VALID_ROUNDING_MODES = (MODE,)
-
-
-def _new_uuid() -> str:
-    return f"gretel-{uuid.uuid4().hex}"
-
-
-class BinaryEncodingTransformer(BaseTransformer):
-    """BinaryEncoding for categorical data."""
-
-    INPUT_SDTYPE = "categorical"
-    DETERMINISTIC_TRANSFORM = True
-    DETERMINISTIC_REVERSE = True
-
-    dummies: List[str]
-
-    _dummy_na: bool = False
-    _mode_values: FrozenSet[Any]
-    """For the series we are operating on, this will contain the list of modes in the dataset
-    """
-    _nan_proxy: Optional[str] = None
-    handle_rounding_nan: Optional[str]
-
-    def __init__(self, handle_rounding_nan: Optional[str] = None):
-        if (
-            handle_rounding_nan is not None
-            and handle_rounding_nan not in VALID_ROUNDING_MODES
-        ):
-            raise ValueError(
-                f"Invalid `handle_rounding_nan`, must be one of: {VALID_ROUNDING_MODES}"
-            )
-        self.handle_rounding_nan = handle_rounding_nan
-        self._mode_values = frozenset()
-        super().__init__()
-
-    @staticmethod
-    def _prepare_data(data: ListOrSeriesOrDF) -> SeriesOrDFLike:
-        """Transform data to appropriate format.
-        If data is a valid list or a list of lists, transforms it into an np.array,
-        otherwise returns it.
-
-        Args:
-            data: Data to prepare.
-
-        Returns:
-            pandas.Series or numpy.ndarray
-        """
-        if isinstance(data, list):
-            data = np.array(data)
-
-        if len(data.shape) > 2:
-            raise ValueError("Unexpected format.")
-        if len(data.shape) == 2 and data.shape[1] != 1:
-            raise ValueError("Unexpected format.")
-        if len(data.shape) == 2:
-            data = data[:, 0]
-
-        return data
-
-    def get_output_sdtypes(self) -> Dict[str, Any]:
-        """Return the output sdtypes produced by this transformer.
-
-        Returns:
-            dict:
-                Mapping from the transformed column names to the produced sdtypes.
-        """
-        # output_sdtypes = {f'value{i}': 'float' for i in range(len(self.dummies))}
-        output_sdtypes = {column_name: "float" for column_name in self.dummies}
-        out = self._add_prefix(output_sdtypes)
-        return out
-
-    @staticmethod
-    def fill_na_from_list(data: pd.Series, options: List[Any]) -> pd.Series:
-        """
-        Given a series and a list of options, fill in NaN values such that we
-        do a random choice from the `options` list for each NaN. This way we aren't
-        repalcing each NaN with the same value for the whole series
-        """
-        nan_mask = data.isnull()
-        num_nans = nan_mask.sum()
-        fill_list = np.random.choice(options, size=num_nans)
-        data.loc[nan_mask] = fill_list
-        return data
-
-    def _fit(self, data: SeriesOrDFLike) -> None:
-        """Fit the transformer to the data.
-
-        Get the pandas `category codes` which will be used later on for BinaryEncoding.
-
-        Args:
-            data: Data to fit the transformer to.
-        """
-        self.encoder = BinaryEncoder()
-        _patch_basen_to_integer(self.encoder.base_n_encoder)
-
-        data = self._prepare_data(data)
-        if not isinstance(data, pd.Series):
-            data = pd.Series(data)
-
-        if self.handle_rounding_nan == MODE:
-            self._mode_values = frozenset(list(data.mode()))
-        self._nan_proxy = _new_uuid()
-        data = data.fillna(self._nan_proxy)
-
-        self.encoder.fit(data)
-
-        # NOTE: We set `dummies` here since a `DataTransformer` instance
-        # will use the size of this list in order to determine the
-        # number of categorical columns. Because both the OHE and Binary Encoder
-        # can be embedded in the `DataTransformer` instance, both encoders
-        # should have the `dummies` attr.
-        self.dummies = self.encoder.get_feature_names().copy()
-
-    def _transform(self, data: ListOrSeriesOrDF) -> np.ndarray:
-        """Replace each category with appropiate vectors
-
-        Args:
-            data (pandas.Series, list or list of lists):
-                Data to transform.
-
-        Returns:
-            numpy.ndarray
-        """
-        data = self._prepare_data(data)
-        # unique_data = {np.nan if pd.isna(x) else x for x in pd.unique(data)}
-        # unseen_categories = unique_data - set(self.dummies)
-        # if unseen_categories:
-        #     # Select only the first 5 unseen categories to avoid flooding the console.
-        #     examples_unseen_categories = set(list(unseen_categories)[:5])
-        #     warnings.warn(
-        #         f'The data contains {len(unseen_categories)} new categories that were not '
-        #         f'seen in the original data (examples: {examples_unseen_categories}). Creating '
-        #         'a vector of all 0s. If you want to model new categories, '
-        #         'please fit the transformer again with the new data.'
-        #     )
-
-        ndarray = self.encoder.transform(data).to_numpy()
-        return ndarray
-
-    def _reverse_transform(self, data: SeriesOrDFLike) -> SeriesOrDFLike:
-        """Convert float values back to the original categorical values.
-
-        Args:
-            data (pd.Series or numpy.ndarray):
-                Data to revert.
-
-        Returns:
-            pandas.Series
-        """
-        if not isinstance(data, np.ndarray):
-            data = data.to_numpy()
-
-        if data.ndim == 1:
-            data = data.reshape(-1, 1)
-
-        threshold_data = []
-        for row in data:
-            rounded_row = np.array([int(x > 0.5) for x in row])
-            # rounded_row = np.array([np.abs(x - 0) > np.abs(x - 1) for x in row])
-            threshold_data.append(rounded_row)
-
-        transformed_data = self.encoder.inverse_transform(np.array(threshold_data))
-
-        # Optionally replace NaN values that might be "near misses" from predictions
-        # with the mode values
-        if (
-            self.handle_rounding_nan == MODE
-            and len(self._mode_values) > 0
-            and isinstance(transformed_data, pd.DataFrame)
-        ):
-            column_name = transformed_data.columns[0]
-            transformed_data[column_name] = self.fill_na_from_list(
-                transformed_data[column_name], list(self._mode_values)
-            )
-
-        # Replace any proxy NaN values with actual NaN
-        transformed_data = transformed_data.replace(
-            to_replace=self._nan_proxy, value=np.nan
-        )
-        return transformed_data
-
-
-def _patch_basen_to_integer(basen_encoder: BaseNEncoder) -> None:
-    """
-    FIXME(PROD-309): Temporary patch for https://github.com/scikit-learn-contrib/category_encoders/issues/392
-    """
-
-    def _patched_basen_to_integer(self, X, cols, base):
-        """
-        Copied from https://github.com/scikit-learn-contrib/category_encoders/blob/1def42827df4a9404553f41255878c45d754b1a0/category_encoders/basen.py#L266-L281
-        and applied this fix: https://github.com/scikit-learn-contrib/category_encoders/pull/393/files
-        """
-        out_cols = X.columns.values.tolist()
-
-        for col in cols:
-            col_list = [
-                col0
-                for col0 in out_cols
-                if re.match(re.escape(str(col)) + "_\\d+", str(col0))
-            ]
-            insert_at = out_cols.index(col_list[0])
-
-            if base == 1:
-                value_array = np.array([int(col0.split("_")[-1]) for col0 in col_list])
-            else:
-                len0 = len(col_list)
-                value_array = np.array([base ** (len0 - 1 - i) for i in range(len0)])
-            X.insert(insert_at, col, np.dot(X[col_list].values, value_array.T))
-            X.drop(col_list, axis=1, inplace=True)
-            out_cols = X.columns.values.tolist()
-
-        return X
-
-    basen_encoder.basen_to_integer = partial(_patched_basen_to_integer, basen_encoder)
 
 
 class DataTransformer:
@@ -269,8 +56,6 @@ class DataTransformer:
     _cbn_sample_size: Optional[int]
     _verbose: bool
     dataframe: bool
-    output_dimensions: int
-    output_info_list: List[SpanInfo]
 
     def __init__(
         self,
@@ -311,7 +96,9 @@ class DataTransformer:
             data = data.sample(n=self._cbn_sample_size)
         column_name = data.columns[0]
         gm = ClusterBasedNormalizer(
-            model_missing_values=True, max_clusters=min(len(data), 10)
+            model_missing_values=True,
+            max_clusters=min(len(data), self._max_clusters),
+            weight_threshold=self._weight_threshold,
         )
         if self._verbose:
             logger.info(
@@ -324,11 +111,10 @@ class DataTransformer:
             column_name=column_name,
             column_type=ColumnType.CONTINUOUS,
             transform=gm,
-            output_info=[
-                SpanInfo(1, ActivationFn.TANH),
-                SpanInfo(num_components, ActivationFn.SOFTMAX),
+            encodings=[
+                FloatColumnEncoding(),
+                OneHotColumnEncoding(num_values=num_components),
             ],
-            output_dimensions=1 + num_components,
         )
 
     def _fit_discrete(self, data: pd.DataFrame) -> ColumnTransformInfo:
@@ -338,23 +124,27 @@ class DataTransformer:
             encoder = BinaryEncodingTransformer(
                 handle_rounding_nan=self._binary_encoder_han_handler
             )
-            activation = ActivationFn.SIGMOID
+            one_hot = False
         else:
             encoder = OneHotEncoder()
-            activation = ActivationFn.SOFTMAX
+            one_hot = True
         if self._verbose:
             logger.info(
                 f"Transforming discrete column: {column_name!r} with {encoder.__class__.__name__}"
             )
         encoder.fit(data, column_name)
-        num_categories = len(encoder.dummies)
+        num_encoded_columns = len(encoder.dummies)
+        encoding = (
+            OneHotColumnEncoding(num_values=num_encoded_columns)
+            if one_hot
+            else BinaryColumnEncoding(num_bits=num_encoded_columns)
+        )
 
         return ColumnTransformInfo(
             column_name=column_name,
-            column_type="discrete",
+            column_type=ColumnType.DISCRETE,
             transform=encoder,
-            output_info=[SpanInfo(num_categories, activation)],
-            output_dimensions=num_categories,
+            encodings=[encoding],
         )
 
     def fit(
@@ -368,8 +158,6 @@ class DataTransformer:
 
         This step also counts the #columns in matrix data and span information.
         """
-        self.output_info_list: List[List[SpanInfo]] = []
-        self.output_dimensions = 0
         self.dataframe = True
 
         if discrete_columns is None:
@@ -382,7 +170,15 @@ class DataTransformer:
             column_names = [str(num) for num in range(raw_data.shape[1])]
             raw_data = pd.DataFrame(raw_data, columns=column_names)
 
-        self._column_raw_dtypes = raw_data.infer_objects().dtypes
+        # Rather than calling infer_objects() on raw_data as a whole, call it on
+        # each column individually and stitch together the result mimicking the
+        # layout of raw_data.infer_objects().dtypes. This is done to reduce memory
+        # pressure, as raw_data.infer_objects() might create a copy of the entire
+        # data, whereas in the approach below, we only need duplicate the data from
+        # a single column at a time.
+        self._column_raw_dtypes = pd.Series(
+            {c: s.infer_objects().dtype for c, s in raw_data.items()}
+        )
         self._column_transform_info_list = []
         if self._verbose:
             logger.info(
@@ -394,40 +190,51 @@ class DataTransformer:
             else:
                 column_transform_info = self._fit_continuous(raw_data[[column_name]])
 
-            self.output_info_list.append(column_transform_info.output_info)
-            self.output_dimensions += column_transform_info.output_dimensions
             self._column_transform_info_list.append(column_transform_info)
 
     def _transform_continuous(
         self, column_transform_info: ColumnTransformInfo, data: pd.DataFrame
-    ) -> np.ndarray:
+    ) -> List[np.ndarray]:
         column_name = data.columns[0]
-        data[column_name] = data[column_name].to_numpy().flatten()
+        data[column_name] = data[column_name].to_numpy().flatten().astype(np.float32)
         gm = column_transform_info.transform
         transformed = gm.transform(data)
 
-        #  Converts the transformed data to the appropriate output format.
-        #  The first column (ending in '.normalized') stays the same,
-        #  but the lable encoded column (ending in '.component') is one hot encoded.
-        output = np.zeros((len(transformed), column_transform_info.output_dimensions))
-        output[:, 0] = transformed[f"{column_name}.normalized"].to_numpy()
-        index = transformed[f"{column_name}.component"].to_numpy().astype(int)
-        output[np.arange(index.size), index + 1] = 1.0
-
-        return output
+        # Pandas DataFrame block manager stores columns of the same type in a contiguous
+        # NumPy array. Therefore, copy the column arrays to ensure that transformed becomes
+        # eligible for garbage collection.
+        # The normalized column is stored as a float32 even if the input is a float64, because
+        # it will be stored in a float32 tensor anyway during learning.
+        normalized = transformed[f"{column_name}.normalized"].to_numpy(
+            dtype=np.float32, copy=True
+        )
+        component = transformed[f"{column_name}.component"].to_numpy(
+            dtype=column_transform_info.encodings[1].decoded_dtype, copy=True
+        )
+        return [normalized, component]
 
     def _transform_discrete(
         self, column_transform_info: ColumnTransformInfo, data: pd.DataFrame
-    ) -> np.ndarray:
-        encoder = column_transform_info.transform
-        return encoder.transform(data).to_numpy()
+    ) -> List[np.ndarray]:
+        # Use the RDT transformer to transform into the encoded representation
+        # (binary or onehot), then use the ColumnEncoder to decode. This seems
+        # a bit unnecessary, because going from categorical to decoded form
+        # (ordinal ints) is more direct rather than going to onehot/binary, but
+        # doing it this way minimizes code duplication and ensures that there are no
+        # discrepancies caused by our binary/onehot encoding logic and the one
+        # done by RDT (e.g., starting at 0 vs 1 for ordinals) - and if they are,
+        # they cancel each other out through the decoding/encoding roundtrip.
+        transformed = column_transform_info.transform.transform(data).to_numpy()
 
-    def _synchronous_transform(
+        decoded = column_transform_info.encodings[0].decode(transformed)
+        return [decoded]
+
+    def _transform(
         self,
         raw_data: pd.DataFrame,
         column_transform_info_list: List[ColumnTransformInfo],
-    ) -> List[np.ndarray]:
-        """Take a Pandas DataFrame and transform columns synchronously"""
+    ) -> List[List[np.ndarray]]:
+        """Take a Pandas DataFrame and transform columns"""
         column_data_list = []
         for column_transform_info in column_transform_info_list:
             column_name = column_transform_info.column_name
@@ -443,45 +250,26 @@ class DataTransformer:
 
         return column_data_list
 
-    def _parallel_transform(
-        self,
-        raw_data: pd.DataFrame,
-        column_transform_info_list: List[ColumnTransformInfo],
-    ) -> List[np.ndarray]:
-        """Take a Pandas DataFrame and transform columns in parallel."""
-        processes = []
-        for column_transform_info in column_transform_info_list:
-            column_name = column_transform_info.column_name
-            data = raw_data[[column_name]]
-            process = None
-            if column_transform_info.column_type == ColumnType.CONTINUOUS:
-                process = delayed(self._transform_continuous)(
-                    column_transform_info, data
-                )
-            else:
-                process = delayed(self._transform_discrete)(column_transform_info, data)
-            processes.append(process)
-
-        return Parallel(n_jobs=-1)(processes)
-
-    def transform(self, raw_data: DFLike) -> np.ndarray:
-        """Take raw data and output a matrix data."""
+    def transform_decoded(self, raw_data: DFLike) -> TrainData:
+        """Take raw data and output the transformed column data in decoded form."""
         if not isinstance(raw_data, pd.DataFrame):
             column_names = [str(num) for num in range(raw_data.shape[1])]
             raw_data = pd.DataFrame(raw_data, columns=column_names)
 
-        # Only use parallelization with larger data sizes.
-        # Otherwise, the transformation will be slower.
-        if raw_data.shape[0] < 500:
-            column_data_list = self._synchronous_transform(
-                raw_data, self._column_transform_info_list
-            )
-        else:
-            column_data_list = self._parallel_transform(
-                raw_data, self._column_transform_info_list
-            )
+        column_data_list = self._transform(
+            raw_data,
+            self._column_transform_info_list,
+        )
 
-        return np.concatenate(column_data_list, axis=1).astype(float)
+        return TrainData(self._column_transform_info_list, column_data_list)
+
+    def transform(self, raw_data: DFLike) -> np.ndarray:
+        """Take raw data and output encoded matrix data.
+
+        This function only exists for backwards compatibility. It is not used
+        internally, as it requires a lot of memory.
+        """
+        return self.transform_decoded(raw_data).to_numpy_encoded(dtype=np.float32)
 
     def _inverse_transform_continuous(
         self,

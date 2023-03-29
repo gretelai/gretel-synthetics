@@ -73,33 +73,15 @@ def test_encoder_with_regex_metachars():
     assert check[col_name].equals(pd.Series(["A"]))
 
 
-def test_parallel_transform():
+def test_transform_large():
     df = pd.DataFrame(
         data=[random.choice(["A", "B", "C"]) for _ in range(700)], columns=["foo"]
     )
     transformer = DataTransformer(binary_encoder_cutoff=2)
     transformer.fit(df, discrete_columns=["foo"])
 
-    parallel_transform_called = False
-
-    def _wrap(original: callable):
-        """
-        Wraps original _parallel_transform method to inspect it was called.
-        NOTE: This is not using a mock, because that would fail pickling when
-        creating parallel workers.
-        """
-
-        def wrapped(self, *args, **kwargs):
-            nonlocal parallel_transform_called
-            parallel_transform_called = True
-            return original(self, *args, **kwargs)
-
-        return wrapped
-
-    transformer._parallel_transform = _wrap(transformer._parallel_transform)
     transformed = transformer.transform(df)
 
     result_df = transformer.inverse_transform(transformed)
 
-    assert parallel_transform_called is True
     pd.testing.assert_frame_equal(df, result_df)

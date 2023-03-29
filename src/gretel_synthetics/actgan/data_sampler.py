@@ -1,103 +1,102 @@
 """DataSampler module."""
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import List, TYPE_CHECKING
 
 import numpy as np
 
+from gretel_synthetics.actgan.column_encodings import OneHotColumnEncoding
+from gretel_synthetics.actgan.structures import ColumnType
+from gretel_synthetics.actgan.train_data import TrainData
+
 if TYPE_CHECKING:
-    from gretel_synthetics.actgan.structures import ColumnIdInfo, SpanInfo
+    from gretel_synthetics.actgan.structures import ColumnIdInfo, ColumnTransformInfo
 
 
-def _is_discrete_column(span_info: List[SpanInfo]) -> bool:
-    return len(span_info) == 1 and span_info[0].activation_fn == "softmax"
+@dataclass
+class _DiscreteColumnInfo:
+    data: np.ndarray
+    num_values: int
+
+
+def _is_discrete_column(column_info: ColumnTransformInfo) -> bool:
+    # For the purposes of sampling, we only treat OneHot-encoded discrete columns as discrete.
+    # Also note that the OneHot-encoded columns indicating which cluster a normalized float value
+    # belongs to are not treated as discrete either.
+    return (
+        column_info.column_type == ColumnType.DISCRETE
+        and len(column_info.encodings) == 1
+        and isinstance(column_info.encodings[0], OneHotColumnEncoding)
+    )
 
 
 class DataSampler:
     """DataSampler samples the conditional vector and corresponding data for ACTGAN."""
 
-    def __init__(self, data, output_info: List[List[SpanInfo]], log_frequency):
-        self._data = data
+    def __init__(
+        self,
+        train_data: TrainData,
+        log_frequency: bool,
+    ):
+        self._train_data = train_data
+        self._n_rows = len(train_data)
 
-        n_discrete_columns = sum(
-            [1 for span_info_list in output_info if _is_discrete_column(span_info_list)]
-        )
+        self._discrete_columns = [
+            _DiscreteColumnInfo(
+                data=data_list[0], num_values=column_info.encodings[0].num_values
+            )
+            for column_info, data_list in train_data.columns_and_data
+            if _is_discrete_column(column_info)
+        ]
 
-        self._discrete_column_matrix_st = np.zeros(n_discrete_columns, dtype="int32")
+        n_discrete_columns = len(self._discrete_columns)
 
         # Store the row id for each category in each discrete column.
         # For example _rid_by_cat_cols[a][b] is a list of all rows with the
         # a-th discrete column equal value b.
-        self._rid_by_cat_cols = []
-
-        # Compute _rid_by_cat_cols
-        st = 0
-        for span_info_list in output_info:
-            if _is_discrete_column(span_info_list):
-                span_info = span_info_list[0]
-                ed = st + span_info.dim
-
-                rid_by_cat = []
-                for j in range(span_info.dim):
-                    rid_by_cat.append(np.nonzero(data[:, st + j])[0])
-                self._rid_by_cat_cols.append(rid_by_cat)
-                st = ed
-            else:
-                st += sum([span_info.dim for span_info in span_info_list])
-
-        assert st == data.shape[1]
+        self._rid_by_cat_cols: List[List[np.ndarray]] = [
+            [np.nonzero(col.data == j)[0] for j in range(col.num_values)]
+            for col in self._discrete_columns
+        ]
 
         # Prepare an interval matrix for efficiently sample conditional vector
         max_category = max(
-            [
-                span_info_list[0].dim
-                for span_info_list in output_info
-                if _is_discrete_column(span_info_list)
-            ],
-            default=0,
+            (col.num_values for col in self._discrete_columns), default=0
         )
 
-        self._discrete_column_cond_st = np.zeros(n_discrete_columns, dtype="int32")
-        self._discrete_column_n_category = np.zeros(n_discrete_columns, dtype="int32")
-        self._discrete_column_category_prob = np.zeros(
+        # Calculate the start position of each discrete column in a conditional
+        # vector. I.e., the (ordinal) value b of the a-th discrete column is
+        # stored in position _discrete_column_cond_st[a] + b in the conditional
+        # vector.
+        self._discrete_column_cond_st = np.array(
+            ([0] + [col.num_values for col in self._discrete_columns[:-1]])[
+                :n_discrete_columns
+            ]
+        ).cumsum()
+
+        # Calculate the probability distributions for the values in each discrete
+        # column. We store cumulative probabilities, as that is what we need for
+        # sampling.
+        # The probability that the (ordinal) value of the a-th discrete column is
+        # less than or equal to b is _discrete_column_category_prob_cum[a, b].
+        self._discrete_column_category_prob_cum = np.zeros(
             (n_discrete_columns, max_category)
         )
         self._n_discrete_columns = n_discrete_columns
-        self._n_categories = sum(
-            [
-                span_info_list[0].dim
-                for span_info_list in output_info
-                if _is_discrete_column(span_info_list)
-            ]
-        )
+        self._n_categories = sum(col.num_values for col in self._discrete_columns)
 
-        st = 0
-        current_id = 0
-        current_cond_st = 0
-        for span_info_list in output_info:
-            if _is_discrete_column(span_info_list):
-                span_info = span_info_list[0]
-                ed = st + span_info.dim
-                category_freq = np.sum(data[:, st:ed], axis=0)
-                if log_frequency:
-                    category_freq = np.log(category_freq + 1)
-                category_prob = category_freq / np.sum(category_freq)
-                self._discrete_column_category_prob[
-                    current_id, : span_info.dim
-                ] = category_prob
-                self._discrete_column_matrix_st[current_id] = st
-                self._discrete_column_cond_st[current_id] = current_cond_st
-                self._discrete_column_n_category[current_id] = span_info.dim
-                current_cond_st += span_info.dim
-                current_id += 1
-                st = ed
-            else:
-                st += sum([span_info.dim for span_info in span_info_list])
+        for i, col in enumerate(self._discrete_columns):
+            category_freq = np.bincount(col.data, minlength=max_category)
+            if log_frequency:
+                category_freq = np.log(category_freq + 1)
+            category_prob = category_freq / np.sum(category_freq)
+            self._discrete_column_category_prob_cum[i] = category_prob.cumsum()
 
     def _random_choice_prob_index(self, discrete_column_id):
-        probs = self._discrete_column_category_prob[discrete_column_id]
-        r = np.expand_dims(np.random.rand(probs.shape[0]), axis=1)
-        return (probs.cumsum(axis=1) > r).argmax(axis=1)
+        probs_cum = self._discrete_column_category_prob_cum[discrete_column_id]
+        r = np.expand_dims(np.random.rand(probs_cum.shape[0]), axis=1)
+        return (probs_cum > r).argmax(axis=1)
 
     def sample_condvec(self, batch):
         """Generate the conditional vector for training.
@@ -138,11 +137,9 @@ class DataSampler:
         cond = np.zeros((batch, self._n_categories), dtype="float32")
 
         for i in range(batch):
-            row_idx = np.random.randint(0, len(self._data))
+            row_idx = np.random.randint(0, self._n_rows)
             col_idx = np.random.randint(0, self._n_discrete_columns)
-            matrix_st = self._discrete_column_matrix_st[col_idx]
-            matrix_ed = matrix_st + self._discrete_column_n_category[col_idx]
-            pick = np.argmax(self._data[row_idx, matrix_st:matrix_ed])
+            pick = self._discrete_columns[col_idx].data[row_idx]
             cond[i, pick + self._discrete_column_cond_st[col_idx]] = 1
 
         return cond
@@ -154,14 +151,14 @@ class DataSampler:
             n rows of matrix data.
         """
         if col is None:
-            idx = np.random.randint(len(self._data), size=n)
-            return self._data[idx]
+            idx = np.random.randint(len(self._train_data), size=n)
+            return self._train_data.to_numpy_encoded(row_indices=idx)
 
         idx = []
         for c, o in zip(col, opt):
             idx.append(np.random.choice(self._rid_by_cat_cols[c][o]))
 
-        return self._data[idx]
+        return self._train_data.to_numpy_encoded(row_indices=idx)
 
     def dim_cond_vec(self) -> int:
         """Return the total number of categories."""

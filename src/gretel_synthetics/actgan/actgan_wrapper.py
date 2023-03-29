@@ -3,20 +3,22 @@ from __future__ import annotations
 
 import logging
 
+from contextlib import contextmanager
 from typing import Callable, Dict, List, Optional, Sequence, Tuple, TYPE_CHECKING, Union
 
 import numpy as np
 import pandas as pd
 
 from gretel_synthetics.actgan.actgan import ACTGANSynthesizer
+from gretel_synthetics.actgan.columnar_df import ColumnarDF
 from gretel_synthetics.detectors.sdv import SDVTableMetadata
 from gretel_synthetics.utils import rdt_patches, torch_utils
+from rdt.transformers import BaseTransformer
 from sdv.tabular.base import BaseTabularModel
 
 if TYPE_CHECKING:
     from gretel_synthetics.actgan.structures import EpochInfo
     from numpy.random import RandomState
-    from rdt.transformers import BaseTransformer
     from sdv.constraints import Constraint
     from sdv.metadata import Metadata
     from torch import Generator
@@ -76,14 +78,36 @@ class _ACTGANModel(BaseTabularModel):
         self._metadata._field_types = detector.field_types
         self._metadata._field_transformers = detector.field_transformers
 
-        super().fit(data)
+        # Metadata fitting will process the data column by column, dropping original columns
+        # after adding transformed ones. This is very expensive in a pd.DataFrame. Therefore,
+        # transform it to our internal, columnar representation. This is a bit dicey, because
+        # we don't implement the full pd.DataFrame interface, but as long as we don't change
+        # the RDT dependency, this shouldn't be an issue.
+        # Note that there is one internal RDT method that doesn't work with a ColumnarDF, which
+        # we'll have to monkeypatch to a compatible version.
+        data.reset_index(drop=True, inplace=True)
+        with _patch_rdt_add_columns_to_data():
+            super().fit(ColumnarDF.from_df(data))
 
-    def _fit(self, table_data: pd.DataFrame) -> None:
+    def _fit(self, table_data: Union[pd.DataFrame, ColumnarDF]) -> None:
         """Fit the model to the table.
 
         Args:
             table_data: Data to be learned.
         """
+        if isinstance(table_data, ColumnarDF):
+            # The ColumnarDF representation is only relevant for the metadata transform, that
+            # happens between fit() and _fit(). Therefore, to minimize any required downstream
+            # code changes, revert to a standard pandas dataframe now (the memory requirements are
+            # the same when no changes to the structure are made).
+            columnar_df = table_data
+            table_data = columnar_df.to_df()
+            # Python doesn't have move semantics for arguments, and since fit() is an ancestor in
+            # the call tree, there is no way to let garbage collection take care of the ColumnarDF,
+            # as the calling context in fit() retains a reference. Therefore, clear the contents
+            # in-place to reduce memory pressure.
+            columnar_df.drop(columns=columnar_df.columns, inplace=True)
+
         self._model: ACTGANSynthesizer = self._build_model()
 
         categoricals = []
@@ -96,7 +120,8 @@ class _ACTGANModel(BaseTabularModel):
 
             else:
                 field_data = table_data[field].dropna()
-                if set(field_data.unique()) == {0.0, 1.0}:
+                field_data_arr = field_data.to_numpy()
+                if np.all((field_data_arr == 0.0) | (field_data_arr == 1.0)):
                     # booleans encoded as float values must be modeled as bool
                     field_data = field_data.astype(bool)
 
@@ -366,3 +391,37 @@ class ACTGAN(_ACTGANModel):
     def sample_remaining_columns(self, *args, **kwargs):
         with rdt_patches.patch_float_formatter_rounding_bug():
             return super().sample_remaining_columns(*args, **kwargs)
+
+
+@contextmanager
+def _patch_rdt_add_columns_to_data():
+    prev_value = BaseTransformer._add_columns_to_data
+    try:
+        BaseTransformer._add_columns_to_data = staticmethod(
+            _add_columns_to_data_patched
+        )
+        yield None
+    finally:
+        BaseTransformer._add_columns_to_data = staticmethod(prev_value)
+
+
+def _add_columns_to_data_patched(data, columns, column_names):
+    """Add new columns to a ``pandas.DataFrame`` or ``ColumnarDF``.
+
+    This is a patched version of the ``BaseTransformer._add_columns_to_data``
+    static method, which avoids ``pd.concat`` and thus also works with
+    a ``ColumnarDF``, as opposed to just a ``pd.DataFrame``, and also preserves
+    the type of ``data``. It is fully compatible when used with a regular
+    ``pd.DataFrame``, and would even be more efficient when used with that.
+    """
+    if columns is not None:
+        if isinstance(columns, (pd.DataFrame, pd.Series)):
+            columns.index = data.index
+
+        if len(columns.shape) == 1:
+            data[column_names[0]] = columns
+        else:
+            new_data = pd.DataFrame(columns, columns=column_names)
+            data[column_names] = new_data
+
+    return data

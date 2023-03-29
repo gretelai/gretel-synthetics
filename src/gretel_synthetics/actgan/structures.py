@@ -10,13 +10,8 @@ from typing import Any, Dict, List, TYPE_CHECKING
 if TYPE_CHECKING:
     import numpy as np
 
+    from gretel_synthetics.actgan.column_encodings import ColumnEncoding
     from rdt.transformers.base import BaseTransformer
-
-
-class ActivationFn(str, Enum):
-    SIGMOID = "sigmoid"
-    SOFTMAX = "softmax"
-    TANH = "tanh"
 
 
 class ColumnType(str, Enum):
@@ -25,18 +20,15 @@ class ColumnType(str, Enum):
 
 
 @dataclass
-class SpanInfo:
-    dim: int
-    activation_fn: ActivationFn
-
-
-@dataclass
 class ColumnTransformInfo:
     column_name: str
     column_type: ColumnType
     transform: BaseTransformer
-    output_info: List[SpanInfo]
-    output_dimensions: int
+    encodings: List[ColumnEncoding]
+
+    @property
+    def output_dimensions(self) -> int:
+        return sum(enc.encoded_dim for enc in self.encodings)
 
 
 @dataclass
