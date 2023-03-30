@@ -259,7 +259,7 @@ class ACTGANSynthesizer(BaseSynthesizer):
         self._device = torch.device(device)
 
         self._transformer = None
-        self._data_sampler = None
+        self._condvec_sampler = None
         self._generator = None
 
         self._activation_fns: List[
@@ -389,21 +389,22 @@ class ACTGANSynthesizer(BaseSynthesizer):
 
         epochs = self._epochs
 
-        self._data_sampler = DataSampler(
+        data_sampler = DataSampler(
             train_data,
             self._log_frequency,
         )
+        self._condvec_sampler = data_sampler.condvec_sampler
 
         data_dim = train_data.encoded_dim
 
         self._generator = Generator(
-            self._embedding_dim + self._data_sampler.dim_cond_vec(),
+            self._embedding_dim + data_sampler.dim_cond_vec(),
             self._generator_dim,
             data_dim,
         ).to(self._device)
 
         discriminator = Discriminator(
-            data_dim + self._data_sampler.dim_cond_vec(),
+            data_dim + data_sampler.dim_cond_vec(),
             self._discriminator_dim,
             pac=self.pac,
         ).to(self._device)
@@ -432,12 +433,10 @@ class ACTGANSynthesizer(BaseSynthesizer):
                 for n in range(self._discriminator_steps):
                     fakez = torch.normal(mean=mean, std=std)
 
-                    condvec = self._data_sampler.sample_condvec(self._batch_size)
+                    condvec = data_sampler.sample_condvec(self._batch_size)
                     if condvec is None:
                         c1, m1, col, opt = None, None, None, None
-                        real = self._data_sampler.sample_data(
-                            self._batch_size, col, opt
-                        )
+                        real = data_sampler.sample_data(self._batch_size, col, opt)
                     else:
                         c1, m1, col, opt = condvec
                         c1 = torch.from_numpy(c1).to(self._device)
@@ -446,7 +445,7 @@ class ACTGANSynthesizer(BaseSynthesizer):
 
                         perm = np.arange(self._batch_size)
                         np.random.shuffle(perm)
-                        real = self._data_sampler.sample_data(
+                        real = data_sampler.sample_data(
                             self._batch_size, col[perm], opt[perm]
                         )
                         c2 = c1[perm]
@@ -477,7 +476,7 @@ class ACTGANSynthesizer(BaseSynthesizer):
                     optimizerD.step()
 
                 fakez = torch.normal(mean=mean, std=std)
-                condvec = self._data_sampler.sample_condvec(self._batch_size)
+                condvec = data_sampler.sample_condvec(self._batch_size)
 
                 if condvec is None:
                     c1, m1, col, opt = None, None, None, None
@@ -545,7 +544,7 @@ class ACTGANSynthesizer(BaseSynthesizer):
                 condition_column, condition_value
             )
             global_condition_vec = (
-                self._data_sampler.generate_cond_from_condition_column_info(
+                self._condvec_sampler.generate_cond_from_condition_column_info(
                     condition_info, self._batch_size
                 )
             )
@@ -562,7 +561,9 @@ class ACTGANSynthesizer(BaseSynthesizer):
             if global_condition_vec is not None:
                 condvec = global_condition_vec.copy()
             else:
-                condvec = self._data_sampler.sample_original_condvec(self._batch_size)
+                condvec = self._condvec_sampler.sample_original_condvec(
+                    self._batch_size
+                )
 
             if condvec is not None:
                 c1 = condvec

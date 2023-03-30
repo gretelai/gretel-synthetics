@@ -91,7 +91,7 @@ class DataTransformer:
 
     def _fit_continuous(self, data: pd.DataFrame) -> ColumnTransformInfo:
         """Train Bayesian GMM for continuous columns."""
-        if self._cbn_sample_size is not None and self._cbn_sample_size < len(data):
+        if self._cbn_sample_size and self._cbn_sample_size < len(data):
             # Train on only a sample of the data, if requested.
             data = data.sample(n=self._cbn_sample_size)
         column_name = data.columns[0]

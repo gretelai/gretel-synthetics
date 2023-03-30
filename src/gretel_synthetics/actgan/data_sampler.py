@@ -86,12 +86,16 @@ class DataSampler:
         self._n_discrete_columns = n_discrete_columns
         self._n_categories = sum(col.num_values for col in self._discrete_columns)
 
+        category_freqs = []
         for i, col in enumerate(self._discrete_columns):
             category_freq = np.bincount(col.data, minlength=max_category)
+            category_freqs.append(category_freq[: col.num_values])
             if log_frequency:
                 category_freq = np.log(category_freq + 1)
             category_prob = category_freq / np.sum(category_freq)
             self._discrete_column_category_prob_cum[i] = category_prob.cumsum()
+
+        self._condvec_sampler = CondVecSampler(category_freqs)
 
     def _random_choice_prob_index(self, discrete_column_id):
         probs_cum = self._discrete_column_category_prob_cum[discrete_column_id]
@@ -129,21 +133,6 @@ class DataSampler:
 
         return cond, mask, discrete_column_id, category_id_in_col
 
-    def sample_original_condvec(self, batch):
-        """Generate the conditional vector for generation use original frequency."""
-        if self._n_discrete_columns == 0:
-            return None
-
-        cond = np.zeros((batch, self._n_categories), dtype="float32")
-
-        for i in range(batch):
-            row_idx = np.random.randint(0, self._n_rows)
-            col_idx = np.random.randint(0, self._n_discrete_columns)
-            pick = self._discrete_columns[col_idx].data[row_idx]
-            cond[i, pick + self._discrete_column_cond_st[col_idx]] = 1
-
-        return cond
-
     def sample_data(self, n, col, opt):
         """Sample data from original training data satisfying the sampled conditional vector.
 
@@ -164,9 +153,75 @@ class DataSampler:
         """Return the total number of categories."""
         return self._n_categories
 
+    @property
+    def condvec_sampler(self) -> CondVecSampler:
+        return self._condvec_sampler
+
+
+class CondVecSampler:
+
+    _n_discrete_columns: int
+    """The total number of discrete columns."""
+    _n_categories: int
+    """The cumulative number of categories across all discrete columns."""
+    _categories_uniform_prob_cum: np.ndarray
+    """A vector with cumulative probabilities for selecting column/category pairs."""
+    _discrete_column_cond_st: np.ndarray
+    """Starting offset for each discrete column in the conditional vector."""
+
+    def __init__(self, category_freqs: List[np.ndarray]):
+        """Constructor.
+
+        Args:
+            category_freqs:
+                For each discrete column, this list contains a 1D array with
+                absolute category frequencies.
+        """
+
+        self._n_discrete_columns = len(category_freqs)
+        self._n_categories = sum(len(a) for a in category_freqs)
+
+        if self._n_discrete_columns == 0:
+            return
+
+        # Calculate a probability vector for selecting a single (column, category) pair,
+        # where the column is chosen uniformly at random among all discrete columns, and the
+        # category is chosen according to its relative frequency within the column.
+        categories_uniform_prob = np.concatenate([a / a.sum() for a in category_freqs])
+        categories_uniform_prob = (
+            categories_uniform_prob / categories_uniform_prob.sum()
+        )
+        self._categories_uniform_prob_cum = categories_uniform_prob.cumsum()
+
+        # Calculate the starting offset for each discrete column in the conditional vector.
+        # This is the cumulative number of categories in all previous discrete columns.
+        self._discrete_column_cond_st = np.array(
+            [0] + [len(a) for a in category_freqs[:-1]]
+        ).cumsum()
+
+    def sample_original_condvec(self, batch_size: int):
+        """Generate the conditional vector for generation use original frequency."""
+        if self._n_discrete_columns == 0:
+            return None
+
+        r = np.random.rand(batch_size, 1)
+        pick = np.argmax(r < self._categories_uniform_prob_cum, axis=1)
+
+        cond = np.zeros((batch_size, self._n_categories), dtype="float32")
+        cond[np.arange(batch_size), pick] = 1
+
+        return cond
+
     def generate_cond_from_condition_column_info(
-        self, condition_info: ColumnIdInfo, batch_size: int
+        self,
+        condition_info: ColumnIdInfo,
+        batch_size: int,
     ) -> np.ndarray:
+        if condition_info.discrete_column_id >= self._n_discrete_columns:
+            raise ValueError(
+                f"invalid discrete column ID {condition_info.discrete_column_id}, "
+                + f"there are only {self._n_discrete_columns} discrete columns"
+            )
         """Generate the condition vector."""
         vec = np.zeros((batch_size, self._n_categories), dtype="float32")
         id_ = self._discrete_column_cond_st[condition_info.discrete_column_id]
