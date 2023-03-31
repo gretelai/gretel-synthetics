@@ -1779,3 +1779,95 @@ def test_save_and_load_dataframe_no_attributes(config: DGANConfig, tmp_path):
 
     assert type(loaded_dg) == DGAN
     assert list(synthetic_df.columns) == list(df.columns)
+
+
+def test_dataframe_long_no_continuous_features(config: DGANConfig):
+    # Model should train with only discrete/categorical features
+    df = pd.DataFrame(
+        {
+            "a": np.random.choice(["foo", "bar", "baz"], size=9),
+            "b": np.random.choice(["yes", "no"], size=9),
+        }
+    )
+
+    config.max_sequence_len = 3
+    config.sample_len = 1
+    config.epochs = 1
+
+    dg = DGAN(config=config)
+
+    dg.train_dataframe(
+        df=df,
+        df_style=DfStyle.LONG,
+        discrete_columns=["a", "b"],
+    )
+
+
+def test_dataframe_wide_no_continuous_features(config: DGANConfig):
+    # Model should train with only discrete/categorical features
+    df = pd.DataFrame(
+        {
+            "2023-01-01": np.random.choice(["yes", "no"], size=6),
+            "2023-01-02": np.random.choice(["yes", "no"], size=6),
+            "2023-01-03": np.random.choice(["yes", "no"], size=6),
+        }
+    )
+
+    config.max_sequence_len = 3
+    config.sample_len = 1
+    config.epochs = 1
+
+    dg = DGAN(config=config)
+
+    dg.train_dataframe(
+        df=df,
+        df_style=DfStyle.WIDE,
+        discrete_columns=["2023-01-01", "2023-01-02", "2023-01-03"],
+    )
+
+
+def test_dataframe_long_partial_example(config: DGANConfig):
+    # Not enough rows to create a single example.
+    df = pd.DataFrame(
+        {
+            "a": np.random.choice(["foo", "bar", "baz"], size=9),
+            "b": np.random.random(size=9),
+        }
+    )
+
+    config.max_sequence_len = 10
+    config.sample_len = 1
+    config.epochs = 1
+
+    dg = DGAN(config=config)
+
+    with pytest.raises(ValueError, match="requires max_sequence_len"):
+        dg.train_dataframe(
+            df=df,
+            df_style=DfStyle.LONG,
+            discrete_columns=["a"],
+        )
+
+
+def test_dataframe_long_one_and_partial_example(config: DGANConfig):
+    # Using auto split with more than max_sequence_len rows, but not enough to
+    # make 2 examples, which are required for training.
+    df = pd.DataFrame(
+        {
+            "a": np.random.choice(["foo", "bar", "baz"], size=9),
+            "b": np.random.random(size=9),
+        }
+    )
+
+    config.max_sequence_len = 5
+    config.sample_len = 1
+    config.epochs = 1
+
+    dg = DGAN(config=config)
+
+    with pytest.raises(ValueError, match="multiple examples to train"):
+        dg.train_dataframe(
+            df=df,
+            df_style=DfStyle.LONG,
+            discrete_columns=["a"],
+        )

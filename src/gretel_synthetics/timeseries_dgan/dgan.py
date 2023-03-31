@@ -282,18 +282,28 @@ class DGAN:
             if "ContinuousOutput" in str(val.__class__)
         ]
 
-        valid_examples = validation_check(
-            features[:, :, continuous_features_ind].astype("float")
-        )
-        # Only using valid examples for the entire dataset.
-        features = features[valid_examples]
-        # Apply linear interpolations for continuous features:
-        features[:, :, continuous_features_ind] = nan_linear_interpolation(
-            features[:, :, continuous_features_ind].astype("float")
-        )
+        if continuous_features_ind:
+            # DGAN does not handle nans in continuous features (though in
+            # categorical features, the encoding will treat nans as just another
+            # category). To ensure we have none of these problematic nans, we
+            # will interpolate to replace nans with actual float values, but if
+            # we have too many nans in an example interpolation is unreliable.
 
-        if attributes is not None:
-            attributes = attributes[valid_examples]
+            # Find valid examples based on minimal number of nans.
+            valid_examples = validation_check(
+                features[:, :, continuous_features_ind].astype("float")
+            )
+
+            # Only use valid examples for the entire dataset.
+            features = features[valid_examples]
+            if attributes is not None:
+                attributes = attributes[valid_examples]
+
+            # Apply linear interpolations to replace nans for continuous
+            # features:
+            features[:, :, continuous_features_ind] = nan_linear_interpolation(
+                features[:, :, continuous_features_ind].astype("float")
+            )
 
         if self.additional_attribute_outputs:
             (
@@ -424,6 +434,11 @@ class DGAN:
                     logging.warning(
                         f"The `example_id_column` was not provided, DGAN will autosplit dataset into sequences of size {self.config.max_sequence_len}!"  # noqa
                     )
+                    if len(df) < self.config.max_sequence_len:
+                        raise ValueError(
+                            f"Received {len(df)} rows in long data format, but DGAN requires max_sequence_len={self.config.max_sequence_len} rows to make a training example. Note training will require at least 2 examples."  # noqa
+                        )
+
                     df = df[
                         : math.floor(len(df) / self.config.max_sequence_len)
                         * self.config.max_sequence_len
