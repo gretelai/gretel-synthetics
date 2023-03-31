@@ -135,7 +135,7 @@ class Batch:
         p = Path(self.checkpoint_dir) / "validator.p.gz"
         if p.exists():
             with gzip.open(p, "r") as fin:
-                self.validator = cloudpickle.loads(fin.read())
+                self.validator = cloudpickle.load(fin)
 
     def reset_gen_data(self):
         """Reset all objects that accumulate or track synthetic
@@ -180,7 +180,8 @@ def _create_batch_from_dir(batch_dir: str):
 
     if not (path / HEADER_FILE).is_file():  # pragma: no cover
         raise ValueError("missing headers")
-    headers = json.loads(open(path / HEADER_FILE).read())
+    with open(path / HEADER_FILE) as f:
+        headers = json.load(f)
 
     if not (path / CONFIG_FILE).is_file():  # pragma: no cover
         raise ValueError("missing model param file")

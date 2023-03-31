@@ -349,7 +349,8 @@ def config_from_model_dir(model_dir: str) -> BaseConfig:
     package and will instantiate a TensorFlowConfig
     """
     params_file = Path(model_dir) / const.MODEL_PARAMS
-    params_dict = json.loads(open(params_file).read())
+    with open(params_file) as f:
+        params_dict = json.load(f)
     model_type = params_dict.pop(const.MODEL_TYPE, None)
 
     # swap out the checkpoint dir location for the currently

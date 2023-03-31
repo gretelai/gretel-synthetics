@@ -232,13 +232,13 @@ class BaseTokenizer(Base):
         params_file = Path(self._model_dir) / self.settings_fname
 
         if not params_file.is_file():
-            model_params_dict = json.loads(
-                open(Path(self._model_dir) / const.MODEL_PARAMS).read()
-            )
+            with open(Path(self._model_dir) / const.MODEL_PARAMS) as f:
+                model_params_dict = json.load(f)
             self.field_delimiter = model_params_dict[FIELD_DELIM]
             self.field_delimiter_token = model_params_dict[FIELD_DELIM_TOKEN]
         else:
-            params_dict = json.loads(open(params_file).read())
+            with open(params_file) as f:
+                params_dict = json.load(f)
             self.field_delimiter = params_dict.get(FIELD_DELIM, None)
             self.field_delimiter_token = params_dict.get(FIELD_DELIM_TOKEN, None)
 
