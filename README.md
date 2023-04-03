@@ -39,7 +39,7 @@ of `gretel-synthetics`, depending on which model(s) you plan to use.
 
 - Tensorflow: Used by the LSTM model, we recommend version 2.8.x
 - Torch: Used by Timeseries DGAN and ACTGAN (for ACTGAN, Torch is installed by SDV)
-- SDV (Synthetic Data Vault): Used by ACTGAN, we recommned version 0.17.x
+- SDV (Synthetic Data Vault): Used by ACTGAN, we recommend version 0.17.x
 
 These dependencies can be installed by doing the following:
 
@@ -102,7 +102,7 @@ pip install torch==1.13.1
 ## ACTGAN Overview
 
 ACTGAN (Anyway CTGAN) is an extension of the popular [CTGAN implementation](https://sdv.dev/SDV/user_guides/single_table/ctgan.html) that provides
-some additiona functionality to improve memory usage, autodetection and transformation of columns, and more.
+some additional functionality to improve memory usage, autodetection and transformation of columns, and more.
 
 To use this model, you will need to manually install SDV:
 
