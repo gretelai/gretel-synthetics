@@ -496,6 +496,9 @@ class DGAN:
             Tuple of attributes and features as numpy arrays.
         """
 
+        if not self.is_built:
+            raise RuntimeError("Must build DGAN model prior to generating samples.")
+
         if n is not None:
             # Generate across multiple batches of batch_size. Use same size for
             # all batches and truncate the last partial batch at the very end

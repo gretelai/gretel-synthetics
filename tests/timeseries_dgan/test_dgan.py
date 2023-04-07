@@ -383,6 +383,16 @@ def test_train_dataframe_batch_size_larger_than_dataset(config: DGANConfig):
     assert list(synthetic_df.columns) == list(df.columns)
 
 
+def test_build(config: DGANConfig):
+    dg = DGAN(config=config)
+
+    assert dg.is_built == False
+    with pytest.raises(
+        RuntimeError, match="Must build DGAN model prior to generating samples."
+    ):
+        dg.generate_numpy(1)
+
+
 def test_train_1_example(config: DGANConfig, feature_data):
     features, feature_types = feature_data
     # Keep 1 example
