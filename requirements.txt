@@ -2,6 +2,7 @@ category-encoders==2.2.2
 loky==2.9.0
 numpy>=1.18.0
 pandas>=1.1.0
+protobuf~=3.20
 sentencepiece==0.1.97
 smart_open>=2.1.0,<6.0
 tensorflow==2.8.0
