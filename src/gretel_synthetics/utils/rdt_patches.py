@@ -5,7 +5,7 @@ from contextlib import contextmanager
 import numpy as np
 import pandas as pd
 
-from rdt.transformers.numerical import FloatFormatter, INTEGER_BOUNDS
+from rdt.transformers.numerical import FloatFormatter, INTEGER_BOUNDS, MAX_DECIMALS
 
 
 @contextmanager
@@ -18,10 +18,15 @@ def patch_float_formatter_rounding_bug():
     used.
     """
     orig_reverse_transform = FloatFormatter._reverse_transform
+    orig_learn_rounding_digits = FloatFormatter._learn_rounding_digits
     try:
         FloatFormatter._reverse_transform = _patched_float_formatter_reverse_transform
+        FloatFormatter._learn_rounding_digits = staticmethod(
+            _patched_float_formatter_learn_rounding_digits
+        )
         yield
     finally:
+        FloatFormatter._learn_rounding_digits = staticmethod(orig_learn_rounding_digits)
         FloatFormatter._reverse_transform = orig_reverse_transform
 
 
@@ -71,3 +76,19 @@ def _patched_float_formatter_reverse_transform(self, data):
         return data
 
     return data.astype(self._dtype)
+
+
+def _patched_float_formatter_learn_rounding_digits(data):
+    # check if data has any decimals
+    data = np.array(data)
+    roundable_data = data[~(np.isinf(data) | pd.isna(data))]
+    if not ((roundable_data % 1) != 0).any():
+        # BUGFIX: if the above evaluates to true, that means none of the
+        # non-NaN input values have any non-zero decimals.
+        return 0
+    if (roundable_data == roundable_data.round(MAX_DECIMALS)).all():
+        for decimal in range(MAX_DECIMALS + 1):
+            if (roundable_data == roundable_data.round(decimal)).all():
+                return decimal
+
+    return None
