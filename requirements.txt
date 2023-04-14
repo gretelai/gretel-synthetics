@@ -11,3 +11,4 @@ tensorflow_privacy==0.7.3
 tensorflow_probability==0.16.0
 torch==1.11.0
 tqdm<5.0
+protobuf~=3.20
