@@ -865,6 +865,8 @@ class RecordFactory:
         progress_callback = None
         if callback:
             progress_callback = _GenerationCallback(callback, callback_interval)
+            # reset the underlying callback, since we are starting a new genaration
+            callback(GenerationProgress(), reset=True)
 
         self.reset()
         if output is not None and output not in ("df",):

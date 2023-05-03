@@ -1,6 +1,6 @@
 import threading
 
-from typing import Iterator, List
+from typing import Any, Iterator, List
 from unittest.mock import Mock
 
 import pytest
@@ -87,6 +87,32 @@ def test_generate_doesnt_return_partial_record_when_stopped(tmp_path):
 
     record = rf._generate_record(generators)
     assert record is None
+
+
+def test_generate_resets_previous_progress(tmp_path):
+    dummy_dir = str(tmp_path)
+
+    rf = RecordFactory(
+        num_lines=10,
+        batches={},
+        header_list=["colA", "colB"],
+        delimiter="|",
+    )
+
+    reset_called = False
+
+    def callback(_: Any, *, reset=False):
+        if reset is True:
+            nonlocal reset_called
+            reset_called = True
+
+    result = rf.generate_all(
+        callback=callback, callback_interval=2, callback_threading=True
+    )
+
+    assert reset_called is True
+    # all will be empty, as there are no batches configured
+    assert result.records == [{}] * 10
 
 
 def _gen_and_set_thread_event(factory: RecordFactory) -> Iterator[gen_text]:
