@@ -123,7 +123,7 @@ def get_numeric_distribution_bins(training: pd.Series, synthetic: pd.Series):
     else:
         min_value = min(np.nanmin(training), np.nanmin(synthetic))
         max_value = max(np.nanmax(training), np.nanmax(synthetic))
-    bins = np.array([], dtype=np.float)
+    bins = np.array([], dtype=np.float64)
 
     # Use 'doane' to find bins. 'fd' causes too many OOM issues.
     # We also bin across the training and synthetic Series combined since we are binning across the combined range, otherwise we can see OOM's or sigkill's.
