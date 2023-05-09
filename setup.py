@@ -45,7 +45,7 @@ setup(
     long_description_content_type="text/markdown",
     package_dir={"": "src"},
     packages=find_packages("src"),
-    python_requires=">=3.7",
+    python_requires=">=3.9",
     install_requires=base_reqs,
     extras_require={"all": utils_reqs, "utils": utils_reqs, "test": test_reqs},
     classifiers=[

@@ -37,16 +37,16 @@ This section will guide you through installation of `gretel-synthetics` and depe
 By default, we do not install certain core requirements, the following dependencies should be installed _external to the installation_
 of `gretel-synthetics`, depending on which model(s) you plan to use.
 
-- Tensorflow: Used by the LSTM model, we recommend version 2.8.x
-- Torch: Used by Timeseries DGAN and ACTGAN (for ACTGAN, Torch is installed by SDV)
+- Tensorflow: Used by the LSTM model, we recommend version 2.11.x
+- Torch: Used by Timeseries DGAN and ACTGAN (for ACTGAN, Torch is installed by SDV), we recommend version 2.0
 - SDV (Synthetic Data Vault): Used by ACTGAN, we recommend version 0.17.x
 
 These dependencies can be installed by doing the following:
 
 ```
-pip install tensorflow==2.8 # for LSTM
+pip install tensorflow==2.11 # for LSTM
 pip install sdv<0.18 # for ACTGAN
-pip install torch==1.13.1 # for Timeseries DGAN
+pip install torch==2.0 # for Timeseries DGAN
 ```
 
 To install the actual `gretel-synthetics` package, first clone the repo and then...
