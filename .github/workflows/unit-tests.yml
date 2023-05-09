@@ -7,7 +7,9 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python: [3.7,3.8,3.9]
+        python:
+        # These have to be strings, as, e.g., 3.10 and 3.1 are NOT the same.
+        - "3.9"
     steps:
     - uses: actions/checkout@v1
     - name: Setup Python
@@ -15,7 +17,7 @@ jobs:
       with:
         python-version: ${{ matrix.python }}
     - name: Install Dependencies
-      run:  pip install -r requirements.txt
+      run:  pip install -r requirements.txt --use-deprecated=legacy-resolver
     - name: Install gretel-synthetics
       run: pip install -e .[all,test] --use-deprecated=legacy-resolver
     - name: Lint
