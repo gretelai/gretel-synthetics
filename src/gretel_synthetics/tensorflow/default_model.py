@@ -2,7 +2,14 @@ import logging
 
 import tensorflow as tf
 
-from tensorflow.keras.optimizers import RMSprop
+from packaging import version
+
+# The optimizers package has been moved to optimizers.legacy
+# post TF 2.10.
+if version.parse(tf.__version__) >= version.parse("2.11"):
+    from tensorflow.keras.optimizers.legacy import RMSprop
+else:
+    from tensorflow.keras.optimizers import RMSprop
 
 
 def loss(labels, logits):

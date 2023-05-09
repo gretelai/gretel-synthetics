@@ -6,7 +6,15 @@ from typing import List, Tuple, TYPE_CHECKING, Union
 
 import tensorflow as tf
 
-from tensorflow.keras.optimizers import RMSprop
+from packaging import version
+
+# The optimizers package has been moved to optimizers.legacy
+# post TF 2.10.
+if version.parse(tf.__version__) >= version.parse("2.11"):
+    from tensorflow.keras.optimizers.legacy import RMSprop
+else:
+    from tensorflow.keras.optimizers import RMSprop
+
 from tensorflow_privacy.privacy.analysis import compute_dp_sgd_privacy_lib
 from tensorflow_privacy.privacy.optimizers.dp_optimizer_keras import (
     make_keras_optimizer_class,
