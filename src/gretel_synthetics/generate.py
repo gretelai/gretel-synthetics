@@ -246,11 +246,7 @@ def generate_text(
         )
 
     logger.info(f"Using {num_workers} workers to generate records.")
-    if num_workers == 1:
-        gen = generator_class(settings)
-        yield from gen.generate_next(_line_count)
-    else:
-        yield from generate_parallel(settings, _line_count, num_workers, chunk_size=5)
+    yield from generate_parallel(settings, _line_count, num_workers, chunk_size=5)
 
 
 class SeedingGenerator(IteratorClass):

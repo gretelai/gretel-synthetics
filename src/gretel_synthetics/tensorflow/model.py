@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 else:
     BaseConfig = None
     BaseTokenizer = None
+from keras import backend as k
 
 
 def build_model(
@@ -36,6 +37,13 @@ def build_model(
 def _prepare_model(
     tokenizer: BaseTokenizer, batch_size: int, store: BaseConfig
 ) -> tf.keras.Sequential:  # pragma: no cover
+    config = k.get_config()
+
+    # Don't pre-allocate memory, allocate as needed
+    config.gpu_options.allow_growth = True
+
+    k.set_session(tf.compat.v1.Session(config=config))
+
     model = build_model(
         vocab_size=tokenizer.total_vocab_size, batch_size=batch_size, store=store
     )
