@@ -17,7 +17,7 @@ jobs:
       with:
         python-version: ${{ matrix.python }}
     - name: Install Dependencies
-      run:  pip install -r requirements.txt --use-deprecated=legacy-resolver
+      run:  pip install -r requirements.txt
     - name: Install gretel-synthetics
       run: pip install -e .[all,test] --use-deprecated=legacy-resolver
     - name: Lint
