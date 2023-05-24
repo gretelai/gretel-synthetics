@@ -52,18 +52,32 @@ class DataSampler:
 
         n_discrete_columns = len(self._discrete_columns)
 
-        # Store the row id for each category in each discrete column.
-        # For example _rid_by_cat_cols[a][b] is a list of all rows with the
-        # a-th discrete column equal value b.
-        self._rid_by_cat_cols: List[List[np.ndarray]] = [
-            [np.nonzero(col.data == j)[0] for j in range(col.num_values)]
-            for col in self._discrete_columns
-        ]
-
         # Prepare an interval matrix for efficiently sample conditional vector
         max_category = max(
             (col.num_values for col in self._discrete_columns), default=0
         )
+
+        # Store the row id for each category in each discrete column.
+        # For example _rid_by_cat_cols[a][b] is a list of all rows with the
+        # a-th discrete column equal value b.
+        rid_by_cat_cols: List[List[np.ndarray]] = [
+            [np.nonzero(col.data == j)[0] for j in range(col.num_values)]
+            for col in self._discrete_columns
+        ]
+        self._rid_by_cat_cols = np.stack(
+            [np.concatenate(rids) for rids in rid_by_cat_cols]
+        )
+        self._num_rows_by_cat_cols = np.zeros(
+            (n_discrete_columns, max_category),
+            dtype=np.int32,
+        )
+        for col, rid_by_cat in enumerate(rid_by_cat_cols):
+            for cat, rids in enumerate(rid_by_cat):
+                self._num_rows_by_cat_cols[col, cat] = len(rids)
+        self._rid_ofs_by_cat_cols = np.pad(
+            self._num_rows_by_cat_cols.cumsum(axis=1),
+            [(0, 0), (1, 0)],
+        )[:, :-1]
 
         # Calculate the start position of each discrete column in a conditional
         # vector. I.e., the (ordinal) value b of the a-th discrete column is
@@ -81,7 +95,8 @@ class DataSampler:
         # The probability that the (ordinal) value of the a-th discrete column is
         # less than or equal to b is _discrete_column_category_prob_cum[a, b].
         self._discrete_column_category_prob_cum = np.zeros(
-            (n_discrete_columns, max_category)
+            (n_discrete_columns, max_category),
+            dtype=np.int32,
         )
         self._n_discrete_columns = n_discrete_columns
         self._n_categories = sum(col.num_values for col in self._discrete_columns)
@@ -143,11 +158,13 @@ class DataSampler:
             idx = np.random.randint(len(self._train_data), size=n)
             return self._train_data.to_numpy_encoded(row_indices=idx)
 
-        idx = []
-        for c, o in zip(col, opt):
-            idx.append(np.random.choice(self._rid_by_cat_cols[c][o]))
+        rid_idxs = np.random.randint(self._num_rows_by_cat_cols[col, opt])
 
-        return self._train_data.to_numpy_encoded(row_indices=idx)
+        row_indices = self._rid_by_cat_cols[
+            col, self._rid_ofs_by_cat_cols[col, opt] + rid_idxs
+        ]
+
+        return self._train_data.to_numpy_encoded(row_indices=row_indices)
 
     def dim_cond_vec(self) -> int:
         """Return the total number of categories."""
