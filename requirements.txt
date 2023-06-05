@@ -1,13 +1,14 @@
 category-encoders==2.2.2
 loky==2.9.0
 numpy>=1.18.0,<1.24
+packaging==21.3
 pandas>=1.1.0,<2
 protobuf>=3.9.2,<3.20
+rdt>=1.2,<1.3
+sdv>=0.17,<0.18
 sentencepiece==0.1.97
 smart_open>=2.1.0,<6.0
 tensorflow==2.11.1
-sdv>=0.17,<0.18
-rdt>=1.2,<1.3
 tensorflow_estimator==2.11
 tensorflow_privacy==0.7.3
 tensorflow_probability==0.19.0

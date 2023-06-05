@@ -1,8 +1,10 @@
-faker==4.1.1
+faker==15.3.3
 flake8==4.0.1
-numpy>=1.18.0
-pandas>=1.1.0
+numpy>=1.18.0,<1.24
+pandas>=1.1.0,<2
 pylint==2.14.3
 pytest==6.1.2
 pytest-cov==2.11.1
-sdv<0.18.0
+rdt>=1.2,<1.3
+sdv>=0.17,<0.18
+torch>=1.13
