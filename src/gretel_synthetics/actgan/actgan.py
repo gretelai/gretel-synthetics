@@ -551,6 +551,8 @@ class ACTGANSynthesizer(BaseSynthesizer):
         else:
             global_condition_vec = None
 
+        # Switch generator to eval mode for inference
+        self._generator.eval()
         steps = n // self._batch_size + 1
         data = []
         for _ in range(steps):
@@ -574,6 +576,8 @@ class ACTGANSynthesizer(BaseSynthesizer):
             fakeact = self._apply_activate(fake)
             data.append(fakeact.detach().cpu().numpy())
 
+        # Switch generator back to train mode now that inference is complete
+        self._generator.train()
         data = np.concatenate(data, axis=0)
         data = data[:n]
 
