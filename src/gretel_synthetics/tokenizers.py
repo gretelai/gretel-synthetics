@@ -62,6 +62,7 @@ logging.basicConfig(
     format="%(asctime)s : %(threadName)s : %(levelname)s : %(message)s",
     level=logging.INFO,
 )
+logger = logging.getLogger(__name__)
 
 spm_logger = logging.getLogger("sentencepiece")
 spm_logger.setLevel(logging.INFO)
@@ -474,7 +475,7 @@ class SentencePieceTokenizerTrainer(BaseTokenizerTrainer):
             self.newline_str,
             self.config.field_delimiter_token,
         ] + extra_symbols
-        logging.info("Training SentencePiece tokenizer")
+        logger.info("Training SentencePiece tokenizer")
         spm.SentencePieceTrainer.Train(
             input=self.config.training_data_path,
             model_prefix=const.MODEL_PREFIX,
@@ -569,22 +570,24 @@ class SentencePieceColumnTokenizerTrainer(SentencePieceTokenizerTrainer):
 def _log_sample_data(model_dir: str, sp: spm.SentencePieceProcessor):
     training_data_path = Path(model_dir) / const.TRAINING_DATA
     if not training_data_path.is_file():
-        logging.info("Training data not found for SP sampling")
+        logger.info("Training data not found for SP sampling")
         return
 
     with open(training_data_path) as fin:
         sample = fin.readline().strip()
 
-    logging.info(f"Tokenizer model vocabulary size: {len(sp)} tokens")
-    logging.info(
+    logger.info(f"Tokenizer model vocabulary size: {len(sp)} tokens")
+    logger.info(
         "Mapping first line of training data\n\n{}\n ---- sample tokens mapped to pieces ---- > \n{}\n".format(
             repr(sample), ", ".join(sp.SampleEncodeAsPieces(sample, -1, 0.1))
-        )
+        ),
+        extra={"maybe_sensitive": True},
     )
-    logging.info(
+    logger.info(
         "Mapping first line of training data\n\n{}\n ---- sample tokens mapped to int ---- > \n{}\n".format(
             repr(sample), ", ".join([str(idx) for idx in sp.EncodeAsIds(sample)])
-        )
+        ),
+        extra={"maybe_sensitive": True},
     )
 
 
@@ -605,7 +608,7 @@ class SentencePieceTokenizer(BaseTokenizer):
         """
         sp = spm.SentencePieceProcessor()
         model_fname = f"{const.MODEL_PREFIX}.model"
-        logging.info("Loading tokenizer from: %s", model_fname)
+        logger.info("Loading tokenizer from: %s", model_fname)
         model_path = Path(model_dir) / model_fname
         sp.Load(str(model_path))
         _log_sample_data(model_dir, sp)

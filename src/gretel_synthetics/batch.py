@@ -1027,6 +1027,7 @@ class DataFrameBatch:
         tokenizer: BaseTokenizerTrainer = None,
         mode: str = WRITE,
         checkpoint_dir: str = None,
+        validate_model: bool = True,
     ):
 
         if mode not in (WRITE, READ):  # pragma: no cover
@@ -1115,13 +1116,14 @@ class DataFrameBatch:
             except FileNotFoundError:
                 self.original_headers = None
 
-            logger.info("Validating underlying models exist via generation test...")
-            try:
-                self.generate_all_batch_lines(parallelism=1, num_lines=1)
-            except Exception as err:
-                raise RuntimeError(
-                    "Error testing generation during model load"
-                ) from err
+            if validate_model:
+                logger.info("Validating underlying models exist via generation test...")
+                try:
+                    self.generate_all_batch_lines(parallelism=1, num_lines=1)
+                except Exception as err:
+                    raise RuntimeError(
+                        "Error testing generation during model load"
+                    ) from err
 
     def _create_header_batches(self):
         num_batches = ceil(len(self._source_df.columns) / self.batch_size)

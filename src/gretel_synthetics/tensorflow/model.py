@@ -1,6 +1,8 @@
 """
 Tensorflow - Keras Sequential RNN (GRU)
 """
+import logging
+
 from typing import TYPE_CHECKING
 
 import tensorflow as tf
@@ -16,6 +18,8 @@ else:
     BaseTokenizer = None
 from keras import backend as k
 
+logger = logging.getLogger(__name__)
+
 
 def build_model(
     vocab_size: int, batch_size: int, store: BaseConfig
@@ -30,7 +34,7 @@ def build_model(
     else:
         model = build_default_model(store, batch_size, vocab_size)
 
-    print(model.summary())
+    _print_model_summary(model)
     return model
 
 
@@ -53,9 +57,20 @@ def _prepare_model(
     model.load_weights(tf.train.latest_checkpoint(load_dir)).expect_partial()
 
     model.build(tf.TensorShape([1, None]))
-    model.summary()
 
+    _print_model_summary(model)
     return model
+
+
+def _print_model_summary(model: tf.keras.Model) -> None:
+    model_summary = ""
+
+    def print_fn(line: str) -> None:
+        nonlocal model_summary
+        model_summary += "\t" + line + "\n"
+
+    model.summary(print_fn=print_fn)
+    logger.info("Model summary: \n%s", model_summary)
 
 
 def load_model(

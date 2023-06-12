@@ -3,6 +3,7 @@ Functionality for generating data using multiple CPUs. The functions in this mod
 not have to be used directly. They are used automatically by the ``generate.py`` module based
 on the parallelization settings configured for text generation.
 """
+import logging
 import os
 import sys
 
@@ -19,6 +20,8 @@ else:
     BaseGenerator = None
 
 from gretel_synthetics.errors import TooManyInvalidError
+
+logger = logging.getLogger(__name__)
 
 
 def get_num_workers(
@@ -180,30 +183,53 @@ def _loky_init_worker(settings: Settings):
         # Workers should be using CPU only (note, this has no effect on the parent process)
         os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
-        # Suppress stdout and stderr in worker threads. Do so on a best-effort basis only.
-        try:
-            devnull = open(os.devnull, "w")
-            try:
-                os.dup2(devnull.fileno(), sys.stdout.fileno())
-                os.dup2(devnull.fileno(), sys.stderr.fileno())
-            except BaseException:
-                pass
-            # On Windows in a Jupyter notebook, we have observed an
-            # 'OSError [WinError 1]: Incorrect function' when trying to sys.stdout/sys.stderr
-            # after the dup2 invocation. Hence, set the references explicitly to make prevent this
-            # (the native code writing to stdout/stderr directly seems to be unaffected).
-            sys.stdout = devnull
-            sys.stderr = devnull
-        except BaseException:  # pylint: disable=broad-except
-            pass
+        # Re-configure logging for this worker, with a format that includes PID to
+        # identify the worker.
+        logging.basicConfig(
+            format="%(asctime)s [%(process)d] - %(levelname)s - %(name)s - %(message)s",
+            force=True,
+        )
+        logging.getLogger("gretel_synthetics.tensorflow").setLevel(logging.WARNING)
+        logger.info("Initializing new generation worker.")
 
         global _loky_worker_generator
         _loky_worker_generator = settings.generator(settings)
+
+        logger.info("Generation worker is ready.")
+        _suppress_stdout()
 
     except BaseException as e:  # pylint: disable=broad-except
         global _loky_worker_init_exception
         _loky_worker_init_exception = e
         # Simply return without raising, to keep the worker alive.
+
+
+def _suppress_stdout() -> None:
+    """
+    Suppress stdout and stderr in worker threads. Do so on a best-effort basis only.
+
+    We have a separate mechanism for workers to report the progress back to the main
+    process, so logging/printing is not necessary and output can get garbled when
+    logging from multiple processes at once without any synchronization.
+    """
+    try:
+        logger.info(
+            "NOTE: stdout and stderr is suppressed for this process, so nothing will be output."
+        )
+        devnull = open(os.devnull, "w")
+        try:
+            os.dup2(devnull.fileno(), sys.stdout.fileno())
+            os.dup2(devnull.fileno(), sys.stderr.fileno())
+        except BaseException:
+            pass
+        # On Windows in a Jupyter notebook, we have observed an
+        # 'OSError [WinError 1]: Incorrect function' when trying to sys.stdout/sys.stderr
+        # after the dup2 invocation. Hence, set the references explicitly to make prevent this
+        # (the native code writing to stdout/stderr directly seems to be unaffected).
+        sys.stdout = devnull
+        sys.stderr = devnull
+    except BaseException:  # pylint: disable=broad-except
+        pass
 
 
 def _loky_worker_process_chunk(
