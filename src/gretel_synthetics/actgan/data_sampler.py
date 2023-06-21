@@ -140,7 +140,7 @@ class DataSampler:
                 Selected category in the selected discrete column.
         """
         if self._n_discrete_columns == 0:
-            return None
+            return None, None, None, None
 
         discrete_column_id = np.random.choice(
             np.arange(self._n_discrete_columns), batch
@@ -181,7 +181,8 @@ class DataSampler:
 
         return self._train_data.to_numpy_encoded(row_indices=row_indices)
 
-    def dim_cond_vec(self) -> int:
+    @property
+    def cond_vec_dim(self) -> int:
         """Return the total number of categories."""
         return self._n_categories
 
@@ -191,7 +192,6 @@ class DataSampler:
 
 
 class CondVecSampler:
-
     _n_discrete_columns: int
     """The total number of discrete columns."""
     _n_categories: int
