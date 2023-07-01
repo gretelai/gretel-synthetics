@@ -24,7 +24,7 @@ from gretel_synthetics.generate_parallel import generate_parallel, get_num_worke
         (8, 100, 5, -0.5, 4),
     ],
 )
-@patch("joblib.externals.loky.cpu_count")
+@patch("loky.cpu_count")
 def test_split_work(
     cpu_count, num_cpus, total_lines, chunk_size, parallelism, expected_workers
 ):
@@ -66,7 +66,7 @@ def _mock_submitter(failure_rate):
         for failure_rate in (0.0, 0.25, 0.5)
     ],
 )
-@patch("joblib.externals.loky.ProcessPoolExecutor")
+@patch("loky.ProcessPoolExecutor")
 def test_generate_parallel(pool_mock, num_lines, num_workers, chunk_size, failure_rate):
     pool_instance = pool_mock.return_value
     pool_instance.submit.side_effect = _mock_submitter(failure_rate)
@@ -82,7 +82,7 @@ def test_generate_parallel(pool_mock, num_lines, num_workers, chunk_size, failur
     assert invalid_lines <= ceil(failure_rate * num_lines)
 
 
-@patch("joblib.externals.loky.ProcessPoolExecutor")
+@patch("loky.ProcessPoolExecutor")
 def test_generate_parallel_too_many_invalid(pool_mock):
     pool_instance = pool_mock.return_value
     pool_instance.submit.side_effect = _mock_submitter(0.5)  # 0.5 failure rate

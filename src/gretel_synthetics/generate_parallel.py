@@ -10,7 +10,7 @@ import sys
 from concurrent import futures
 from typing import List, Optional, Set, Tuple, TYPE_CHECKING, Union
 
-import joblib.externals.loky as loky
+import loky
 
 if TYPE_CHECKING:
     from gretel_synthetics.generate import BaseGenerator, GenText, Settings
