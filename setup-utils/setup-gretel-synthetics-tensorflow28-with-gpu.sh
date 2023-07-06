@@ -33,9 +33,9 @@ sudo apt-get install -y --no-install-recommends libnvinfer7=7.1.3-1+cuda11.0 \
     libnvinfer-plugin7=7.1.3-1+cuda11.0
 
 
-echo 'Installing tensorflow=2.8 and gretel-synthetics'
+echo 'Installing tensorflow==2.11 and gretel-synthetics'
 pip3 install --upgrade pip
-pip3 install tensorflow==2.8 gretel-synthetics
+pip3 install tensorflow==2.11 gretel-synthetics
 
 echo 'Check if tensorflow with gpu support is installed'
 python -c "import tensorflow as tf; tf.test.gpu_device_name()"
