@@ -1,6 +1,6 @@
 m2r
-sphinx==3.0.3
-docutils==0.17.1
+Sphinx==6.2.1
+docutils==0.18.1
 mistune==0.8.4
 sphinx-rtd-theme
 jinja2==3.0.3
