@@ -57,6 +57,7 @@ import numpy as np
 import pandas as pd
 import torch
 
+from gretel_synthetics.errors import DataError, InternalError, ParameterError
 from gretel_synthetics.timeseries_dgan.config import DfStyle, DGANConfig, OutputType
 from gretel_synthetics.timeseries_dgan.structures import ProgressInfo
 from gretel_synthetics.timeseries_dgan.torch_modules import Discriminator, Generator
@@ -80,8 +81,8 @@ AttributeFeaturePair = Tuple[Optional[np.ndarray], np.ndarray]
 NumpyArrayTriple = Tuple[np.ndarray, np.ndarray, np.ndarray]
 
 NAN_ERROR_MESSAGE = """
-DGAN does not support NaNs, please remove NaNs before training. If there are no NaNs in your input data and you see this error, please create a support ticket.  # noqa
-"""
+DGAN does not support NaNs, please remove NaNs before training. If there are no NaNs in your input data and you see this error, please create a support ticket.
+"""  # noqa
 
 
 def _discrete_cols_to_int(
@@ -156,14 +157,14 @@ class DGAN:
         self.is_built = False
 
         if config.max_sequence_len % config.sample_len != 0:
-            raise RuntimeError(
+            raise ParameterError(
                 f"max_sequence_len={config.max_sequence_len} must be divisible by sample_len={config.sample_len}"
             )
 
         if feature_outputs is not None and attribute_outputs is not None:
             self._build(attribute_outputs, feature_outputs)
         elif feature_outputs is not None or attribute_outputs is not None:
-            raise RuntimeError(
+            raise InternalError(
                 "feature_outputs and attribute_ouputs must either both be given or both be None"
             )
 
@@ -175,7 +176,7 @@ class DGAN:
         feature_types: Optional[List[OutputType]] = None,
         attributes: Optional[np.ndarray] = None,
         attribute_types: Optional[List[OutputType]] = None,
-        progress_callback: Optional[Callable[[ProgressInfo]]] = None,
+        progress_callback: Optional[Callable[[ProgressInfo], None]] = None,
     ) -> None:
         """Train DGAN model on data in numpy arrays.
 
@@ -215,12 +216,12 @@ class DGAN:
         """
         if attributes is not None:
             if attributes.shape[0] != features.shape[0]:
-                raise RuntimeError(
+                raise InternalError(
                     "First dimension of attributes and features must be the same length, i.e., the number of training examples."  # noqa
                 )
 
         if features.shape[1] != self.config.max_sequence_len:
-            raise ValueError(
+            raise ParameterError(
                 "The time dimension of the training data "
                 f"({features.shape[1]}) does not match "
                 "config.max_sequence_len "
@@ -312,7 +313,7 @@ class DGAN:
             ) = transform(features, self.feature_outputs, variable_dim_index=2)
 
             if np.any(np.isnan(internal_additional_attributes)):
-                raise ValueError(
+                raise InternalError(
                     f"NaN found in internal additional attributes. {NAN_ERROR_MESSAGE}"
                 )
 
@@ -332,7 +333,9 @@ class DGAN:
         )
 
         if self.attribute_outputs and np.any(np.isnan(internal_attributes)):
-            raise ValueError(f"NaN found in internal attributes. {NAN_ERROR_MESSAGE}")
+            raise InternalError(
+                f"NaN found in internal attributes. {NAN_ERROR_MESSAGE}"
+            )
 
         dataset = TensorDataset(
             torch.Tensor(internal_attributes),
@@ -351,7 +354,7 @@ class DGAN:
         time_column: Optional[str] = None,
         discrete_columns: Optional[List[str]] = None,
         df_style: DfStyle = DfStyle.WIDE,
-        progress_callback: Optional[Callable[[ProgressInfo]]] = None,
+        progress_callback: Optional[Callable[[ProgressInfo], None]] = None,
     ) -> None:
         """Train DGAN model on data in pandas DataFrame.
 
@@ -389,7 +392,7 @@ class DGAN:
             # attribute columns should be disjoint from feature columns
             if attribute_columns is not None and feature_columns is not None:
                 if set(attribute_columns).intersection(set(feature_columns)):
-                    raise ValueError(
+                    raise ParameterError(
                         "The `attribute_columns` and `feature_columns` lists must not have overlapping values!"
                     )
 
@@ -403,7 +406,7 @@ class DGAN:
             elif df_style == DfStyle.LONG:
                 if time_column is not None and example_id_column is not None:
                     if time_column == example_id_column:
-                        raise ValueError(
+                        raise ParameterError(
                             "The `time_column` and `example_id_column` values cannot be the same!"
                         )
 
@@ -421,13 +424,13 @@ class DGAN:
                         example_id_column in other_columns
                         or time_column in other_columns
                     ):
-                        raise ValueError(
+                        raise ParameterError(
                             "The `example_id_column` and `time_column` must not be present in any other column lists!"
                         )
 
                 # neither of these should be in any of the other lists
                 if example_id_column is None and attribute_columns:
-                    raise ValueError(
+                    raise ParameterError(
                         "Please provide an `example_id_column`, auto-splitting not available with only attribute columns."  # noqa
                     )
                 if example_id_column is None and attribute_columns is None:
@@ -435,7 +438,7 @@ class DGAN:
                         f"The `example_id_column` was not provided, DGAN will autosplit dataset into sequences of size {self.config.max_sequence_len}!"  # noqa
                     )
                     if len(df) < self.config.max_sequence_len:
-                        raise ValueError(
+                        raise DataError(
                             f"Received {len(df)} rows in long data format, but DGAN requires max_sequence_len={self.config.max_sequence_len} rows to make a training example. Note training will require at least 2 examples."  # noqa
                         )
 
@@ -445,7 +448,9 @@ class DGAN:
                     ].copy()
                     if time_column is not None:
                         df[time_column] = pd.to_datetime(df[time_column])
+
                         df = df.sort_values(time_column)
+
                     example_id_column = "example_id"
                     df[example_id_column] = np.repeat(
                         range(len(df) // self.config.max_sequence_len),
@@ -461,7 +466,7 @@ class DGAN:
                     discrete_columns=discrete_columns,
                 )
             else:
-                raise ValueError(
+                raise ParameterError(
                     f"df_style param must be an enum value DfStyle ('wide' or 'long'), received '{df_style}'"
                 )
 
@@ -497,7 +502,7 @@ class DGAN:
         """
 
         if not self.is_built:
-            raise RuntimeError("Must build DGAN model prior to generating samples.")
+            raise InternalError("Must build DGAN model prior to generating samples.")
 
         if n is not None:
             # Generate across multiple batches of batch_size. Use same size for
@@ -532,7 +537,7 @@ class DGAN:
 
         else:
             if attribute_noise is None or feature_noise is None:
-                raise RuntimeError(
+                raise InternalError(
                     "generate() must receive either n or both attribute_noise and feature_noise"
                 )
             attribute_noise = attribute_noise.to(self.device, non_blocking=True)
@@ -708,7 +713,7 @@ class DGAN:
     def _train(
         self,
         dataset: Dataset,
-        progress_callback: Optional[Callable[[ProgressInfo]]] = None,
+        progress_callback: Optional[Callable[[ProgressInfo], None]] = None,
     ):
         """Internal method for training DGAN model.
 
@@ -723,7 +728,7 @@ class DGAN:
             dataset: torch Dataset containing tuple of (attributes, additional_attributes, features)
         """
         if len(dataset) <= 1:
-            raise ValueError(
+            raise DataError(
                 f"DGAN requires multiple examples to train, received {len(dataset)} example."
                 + "Consider splitting a single long sequence into many subsequences to obtain "
                 + "multiple examples for training."
@@ -949,7 +954,7 @@ class DGAN:
         """
         batch = [index for index in batch if not torch.isnan(index).any()]
         if not self.attribute_discriminator:
-            raise RuntimeError(
+            raise InternalError(
                 "discriminate_attributes called with no attribute_discriminator"
             )
 
@@ -1091,7 +1096,7 @@ class DGAN:
         )
         if "attribute_discriminator_state_dict" in state:
             if dgan.attribute_discriminator is None:
-                raise RuntimeError(
+                raise InternalError(
                     "Error deserializing model: found unexpected attribute discriminator state in file"
                 )
 
@@ -1288,7 +1293,7 @@ class _WideDataFrameConverter(_DataFrameConverter):
     ) -> pd.DataFrame:
         if self._attribute_columns:
             if attributes is None:
-                raise ValueError(
+                raise InternalError(
                     "Data converter with attribute columns expects attributes array, received None"
                 )
             data = np.concatenate(
@@ -1512,7 +1517,7 @@ class _LongDataFrameConverter(_DataFrameConverter):
                         for x, y in zip(attribute_mins[column], attribute_maxes[column])
                     ]
                     if not np.all(comparison):
-                        raise ValueError(
+                        raise DataError(
                             f"Attribute {column} is not constant within each example."
                         )
 
@@ -1532,9 +1537,7 @@ class _LongDataFrameConverter(_DataFrameConverter):
             # all implicitly in the same example)
             for column in self._attribute_columns:
                 if sorted_df[column].nunique() != 1:
-                    raise ValueError(
-                        f"Attribute {column} is not constant for all rows."
-                    )
+                    raise DataError(f"Attribute {column} is not constant for all rows.")
 
             if self._attribute_columns:
                 # With one example, attributes should all be constant, so grab from
@@ -1555,7 +1558,7 @@ class _LongDataFrameConverter(_DataFrameConverter):
         num_features = features.shape[2]
 
         if num_features != len(self._feature_columns):
-            raise ValueError(
+            raise InternalError(
                 "Unable to invert features back to data frame, "
                 + f"converter expected {len(self._feature_columns)} features, "
                 + f"received numpy array with {features.shape[2]}"
@@ -1566,7 +1569,7 @@ class _LongDataFrameConverter(_DataFrameConverter):
 
         if self._attribute_columns:
             if attributes is None:
-                raise ValueError(
+                raise InternalError(
                     "Data converter with attribute columns expects attributes array, received None"
                 )
             # Repeat attribute rows for every time point in each example
@@ -1594,7 +1597,9 @@ class _LongDataFrameConverter(_DataFrameConverter):
 
         if self._time_column:
             if self._time_column_values is None:
-                raise RuntimeError("time_column is present, but not time_column_values")
+                raise InternalError(
+                    "time_column is present, but not time_column_values"
+                )
 
             df[self._time_column] = np.tile(self._time_column_values, num_examples)
 
@@ -1696,7 +1701,7 @@ def validation_check(
     valid_examples = np.all(valid_examples_per_feature, axis=1)
 
     if np.mean(valid_examples) < invalid_examples_ratio_cutoff:
-        raise ValueError(
+        raise DataError(
             f"More than {100*invalid_examples_ratio_cutoff}% invalid examples in the continuous features. Please reduce the ratio of the NaNs and try again!"  # noqa
         )
 

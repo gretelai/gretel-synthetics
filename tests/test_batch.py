@@ -21,7 +21,7 @@ from gretel_synthetics.batch import (
     ORIG_HEADERS,
     READ,
 )
-from gretel_synthetics.errors import TooManyInvalidError
+from gretel_synthetics.errors import InvalidSeedError, TooManyInvalidError
 from gretel_synthetics.generate import GenText
 
 checkpoint_dir = str(Path(__file__).parent / "checkpoints")
@@ -326,7 +326,7 @@ def test_read_mode(mock_gen, test_data):
 def test_validate_seed_lines_too_many_fields(test_data):
     batches = DataFrameBatch(df=test_data, config=config_template, batch_size=3)
 
-    with pytest.raises(RuntimeError) as err:
+    with pytest.raises(InvalidSeedError) as err:
         _validate_batch_seed_values(
             batches.batches[0],
             {"ID_Code": "foo", "target": 0, "var_0": 33, "var_1": 33},
@@ -337,7 +337,7 @@ def test_validate_seed_lines_too_many_fields(test_data):
 def test_validate_seed_lines_field_not_present(test_data):
     batches = DataFrameBatch(df=test_data, config=config_template, batch_size=3)
 
-    with pytest.raises(RuntimeError) as err:
+    with pytest.raises(InvalidSeedError) as err:
         _validate_batch_seed_values(
             batches.batches[0],
             {

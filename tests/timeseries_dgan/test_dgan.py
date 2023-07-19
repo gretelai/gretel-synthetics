@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from gretel_synthetics.errors import DataError, ParameterError
 from gretel_synthetics.timeseries_dgan.config import (
     DfStyle,
     DGANConfig,
@@ -400,8 +401,11 @@ def test_train_1_example(config: DGANConfig, feature_data):
 
     dg = DGAN(config=config)
 
-    with pytest.raises(ValueError, match="multiple examples to train"):
+    with pytest.raises(DataError, match="multiple examples to train") as e:
         dg.train_numpy(features=features, feature_types=feature_types)
+
+    # ensure that the exception can be caught using Python build-in ones as well
+    assert isinstance(e.value, ValueError)
 
 
 def test_train_dataframe_batch_size_not_divisible_by_dataset_length(config: DGANConfig):
@@ -509,7 +513,7 @@ def test_example_id_must_be_unique(config: DGANConfig):
 
     dg = DGAN(config=config)
 
-    with pytest.raises(ValueError) as err:
+    with pytest.raises(ParameterError) as err:
         dg.train_dataframe(
             df=df,
             attribute_columns=["a1", "a2"],
@@ -539,7 +543,7 @@ def test_time_col_example_id_col_not_equal(config: DGANConfig):
 
     # The `time_column` here is nonsense but just to validate that
     # both that and the example ID column can't be the same
-    with pytest.raises(ValueError) as err:
+    with pytest.raises(ParameterError) as err:
         dg.train_dataframe(
             df=df,
             attribute_columns=["a1", "a2"],
@@ -549,6 +553,8 @@ def test_time_col_example_id_col_not_equal(config: DGANConfig):
             df_style=DfStyle.LONG,
         )
     assert "values cannot be the same" in str(err.value)
+    # ensure that the exception can be caught using Python build-in ones as well
+    assert isinstance(err.value, ValueError)
 
 
 def test_train_dataframe_long_no_attributes(config: DGANConfig):
@@ -601,7 +607,7 @@ def test_train_dataframe_long_no_attributes_no_example_id(config: DGANConfig):
 
     dg = DGAN(config=config)
 
-    with pytest.raises(Exception) as exc_info:
+    with pytest.raises(ParameterError) as exc_info:
         dg.train_dataframe(
             df=df,
             attribute_columns=["a1", "a2"],
@@ -731,7 +737,7 @@ def test_validation_check():
     # too many invalid examples.
     invalid_examples = np.random.rand(n, 20, 3)
     invalid_examples[0:26, 2:4, 2] = np.nan
-    with pytest.raises(ValueError, match="NaN"):
+    with pytest.raises(DataError, match="NaN"):
         validation_check(invalid_examples)
 
     # Set nans for various features. Features 1 and 2 have fixable invalid examples,
@@ -798,7 +804,7 @@ def test_train_dataframe_wide_nans_all_invalid_examples(config: DGANConfig):
     config.sample_len = 1
 
     dg = DGAN(config=config)
-    with pytest.raises(ValueError, match="NaN"):
+    with pytest.raises(DataError, match="NaN"):
         dg.train_dataframe(df=df, df_style=DfStyle.WIDE)
 
 
@@ -934,7 +940,7 @@ def test_train_dataframe_long_attribute_mismatch_nans(config: DGANConfig):
     config.max_sequence_len = 5
     dg = DGAN(config=config)
 
-    with pytest.raises(ValueError, match="not constant within each example"):
+    with pytest.raises(DataError, match="not constant within each example"):
         dg.train_dataframe(
             df,
             example_id_column="example_id",
@@ -1006,7 +1012,7 @@ def test_train_numpy_max_sequence_len_error(config: DGANConfig):
 
     dg = DGAN(config=config)
 
-    with pytest.raises(ValueError, match="max_sequence_len"):
+    with pytest.raises(ParameterError, match="max_sequence_len"):
         dg.train_numpy(features=features)
 
 
@@ -1476,7 +1482,7 @@ def test_long_data_frame_converter_attribute_errors(df_long):
         example_id_column="example_id",
         discrete_columns=["a1"],
     )
-    with pytest.raises(ValueError):
+    with pytest.raises(DataError):
         converter.convert(df_long)
 
     # Same if we don't use example_id where attributes should be constant
@@ -1486,7 +1492,7 @@ def test_long_data_frame_converter_attribute_errors(df_long):
         feature_columns=["f1", "f2", "f3"],
         discrete_columns=["a1"],
     )
-    with pytest.raises(ValueError):
+    with pytest.raises(DataError):
         converter.convert(df_long)
 
 
@@ -1749,7 +1755,7 @@ def test_attribute_and_feature_overlap(config: DGANConfig):
 
     dg = DGAN(config=config)
 
-    with pytest.raises(ValueError) as err:
+    with pytest.raises(ParameterError) as err:
         dg.train_dataframe(
             df=df,
             attribute_columns=["a1", "a2"],
@@ -1851,7 +1857,7 @@ def test_dataframe_long_partial_example(config: DGANConfig):
 
     dg = DGAN(config=config)
 
-    with pytest.raises(ValueError, match="requires max_sequence_len"):
+    with pytest.raises(DataError, match="requires max_sequence_len"):
         dg.train_dataframe(
             df=df,
             df_style=DfStyle.LONG,
@@ -1875,7 +1881,7 @@ def test_dataframe_long_one_and_partial_example(config: DGANConfig):
 
     dg = DGAN(config=config)
 
-    with pytest.raises(ValueError, match="multiple examples to train"):
+    with pytest.raises(DataError, match="multiple examples to train"):
         dg.train_dataframe(
             df=df,
             df_style=DfStyle.LONG,
