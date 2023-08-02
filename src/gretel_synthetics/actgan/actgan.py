@@ -206,8 +206,8 @@ class ACTGANSynthesizer(BaseSynthesizer):
             be replaced by a random value that is a known mode for a given column.
         cbn_sample_size:
             Number of rows to sample from each column for identifying clusters for the cluster-based normalizer.
-            This only applies to float columns. By default, no sampling is done and all values are considered,
-            which may be very slow.
+            This only applies to float columns. If set to ``0``, no sampling is done and all values are considered,
+            which may be very slow. Defaults to 250_000.
         log_frequency:
             Whether to use log frequency of categorical levels in conditional
             sampling. Defaults to ``True``.
@@ -239,7 +239,7 @@ class ACTGANSynthesizer(BaseSynthesizer):
         discriminator_steps: int = 1,
         binary_encoder_cutoff: int = 500,
         binary_encoder_nan_handler: Optional[str] = None,
-        cbn_sample_size: Optional[int] = None,
+        cbn_sample_size: Optional[int] = 250_000,
         log_frequency: bool = True,
         verbose: bool = False,
         epochs: int = 300,
