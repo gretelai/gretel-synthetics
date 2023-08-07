@@ -96,7 +96,6 @@ class Discriminator(Module):
 
     def forward(self, input_):
         """Apply the Discriminator to the `input_`."""
-        assert input_.size()[0] % self.pac == 0
         return self.seq(input_.view(-1, self.pacdim))
 
 
@@ -249,6 +248,9 @@ class ACTGANSynthesizer(BaseSynthesizer):
     ):
         if batch_size % 2 != 0:
             raise ValueError("`batch_size` must be divisible by 2")
+
+        if batch_size % pac != 0:
+            raise ValueError("`batch_size` must be divisible by `pac` (defaults to 10)")
 
         self._embedding_dim = embedding_dim
         self._generator_dim = generator_dim
