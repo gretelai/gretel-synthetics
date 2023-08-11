@@ -12,6 +12,7 @@ import pytest
 
 from gretel_synthetics.batch import DataFrameBatch, PATH_HOLDER
 from gretel_synthetics.config import TensorFlowConfig
+from gretel_synthetics.errors import DataError
 from gretel_synthetics.tokenizers import (
     BaseTokenizerTrainer,
     CharTokenizerTrainer,
@@ -143,7 +144,7 @@ def test_train_small_df(train_df, tmp_path):
     )
     batcher = DataFrameBatch(df=small_df, config=config)
     batcher.create_training_data()
-    with pytest.raises(RuntimeError) as excinfo:
+    with pytest.raises(DataError) as excinfo:
         batcher.train_all_batches()
     assert "Model training failed" in str(excinfo.value)
 
