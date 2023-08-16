@@ -1,12 +1,15 @@
 import datetime
+import itertools
 
 from unittest.mock import Mock, patch
 
+import numpy as np
 import pandas as pd
 import pytest
 
 from gretel_synthetics.actgan import ACTGAN
 from gretel_synthetics.actgan.data_transformer import BinaryEncodingTransformer
+from gretel_synthetics.actgan.structures import ConditionalVectorType
 from pandas.api.types import is_number
 
 
@@ -41,3 +44,55 @@ def test_binary_encoder_cutoff(test_df):
 
         encoder = model._model._transformer._column_transform_info_list[0].transform
         assert isinstance(encoder, BinaryEncodingTransformer)
+
+
+@pytest.mark.parametrize(
+    "log_frequency,conditional_vector_type,force_conditioning",
+    itertools.product(
+        [False, True],
+        [
+            ConditionalVectorType.SINGLE_DISCRETE,
+            ConditionalVectorType.ANYWAY,
+        ],
+        [False, True],
+    ),
+)
+def test_actgan_implementation(
+    log_frequency, conditional_vector_type, force_conditioning
+):
+    # Test basic actgan setup with various parameters and to confirm training
+    # and synthesize does not crash, i.e., all the tensor shapes match. Use a
+    # small model and small dataset to keep tests quick.
+    n = 100
+    df = pd.DataFrame(
+        {
+            "int_column": np.random.randint(0, 200, size=n),
+            "float_column": np.random.random(size=n),
+            "categorical_column": np.random.choice(["a", "b", "c"], size=n),
+            "high_cardinality_column": np.random.choice(
+                [f"x{i}" for i in range(n * 3)], size=n
+            ),
+        }
+    )
+
+    conditional_select_mean_columns = None
+    if conditional_vector_type != ConditionalVectorType.SINGLE_DISCRETE:
+        conditional_select_mean_columns = 2
+
+    model = ACTGAN(
+        epochs=1,
+        batch_size=20,
+        generator_dim=[32, 32],
+        discriminator_dim=[32, 32],
+        log_frequency=log_frequency,
+        conditional_vector_type=conditional_vector_type,
+        force_conditioning=force_conditioning,
+        conditional_select_mean_columns=conditional_select_mean_columns,
+    )
+
+    model.fit(df)
+
+    df_synth = model.sample(num_rows=100)
+
+    assert df_synth.shape == (100, len(df.columns))
+    assert list(df.columns) == list(df_synth.columns)

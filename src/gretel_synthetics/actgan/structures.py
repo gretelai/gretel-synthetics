@@ -19,6 +19,13 @@ class ColumnType(str, Enum):
     DISCRETE = "discrete"
 
 
+class ConditionalVectorType(str, Enum):
+    SINGLE_DISCRETE = "single_discrete"
+    ANYWAY = "anyway"
+    # TODO: add ANYWAY_WITH_MASK type so the generator input includes a 0/1 mask
+    # of which columns are being conditioned on.
+
+
 @dataclass
 class ColumnTransformInfo:
     column_name: str
@@ -49,6 +56,7 @@ class EpochInfo:
     epoch: int
     loss_g: float
     loss_d: float
+    loss_r: float
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)

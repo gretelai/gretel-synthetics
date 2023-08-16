@@ -1,7 +1,7 @@
 import logging
 import warnings
 
-from typing import Any, Dict, FrozenSet, List, Optional, Sequence, Union
+from typing import Any, Dict, List, Optional, Sequence, Union
 
 import numpy as np
 import pandas as pd
@@ -356,3 +356,65 @@ class DataTransformer:
             )
 
         return ColumnIdInfo(discrete_counter, column_id, np.argmax(encoded))
+
+    def convert_conditions(self, conditions: Dict[str, Any]) -> np.ndarray:
+        """Convert dictionary of conditions to encoded numpy array.
+
+        Args:
+            conditions: Dictionary mapping column names to column values to
+            condition on. Column names and values must already be processed by
+            SDV Table.transform() method for metadata transformations (e.g.,
+            appends '.value' to names of numeric columns), but not processed by
+            this DataTransformer instances transform methods yet.
+
+        Returns:
+            Numpy array of 1 row and encoded_dim columns. The encoding contains
+            the conditioned columns and is 0 everywhere else.
+        """
+
+        known_columns = set(
+            info.column_name for info in self._column_transform_info_list
+        )
+        unknown_columns = set(conditions.keys()) - known_columns
+        if unknown_columns:
+            unknown_column_str = ", ".join(sorted(unknown_columns))
+            raise ValueError(
+                f"Conditions includes unknown columns: {unknown_column_str}"
+            )
+
+        # TODO: Maybe reuse logic from training transforms/encode code paths,
+        # keeping this logic in sync with logic scattered across
+        # data_transformer.py and train_data.py is going to be a challenge.
+        encodings = []
+        for info in self._column_transform_info_list:
+            if info.column_name in conditions.keys():
+                # Make 1 row DataFrame to convert to encoded representation
+                raw_data = pd.DataFrame(
+                    {info.column_name: [conditions[info.column_name]]}
+                )
+                # Grab first element of the returned list of lists because we
+                # have exactly 1 column in raw_data
+                transformed_data = self._transform(raw_data, [info])[0]
+
+                encoding = np.concatenate(
+                    [
+                        enc.encode(transformed_data[index])
+                        for index, enc in enumerate(info.encodings)
+                    ],
+                    axis=1,
+                    dtype="float32",
+                )
+
+            else:
+                # Column is not being conditioned on. Use "default" encoding of all 0s.
+                encoding = np.zeros(
+                    (
+                        1,
+                        info.output_dimensions,
+                    ),
+                    dtype="float32",
+                )
+
+            encodings.append(encoding)
+
+        return np.concatenate(encodings, axis=1)

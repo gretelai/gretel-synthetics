@@ -11,6 +11,7 @@ import pandas as pd
 
 from gretel_synthetics.actgan.actgan import ACTGANSynthesizer
 from gretel_synthetics.actgan.columnar_df import ColumnarDF
+from gretel_synthetics.actgan.structures import ConditionalVectorType
 from gretel_synthetics.detectors.sdv import SDVTableMetadata
 from gretel_synthetics.utils import rdt_patches, torch_utils
 from rdt.transformers import BaseTransformer
@@ -150,12 +151,7 @@ class _ACTGANModel(BaseTabularModel):
         Returns:
             Sampled data
         """
-        if conditions is None:
-            return self._model.sample(num_rows)
-
-        raise NotImplementedError(
-            f"{self._MODEL_CLASS} doesn't support conditional sampling."
-        )
+        return self._model.sample(num_rows, conditions)
 
     def _set_random_state(
         self, random_state: Union[int, Tuple[RandomState, Generator], None]
@@ -296,7 +292,7 @@ class ACTGAN(_ACTGANModel):
             Defaults to 10.
         cuda:
             If ``True``, use CUDA. If a ``str``, use the indicated device.
-            If ``False``, do not use cuda at all.
+            If ``False``, do not use cuda at all. Defaults to ``True``.
         learn_rounding_scheme:
             Define rounding scheme for ``FloatFormatter``. If ``True``, the data returned by
             ``reverse_transform`` will be rounded to that place. Defaults to ``True``.
@@ -304,6 +300,32 @@ class ACTGAN(_ACTGANModel):
             Specify whether or not to clip the data returned by ``reverse_transform`` of
             the numerical transformer, ``FloatFormatter``, to the min and max values seen
             during ``fit``. Defaults to ``True``.
+        conditional_vector_type:
+            Type of conditional vector to include in input to the generator.
+            Influences how effective and flexible the native conditional
+            generation is. Options include SINGLE_DISCRETE (original CTGAN
+            setup) and ANYWAY. Default is SINGLE_DISCRETE.
+        conditional_select_mean_columns:
+            Target number of columns to select for conditioning on average
+            during training. Only used for ANYWAY conditioning. Use if typical
+            number of columns to seed on is known. If set,
+            conditional_select_column_prob must be None. Equivalent to setting
+            conditional_select_column_prob to conditional_select_mean_columns /
+            # of columns. Defaults to None.
+        conditional_select_column_prob:
+            Probability to select any given column to be conditioned on during
+            training. Only used for ANYWAY conditioning. If set,
+            conditional_select_mean_columns must be None. Defaults to None.
+        reconstruction_loss_coef:
+            Multiplier on reconstruction loss, higher values focus the generator
+            optimization more on accurate conditional vector generation.
+            Defaults to 1.0.
+        force_conditioning:
+            Directly set the requested conditional generation columns in
+            generated data. Will bypass rejection sampling and be faster, but
+            may reduce quality of the generated data and correlations between
+            conditioned columns and other variables may be weaker. Defaults to
+            False.
     """
 
     _MODEL_CLASS = ACTGANSynthesizer
@@ -340,6 +362,11 @@ class ACTGAN(_ACTGANModel):
         cuda: bool = True,
         learn_rounding_scheme: bool = True,
         enforce_min_max_values: bool = True,
+        conditional_vector_type: ConditionalVectorType = ConditionalVectorType.SINGLE_DISCRETE,
+        conditional_select_mean_columns: Optional[float] = None,
+        conditional_select_column_prob: Optional[float] = None,
+        reconstruction_loss_coef: float = 1.0,
+        force_conditioning: bool = False,
     ):
         super().__init__(
             field_names=field_names,
@@ -375,6 +402,11 @@ class ACTGAN(_ACTGANModel):
             "epoch_callback": epoch_callback,
             "pac": pac,
             "cuda": cuda,
+            "conditional_vector_type": conditional_vector_type,
+            "conditional_select_mean_columns": conditional_select_mean_columns,
+            "conditional_select_column_prob": conditional_select_column_prob,
+            "reconstruction_loss_coef": reconstruction_loss_coef,
+            "force_conditioning": force_conditioning,
         }
 
     def fit(self, *args, **kwargs):

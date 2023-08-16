@@ -2,12 +2,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, TYPE_CHECKING
+from typing import List, Optional, TYPE_CHECKING
 
 import numpy as np
 
 from gretel_synthetics.actgan.column_encodings import OneHotColumnEncoding
-from gretel_synthetics.actgan.structures import ColumnType
+from gretel_synthetics.actgan.structures import ColumnType, ConditionalVectorType
 from gretel_synthetics.actgan.train_data import TrainData
 
 if TYPE_CHECKING:
@@ -38,9 +38,28 @@ class DataSampler:
         self,
         train_data: TrainData,
         log_frequency: bool,
+        conditional_vector_type: ConditionalVectorType,
+        conditional_select_column_prob: Optional[float],
     ):
         self._train_data = train_data
         self._n_rows = len(train_data)
+        self._conditional_vector_type = conditional_vector_type
+        if conditional_vector_type != ConditionalVectorType.SINGLE_DISCRETE:
+            if conditional_select_column_prob is None:
+                raise ValueError(
+                    "conditional_select_column_prob must be provided for ANYWAY training"
+                )
+
+            if conditional_select_column_prob < 0.0:
+                raise ValueError(
+                    "conditional_select_column_prob is negative, must be between 0.0 and 1.0"
+                )
+            if conditional_select_column_prob > 1.0:
+                raise ValueError(
+                    "conditional_select_column_prob is > 1.0, must be between 0.0 and 1.0"
+                )
+
+        self._conditional_select_column_prob = conditional_select_column_prob
 
         self._discrete_columns = [
             _DiscreteColumnInfo(
@@ -121,6 +140,15 @@ class DataSampler:
 
         self._condvec_sampler = CondVecSampler(category_freqs)
 
+        if self._conditional_vector_type == ConditionalVectorType.SINGLE_DISCRETE:
+            self._cond_vec_dim = self._n_categories
+        elif self._conditional_vector_type == ConditionalVectorType.ANYWAY:
+            self._cond_vec_dim = self._train_data.encoded_dim
+        else:
+            raise ValueError(
+                f"Unsupported ConditionalVectorType={self._conditional_vector_type}"
+            )
+
     def _random_choice_prob_index(self, discrete_column_id):
         probs_cum = self._discrete_column_category_prob_cum[discrete_column_id]
         r = np.expand_dims(np.random.rand(probs_cum.shape[0]), axis=1)
@@ -157,6 +185,47 @@ class DataSampler:
 
         return cond, mask, discrete_column_id, category_id_in_col
 
+    def sample_anyway_cond_vec(self, batch_size: int):
+        idx = np.random.randint(len(self._train_data), size=batch_size)
+        real_encoded = self._train_data.to_numpy_encoded(row_indices=idx)
+
+        num_columns = len(self._train_data.columns_and_data)
+
+        # 0/1 mask of original columns selected for conditioning
+        column_mask = np.random.choice(
+            [0, 1],
+            p=[
+                1.0 - self._conditional_select_column_prob,
+                self._conditional_select_column_prob,
+            ],
+            size=(batch_size, num_columns),
+        )
+
+        # TODO: Vectorize or precalculate part of a matrix multiply should be faster.
+
+        # 0/1 mask of selected columns in encoded representation, for conditional vector
+        encoded_mask = np.concatenate(
+            [
+                np.ones((batch_size, enc.encoded_dim))
+                * column_mask[:, col_index].reshape(-1, 1)
+                for col_index, col_info in enumerate(self._train_data.column_infos)
+                for enc in col_info.encodings
+            ],
+            axis=1,
+        )
+        # 0/1 mask of selected columns in transformed representation, for loss calculation
+        transformed_mask = np.concatenate(
+            [
+                np.ones((batch_size, 1)) * column_mask[:, col_index].reshape(-1, 1)
+                for col_index, col_info in enumerate(self._train_data.column_infos)
+                for _ in col_info.encodings
+            ],
+            axis=1,
+        )
+        cond_vec = real_encoded * encoded_mask
+
+        return cond_vec, real_encoded, transformed_mask
+
     def sample_data(self, n, col, opt):
         """Sample data from original training data satisfying the sampled conditional vector.
 
@@ -183,8 +252,8 @@ class DataSampler:
 
     @property
     def cond_vec_dim(self) -> int:
-        """Return the total number of categories."""
-        return self._n_categories
+        """Width of conditional vector."""
+        return self._cond_vec_dim
 
     @property
     def condvec_sampler(self) -> CondVecSampler:

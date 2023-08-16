@@ -14,7 +14,11 @@ from gretel_synthetics.actgan.column_encodings import (
 )
 from gretel_synthetics.actgan.data_sampler import DataSampler
 from gretel_synthetics.actgan.data_transformer import DataTransformer
-from gretel_synthetics.actgan.structures import ColumnType, EpochInfo
+from gretel_synthetics.actgan.structures import (
+    ColumnType,
+    ConditionalVectorType,
+    EpochInfo,
+)
 from gretel_synthetics.actgan.train_data import TrainData
 from gretel_synthetics.typing import DFLike
 from packaging import version
@@ -45,7 +49,7 @@ logger.setLevel(logging.INFO)
 #       on, in particular one-hot or binary encoded columns are stored as
 #       integer indices, instead of multiple columns, also known as decoded
 # - encoded - representation passed directly to DNNs and should be in proper
-#             float32 dtype
+#       float32 dtype
 #
 # During training we apply the transformations from original -> transformed ->
 # encoded. And for generation the process reverses, going from encoded
@@ -174,27 +178,26 @@ class ACTGANSynthesizer(BaseSynthesizer):
 
     Args:
         embedding_dim:
-            Size of the random sample passed to the Generator. Defaults to 128.
+            Size of the random sample passed to the Generator.
         generator_dim:
             Size of the output samples for each one of the Residuals. A Residual Layer
-            will be created for each one of the values provided. Defaults to (256, 256).
+            will be created for each one of the values provided.
         discriminator_dim:
             Size of the output samples for each one of the Discriminator Layers. A Linear Layer
-            will be created for each one of the values provided. Defaults to (256, 256).
+            will be created for each one of the values provided.
         generator_lr:
-            Learning rate for the generator. Defaults to 2e-4.
+            Learning rate for the generator.
         generator_decay:
-            Generator weight decay for the Adam Optimizer. Defaults to 1e-6.
+            Generator weight decay for the Adam Optimizer.
         discriminator_lr:
-            Learning rate for the discriminator. Defaults to 2e-4.
+            Learning rate for the discriminator.
         discriminator_decay:
-            Discriminator weight decay for the Adam Optimizer. Defaults to 1e-6.
+            Discriminator weight decay for the Adam Optimizer.
         batch_size:
             Number of data samples to process in each step.
         discriminator_steps:
             Number of discriminator updates to do for each generator update.
-            From the WGAN paper: https://arxiv.org/abs/1701.07875. WGAN paper
-            default is 5. Default used is 1 to match original CTGAN implementation.
+            From the WGAN paper: https://arxiv.org/abs/1701.07875.
         binary_encoder_cutoff:
             For any given column, the number of unique values that should exist before
             switching over to binary encoding instead of OHE. This will help reduce
@@ -206,45 +209,72 @@ class ACTGANSynthesizer(BaseSynthesizer):
         cbn_sample_size:
             Number of rows to sample from each column for identifying clusters for the cluster-based normalizer.
             This only applies to float columns. If set to ``0``, no sampling is done and all values are considered,
-            which may be very slow. Defaults to 250_000.
+            which may be very slow.
         log_frequency:
             Whether to use log frequency of categorical levels in conditional
-            sampling. Defaults to ``True``.
+            sampling.
         verbose:
-            Whether to have log progress results. Defaults to ``False``.
+            Whether to have log progress results.
         epochs:
-            Number of training epochs. Defaults to 300.
+            Number of training epochs.
         epoch_callback:
             If set to a callable, call the function with `EpochInfo` as the arg
         pac:
             Number of samples to group together when applying the discriminator.
-            Defaults to 10.
         cuda:
             Whether to attempt to use cuda for GPU computation.
             If this is False or CUDA is not available, CPU will be used.
-            Defaults to ``True``.
+        conditional_vector_type:
+            Type of conditional vector to include in input to the generator.
+            Influences how effective and flexible the native conditional
+            generation is. Options include SINGLE_DISCRETE (original CTGAN
+            setup) and ANYWAY.
+        conditional_select_mean_columns:
+            Target number of columns to select for conditioning on average
+            during training. Only used for ANYWAY conditioning. Use if typical
+            number of columns to seed on is known. If set,
+            conditional_select_column_prob must be None. Equivalent to setting
+            conditional_select_column_prob to conditional_select_mean_columns /
+            # of columns.
+        conditional_select_column_prob:
+            Probability to select any given column to be conditioned on during
+            training. Only used for ANYWAY conditioning. If set,
+            conditional_select_mean_columns must be None.
+        reconstruction_loss_coef:
+            Multiplier on reconstruction loss, higher values focus the generator
+            optimization more on accurate conditional vector generation.
+        force_conditioning:
+            Directly set the requested conditional generation columns in
+            generated data. Will bypass rejection sampling and be faster, but
+            may reduce quality of the generated data and correlations between
+            conditioned columns and other variables may be weaker.
     """
 
     def __init__(
         self,
-        embedding_dim: int = 128,
-        generator_dim: Sequence[int] = (256, 256),
-        discriminator_dim: Sequence[int] = (256, 256),
-        generator_lr: float = 2e-4,
-        generator_decay: float = 1e-6,
-        discriminator_lr: float = 2e-4,
-        discriminator_decay: float = 1e-6,
-        batch_size: int = 500,
-        discriminator_steps: int = 1,
-        binary_encoder_cutoff: int = 500,
-        binary_encoder_nan_handler: Optional[str] = None,
-        cbn_sample_size: Optional[int] = 250_000,
-        log_frequency: bool = True,
-        verbose: bool = False,
-        epochs: int = 300,
-        epoch_callback: Optional[Callable] = None,
-        pac: int = 10,
-        cuda: bool = True,
+        embedding_dim: int,
+        generator_dim: Sequence[int],
+        discriminator_dim: Sequence[int],
+        generator_lr: float,
+        generator_decay: float,
+        discriminator_lr: float,
+        discriminator_decay: float,
+        batch_size: int,
+        discriminator_steps: int,
+        binary_encoder_cutoff: int,
+        binary_encoder_nan_handler: Optional[str],
+        cbn_sample_size: Optional[int],
+        log_frequency: bool,
+        verbose: bool,
+        epochs: int,
+        epoch_callback: Optional[Callable],
+        pac: int,
+        cuda: bool,
+        conditional_vector_type: ConditionalVectorType,
+        conditional_select_mean_columns: Optional[float],
+        conditional_select_column_prob: Optional[float],
+        reconstruction_loss_coef: float,
+        force_conditioning: bool,
     ):
         if batch_size % 2 != 0:
             raise ValueError("`batch_size` must be divisible by 2")
@@ -271,6 +301,42 @@ class ACTGANSynthesizer(BaseSynthesizer):
         self._epochs = epochs
         self._epoch_callback = epoch_callback
         self.pac = pac
+        self._conditional_vector_type = conditional_vector_type
+
+        if (
+            conditional_vector_type != ConditionalVectorType.SINGLE_DISCRETE
+            and conditional_select_column_prob is None
+            and conditional_select_mean_columns is None
+        ):
+            raise ValueError(
+                "conditional_select_column_prob and conditional_select_mean_columns are both None, exactly one of them must be set for ANYWAY training"
+            )
+        if (
+            conditional_vector_type != ConditionalVectorType.SINGLE_DISCRETE
+            and conditional_select_column_prob is not None
+            and conditional_select_mean_columns is not None
+        ):
+            raise ValueError(
+                "conditional_select_column_prob and conditional_select_mean_columns are both set, exactly one of them must be set for ANYWAY training"
+            )
+
+        if conditional_select_column_prob is not None and (
+            conditional_select_column_prob < 0.0 or conditional_select_column_prob > 1.0
+        ):
+            raise ValueError(
+                "conditional_select_column_prob must be between 0.0 and 1.0"
+            )
+
+        if (
+            conditional_select_mean_columns is not None
+            and conditional_select_mean_columns < 0
+        ):
+            raise ValueError("conditional_select_mean_columns must be an integer >=0")
+
+        self._conditional_select_mean_columns = conditional_select_mean_columns
+        self._conditional_select_column_prob = conditional_select_column_prob
+        self._reconstruction_loss_coef = reconstruction_loss_coef
+        self._force_conditioning = force_conditioning
 
         if not cuda or not torch.cuda.is_available():
             device = "cpu"
@@ -308,7 +374,11 @@ class ACTGANSynthesizer(BaseSynthesizer):
         """
         # NOTE: speedup may be possible if we can reuse the mean and std tensors
         # here across calls to _make_noise.
-        mean = torch.zeros((self._batch_size, self._embedding_dim), device=self._device)
+        mean = torch.zeros(
+            (self._batch_size, self._embedding_dim),
+            dtype=torch.float32,
+            device=self._device,
+        )
         std = mean + 1.0
         return torch.normal(mean, std)
 
@@ -383,6 +453,66 @@ class ACTGANSynthesizer(BaseSynthesizer):
 
         return (loss * m).sum() / data.size()[0]
 
+    def _column_loss(
+        self,
+        data: torch.Tensor,
+        data_act: torch.Tensor,
+        cond_vec: torch.Tensor,
+        activation_fn,
+    ) -> torch.Tensor:
+        # TODO: probably better to use an enum indicator for the column type,
+        # instead of assuming these function inequalities work and also map to
+        # the expected column types.
+        if activation_fn == torch.tanh:
+            # Assumes tanh is only used for 1 column at a time, ie data.shape[1]==1
+            return functional.mse_loss(data_act, cond_vec, reduction="none").flatten()
+        elif activation_fn == torch.sigmoid:
+            return functional.binary_cross_entropy_with_logits(
+                data,
+                cond_vec,
+                reduction="none",
+            )
+        else:
+            return functional.cross_entropy(
+                data, torch.argmax(cond_vec, dim=1), reduction="none"
+            )
+
+    def _anyway_cond_loss(
+        self,
+        data: torch.Tensor,
+        data_act: torch.Tensor,
+        cond_vec: torch.Tensor,
+        column_mask: torch.Tensor,
+    ) -> torch.Tensor:
+        """Compute reconstruction loss of data compared to the conditional vector.
+
+        The generator output before and after applying activations are used here
+        since loss functions for different column types use the value before or
+        after applying the activation functions. We pass both to avoid
+        recomputing any tensors.
+
+        Args:
+            data: direct output of generator, before activations are applied,
+                shape [batch_size, encoded_dim]
+            data_act: output of generator after activations are applied,
+                shape [batch_size, encoded_dim]
+            cond_vec: conditional vector that generator output should match,
+                shape is [batch_size, encoded_dim]
+            column_mask: 0/1 mask of columns selected for conditioning, shape is
+                [batch_size, encoded_dim]
+
+        Returns:
+            Reconstruction loss
+        """
+        loss = [
+            self._column_loss(
+                data[:, st:ed], data_act[:, st:ed], cond_vec[:, st:ed], activation_fn
+            )
+            for st, ed, activation_fn in self._activation_fns
+        ]
+        loss = torch.stack(loss, dim=1)
+        return (loss * column_mask).sum() / data.size()[0]
+
     def _validate_discrete_columns(
         self, train_data: DFLike, discrete_columns: Sequence[str]
     ) -> None:
@@ -431,31 +561,65 @@ class ACTGANSynthesizer(BaseSynthesizer):
                 vector
               - torch.Tensor, encoded real sample
         """
-        fake_cond_vec, fake_column_mask, col, opt = data_sampler.sample_condvec(
-            self._batch_size
-        )
 
-        if fake_cond_vec is None:
-            real_encoded = data_sampler.sample_data(self._batch_size, None, None)
-            real_cond_vec = None
+        if self._conditional_vector_type == ConditionalVectorType.SINGLE_DISCRETE:
+            # CTGAN style conditional vector selecting exactly 1 discrete
+            # variable
+            fake_cond_vec, fake_column_mask, col, opt = data_sampler.sample_condvec(
+                self._batch_size
+            )
+
+            if fake_cond_vec is None:
+                real_encoded = data_sampler.sample_data(self._batch_size, None, None)
+                real_cond_vec = None
+            else:
+                fake_cond_vec = torch.from_numpy(fake_cond_vec).to(self._device)
+                fake_column_mask = torch.from_numpy(fake_column_mask).to(self._device)
+
+                perm = np.random.permutation(self._batch_size)
+                real_encoded = data_sampler.sample_data(
+                    self._batch_size, col[perm], opt[perm]
+                )
+                real_cond_vec = fake_cond_vec[perm]
+
+            real_encoded = torch.from_numpy(real_encoded.astype("float32")).to(
+                self._device
+            )
+
+            return (
+                fake_cond_vec,
+                real_cond_vec,
+                fake_column_mask,
+                real_encoded,
+            )
         else:
-            fake_cond_vec = torch.from_numpy(fake_cond_vec).to(self._device)
-            fake_column_mask = torch.from_numpy(fake_column_mask).to(self._device)
+            (
+                fake_cond_vec,
+                real_encoded,
+                fake_column_mask,
+            ) = data_sampler.sample_anyway_cond_vec(self._batch_size)
 
             perm = np.random.permutation(self._batch_size)
-            real_encoded = data_sampler.sample_data(
-                self._batch_size, col[perm], opt[perm]
-            )
             real_cond_vec = fake_cond_vec[perm]
+            real_encoded = real_encoded[perm]
 
-        real_encoded = torch.from_numpy(real_encoded.astype("float32")).to(self._device)
+            # Convert everything to tensors. Could be performance benefits by
+            # using torch in the sample_anyway_cond_vec function, moving more
+            # computation into the tensor graph and the GPU.
+            fake_cond_vec = torch.from_numpy(fake_cond_vec.astype("float32")).to(
+                self._device
+            )
+            real_cond_vec = torch.from_numpy(real_cond_vec.astype("float32")).to(
+                self._device
+            )
+            fake_column_mask = torch.from_numpy(fake_column_mask.astype("float32")).to(
+                self._device
+            )
+            real_encoded = torch.from_numpy(real_encoded.astype("float32")).to(
+                self._device
+            )
 
-        return (
-            fake_cond_vec,
-            real_cond_vec,
-            fake_column_mask,
-            real_encoded,
-        )
+            return fake_cond_vec, real_cond_vec, fake_column_mask, real_encoded
 
     @random_state
     def fit(
@@ -519,12 +683,34 @@ class ACTGANSynthesizer(BaseSynthesizer):
         """
 
         epochs = self._epochs
+        column_prob = None
+        if self._conditional_vector_type != ConditionalVectorType.SINGLE_DISCRETE:
+            if self._conditional_select_mean_columns is None:
+                column_prob = self._conditional_select_column_prob
+            else:
+                # Clip to ensure probability is between 0.0 and 1.0.
+                column_prob = min(
+                    1.0,
+                    self._conditional_select_mean_columns
+                    / len(train_data.columns_and_data),
+                )
+            if column_prob > 0.5:
+                logger.warn(
+                    "Column selection probability for ANYWAY training is "
+                    f"{column_prob} > 0.5, recommended to keep below 0.5 to "
+                    "ensure the model can utilize the GAN noise. Use smaller "
+                    "conditional_select_mean_columns or "
+                    "conditional_select_column_prob < 0.5."
+                )
 
         data_sampler = DataSampler(
             train_data,
             self._log_frequency,
+            self._conditional_vector_type,
+            column_prob,
         )
         self._condvec_sampler = data_sampler.condvec_sampler
+        self._cond_vec_dim = data_sampler.cond_vec_dim
 
         data_dim = train_data.encoded_dim
 
@@ -602,14 +788,25 @@ class ACTGANSynthesizer(BaseSynthesizer):
                     fakeact, fake_cond_vec, discriminator
                 )
 
-                if fake_cond_vec is None:
-                    loss_reconstruction = 0.0
+                if (
+                    self._conditional_vector_type
+                    == ConditionalVectorType.SINGLE_DISCRETE
+                ):
+                    if fake_cond_vec is None:
+                        loss_reconstruction = 0.0
+                    else:
+                        loss_reconstruction = self._cond_loss(
+                            fake, fake_cond_vec, fake_column_mask
+                        )
                 else:
-                    loss_reconstruction = self._cond_loss(
-                        fake, fake_cond_vec, fake_column_mask
+                    loss_reconstruction = self._anyway_cond_loss(
+                        fake, fakeact, fake_cond_vec, fake_column_mask
                     )
 
-                loss_g = -torch.mean(y_fake) + loss_reconstruction
+                loss_g = (
+                    -torch.mean(y_fake)
+                    + self._reconstruction_loss_coef * loss_reconstruction
+                )
 
                 optimizerG.zero_grad()
                 loss_g.backward()
@@ -618,69 +815,95 @@ class ACTGANSynthesizer(BaseSynthesizer):
             _epoch = i + 1
             _loss_g = round(float(loss_g.detach().cpu()), 4)
             _loss_d = round(float(loss_d.detach().cpu()), 4)
+            _loss_r = float(loss_reconstruction.detach().cpu())
 
             if self._verbose:
                 logger.info(
                     f"Epoch: {_epoch}, Loss G: {_loss_g: .4f}, "  # noqa: T001
-                    f"Loss D: {_loss_d: .4f}",
+                    f"Loss D: {_loss_d: .4f}, "
+                    f"Loss R: {_loss_r: .4f}"
                 )
 
             if self._epoch_callback is not None:
-                self._epoch_callback(EpochInfo(_epoch, _loss_g, _loss_d))
+                self._epoch_callback(EpochInfo(_epoch, _loss_g, _loss_d, _loss_r))
 
     @random_state
     def sample(
         self,
         n: int,
-        condition_column: Optional[str] = None,
-        condition_value: Optional[str] = None,
+        conditions: Optional[dict] = None,
     ) -> pd.DataFrame:
         """Sample data similar to the training data.
 
-        Choosing a condition_column and condition_value will increase the probability of the
-        discrete condition_value happening in the condition_column.
+        Providing conditions will increase the probability of producing the
+        specified values in the key columns.
 
         Args:
             n: Number of rows to sample.
-            condition_column: Name of a discrete column.
-            condition_value: Name of the category in the condition_column which we wish to increase the
-                probability of happening.
+            conditions: If specified, dictionary mapping column names to column
+                value to condition on. The returned DataFrame of ndarray is not
+                guaranteed to have exactly the conditional values, but should
+                produce them with higher probability than unconditional
+                generation. NOTE: if you want to call this function directly,
+                the column names are different, specifically, numeric columns
+                must have '.value' appended to the name.
 
         Returns:
-            numpy.ndarray or pandas.DataFrame
+            numpy.ndarray or pandas.DataFrame in original representation
         """
-        if condition_column is not None and condition_value is not None:
-            condition_info = self._transformer.convert_column_name_value_to_id(
-                condition_column, condition_value
-            )
-            global_condition_vec = (
-                self._condvec_sampler.generate_cond_from_condition_column_info(
-                    condition_info, self._batch_size
-                )
-            )
+
+        # TODO: The ANYWAY setup can condition on different values (or even
+        # different columns) in a single batch, so eventually we may want to
+        # bypass the groupby that leads to a single setting of conditions to be
+        # used in this sample() function. Especially if force_conditioning=True
+        # provides good quality, we could make conditional generation
+        # substantially more efficient by converting the seed DataFrame directly
+        # to batches of conditional vectors and do a single pass. No rejection
+        # sampling, no groupby on (likely highly unique) numeric columns, etc.
+
+        if conditions is not None:
+            if self._conditional_vector_type == ConditionalVectorType.SINGLE_DISCRETE:
+                # We could setup the discrete conditional vector if there's exactly
+                # 1 seed column. But for now we keep previous behavior (due to
+                # raising an error in actgan_wrapper.py) of no conditional
+                # generation for SINGLE_DISCRETE, we rely entirely on rejection
+                # sampling in the SDV code.
+                fixed_cond_vec_torch = None
+            else:
+                cond_vec = self._transformer.convert_conditions(conditions)
+                # Expand conditional vector to a full batch
+                fixed_cond_vec_torch = torch.from_numpy(
+                    np.repeat(cond_vec, repeats=self._batch_size, axis=0)
+                ).to(self._device)
         else:
-            global_condition_vec = None
+            if self._conditional_vector_type == ConditionalVectorType.SINGLE_DISCRETE:
+                fixed_cond_vec_torch = None
+            else:
+                # For ANYWAY* conditional vectors, the unconditioned case always
+                # uses the same cond vec of 0s.
+                fixed_cond_vec_torch = torch.zeros(
+                    (self._batch_size, self._cond_vec_dim),
+                    dtype=torch.float32,
+                    device=self._device,
+                )
 
         # Switch generator to eval mode for inference
         self._generator.eval()
         steps = (n - 1) // self._batch_size + 1
         data = []
         for _ in range(steps):
-            if global_condition_vec is not None:
-                condvec_numpy = global_condition_vec.copy()
+            if fixed_cond_vec_torch is None:
+                # In SINGLE_DISCRETE mode, so we generate a different cond vec
+                # for every batch to match expected discrete distributions.
+                cond_vec = torch.from_numpy(
+                    self._condvec_sampler.sample_original_condvec(self._batch_size)
+                ).to(self._device)
             else:
-                condvec_numpy = self._condvec_sampler.sample_original_condvec(
-                    self._batch_size
-                )
+                cond_vec = fixed_cond_vec_torch
 
             fakez = self._make_noise()
 
-            if condvec_numpy is not None:
-                condvec = torch.from_numpy(condvec_numpy).to(self._device)
-            else:
-                condvec = None
-
-            fake, fakeact = self._apply_generator(fakez, condvec)
+            _, fakeact = self._apply_generator(fakez, cond_vec)
 
             data.append(fakeact.detach().cpu().numpy())
 
@@ -690,6 +913,12 @@ class ACTGANSynthesizer(BaseSynthesizer):
         data = data[:n]
 
         original_repr_data = self._transformer.inverse_transform(data)
+        if self._force_conditioning and conditions is not None:
+            # Bypass rejection sampling by directly setting the condition
+            # columns to the requested values.
+            for column_name, value in conditions.items():
+                original_repr_data[column_name] = value
+
         return original_repr_data
 
     def set_device(self, device: str) -> None:
