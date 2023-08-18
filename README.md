@@ -125,13 +125,13 @@ The simple mode will train line-per-line on an input file of text. When generati
 
 ### DataFrame Mode
 
-This library supports CSV / DataFrames natively using the DataFrame "batch" mode. This module provided a wrapper around our simple mode that is geared for working with tabular data. Additionally, it is capabable of handling a high number of columns by breaking the input DataFrame up into "batches" of columns and training a model on each batch. [This notebook](https://github.com/gretelai/gretel-synthetics/blob/master/examples/dataframe_batch.ipynb) shows an overview of using this library with DataFrames natively.
+This library supports CSV / DataFrames natively using the DataFrame "batch" mode. This module provided a wrapper around our simple mode that is geared for working with tabular data. Additionally, it is capable of handling a high number of columns by breaking the input DataFrame up into "batches" of columns and training a model on each batch. [This notebook](https://github.com/gretelai/gretel-synthetics/blob/master/examples/dataframe_batch.ipynb) shows an overview of using this library with DataFrames natively.
 
 ### Components
 
 There are four primary components to be aware of when using this library.
 
-1. Configurations. Configurations are classes that are specific to an underlying ML engine used to train and generate data. An example would be using `TensorFlowConfig` to create all the necessary parameters to train a model based on TF. `LocalConfig` is aliased to `TensorFlowConfig` for backwards compatability with older versions of the library. A model is saved to a designated directory, which can optionally be archived and utilized later.
+1. Configurations. Configurations are classes that are specific to an underlying ML engine used to train and generate data. An example would be using `TensorFlowConfig` to create all the necessary parameters to train a model based on TF. `LocalConfig` is aliased to `TensorFlowConfig` for backwards compatibility with older versions of the library. A model is saved to a designated directory, which can optionally be archived and utilized later.
 
 2. Tokenizers. Tokenizers convert input text into integer based IDs that are used by the underlying ML engine. These tokenizers can be created and sent to the training input. This is optional, and if no specific tokenizer is specified then a default one will be used. You can find [an example](https://github.com/gretelai/gretel-synthetics/blob/master/examples/tensorflow/batch-df-char-tokenizer.ipynb) here that uses a simple char-by-char tokenizer to build a model from an input CSV. When training in a non-differentially private mode, we suggest using the default `SentencePiece` tokenizer, an unsupervised tokenizer that learns subword units (e.g., **byte-pair-encoding (BPE)** [[Sennrich et al.](http://www.aclweb.org/anthology/P16-1162)]) and **unigram language model** [[Kudo.](https://arxiv.org/abs/1804.10959)]) for faster training and increased accuracy of the synthetic model.
 
