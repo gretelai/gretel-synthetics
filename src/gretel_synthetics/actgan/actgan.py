@@ -793,7 +793,9 @@ class ACTGANSynthesizer(BaseSynthesizer):
                     == ConditionalVectorType.SINGLE_DISCRETE
                 ):
                     if fake_cond_vec is None:
-                        loss_reconstruction = 0.0
+                        loss_reconstruction = torch.tensor(
+                            0.0, dtype=torch.float32, device=self._device
+                        )
                     else:
                         loss_reconstruction = self._cond_loss(
                             fake, fake_cond_vec, fake_column_mask
@@ -895,9 +897,13 @@ class ACTGANSynthesizer(BaseSynthesizer):
             if fixed_cond_vec_torch is None:
                 # In SINGLE_DISCRETE mode, so we generate a different cond vec
                 # for every batch to match expected discrete distributions.
-                cond_vec = torch.from_numpy(
-                    self._condvec_sampler.sample_original_condvec(self._batch_size)
-                ).to(self._device)
+                cond_vec_numpy = self._condvec_sampler.sample_original_condvec(
+                    self._batch_size
+                )
+                if cond_vec_numpy is not None:
+                    cond_vec = torch.from_numpy(cond_vec_numpy).to(self._device)
+                else:
+                    cond_vec = None
             else:
                 cond_vec = fixed_cond_vec_torch
 

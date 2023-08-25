@@ -90,9 +90,93 @@ def test_actgan_implementation(
         conditional_select_mean_columns=conditional_select_mean_columns,
     )
 
+    # Check training
     model.fit(df)
 
+    # Check unconditional generation
     df_synth = model.sample(num_rows=100)
 
     assert df_synth.shape == (100, len(df.columns))
     assert list(df.columns) == list(df_synth.columns)
+
+    if conditional_vector_type != ConditionalVectorType.SINGLE_DISCRETE:
+        # Check conditional generation from numeric column
+        df_synth = model.sample_remaining_columns(
+            pd.DataFrame(
+                {
+                    "int_column": [10] * 10,
+                }
+            )
+        )
+        assert list(df.columns) == list(df_synth.columns)
+
+    # Check conditional generation from discrete column
+    df_synth = model.sample_remaining_columns(
+        pd.DataFrame(
+            {
+                "categorical_column": ["b"] * 10,
+            }
+        )
+    )
+    assert list(df.columns) == list(df_synth.columns)
+
+
+@pytest.mark.parametrize(
+    "log_frequency,conditional_vector_type,force_conditioning",
+    itertools.product(
+        [False, True],
+        [
+            ConditionalVectorType.SINGLE_DISCRETE,
+            ConditionalVectorType.ANYWAY,
+        ],
+        [False, True],
+    ),
+)
+def test_actgan_implementation_all_numeric(
+    log_frequency, conditional_vector_type, force_conditioning
+):
+    # Test basic actgan setup with various parameters and to confirm training
+    # and synthesize does not crash, i.e., all the tensor shapes match. Use a
+    # small model and small dataset to keep tests quick.
+    n = 100
+    df = pd.DataFrame(
+        {
+            "int_column": np.random.randint(0, 200, size=n),
+            "float_column": np.random.random(size=n),
+        }
+    )
+
+    conditional_select_mean_columns = None
+    if conditional_vector_type != ConditionalVectorType.SINGLE_DISCRETE:
+        conditional_select_mean_columns = 2
+
+    model = ACTGAN(
+        epochs=1,
+        batch_size=20,
+        generator_dim=[32, 32],
+        discriminator_dim=[32, 32],
+        log_frequency=log_frequency,
+        conditional_vector_type=conditional_vector_type,
+        force_conditioning=force_conditioning,
+        conditional_select_mean_columns=conditional_select_mean_columns,
+    )
+
+    # Check training
+    model.fit(df)
+
+    # Check unconditional generation
+    df_synth = model.sample(num_rows=100)
+
+    assert df_synth.shape == (100, len(df.columns))
+    assert list(df.columns) == list(df_synth.columns)
+
+    if conditional_vector_type != ConditionalVectorType.SINGLE_DISCRETE:
+        # Check conditional generation from numeric column
+        df_synth = model.sample_remaining_columns(
+            pd.DataFrame(
+                {
+                    "int_column": [10] * 10,
+                }
+            )
+        )
+        assert list(df.columns) == list(df_synth.columns)
