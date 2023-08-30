@@ -70,7 +70,7 @@ class _ACTGANModel(BaseTabularModel):
         if self._auto_transform_datetimes:
             if self._verbose:
                 logger.info("Attempting datetime auto-detection...")
-            detector.fit_datetime(data, with_suffix=True)
+            detector.fit_datetime(data, with_suffix=True, must_match_all=True)
 
         detector.fit_empty_columns(data)
         if self._verbose:

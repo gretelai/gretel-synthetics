@@ -164,9 +164,13 @@ class SDVTableMetadata:
         data: pd.DataFrame,
         sample_size: Optional[int] = None,
         with_suffix: bool = False,
+        must_match_all: bool = False,
     ) -> None:
         detections = detect_datetimes(
-            data, sample_size=sample_size, with_suffix=with_suffix
+            data,
+            sample_size=sample_size,
+            with_suffix=with_suffix,
+            must_match_all=must_match_all,
         )
         for _, column_info in detections.columns.items():
             type_, transformer = datetime_column_to_sdv(column_info)

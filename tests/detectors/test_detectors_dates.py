@@ -2,6 +2,7 @@ import uuid
 
 from datetime import datetime, timedelta, timezone
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -67,31 +68,44 @@ def test_date_str_tokenizer(input_str, expected_mask):
     assert _tokenize_date_str(input_str).masked_str == expected_mask
 
 
-def test_infer_from_series():
-    dates = ["12/20/2020", "10/17/2020", "08/10/2020", "01/22/2020", "09/01/2020"]
-    assert _infer_from_series(dates, False) == "%m/%d/%Y"
+@pytest.mark.parametrize("must_match_all", [False, True])
+def test_infer_from_series(must_match_all):
+    dates = pd.Series(
+        ["12/20/2020", "10/17/2020", "08/10/2020", "01/22/2020", "09/01/2020"]
+    )
+    assert _infer_from_series(dates, False, must_match_all=must_match_all) == "%m/%d/%Y"
 
 
-def test_infer_from_bad_date():
-    dates = ["#NAME?", "1000#", "Jim", "3", "$moola"]
-    assert _infer_from_series(dates, False) is None
+@pytest.mark.parametrize("must_match_all", [False, True])
+def test_infer_from_bad_date(must_match_all):
+    dates = pd.Series(["#NAME?", "1000#", "Jim", "3", "$moola"])
+    assert _infer_from_series(dates, False, must_match_all=must_match_all) is None
 
 
 def test_infer_from_some_bad_date():
-    dates = ["#NAME?", "1000#", "Jim", "3", "10/17/2020"]
-    assert _infer_from_series(dates, False) == "%m/%d/%Y"
+    dates = pd.Series(["#NAME?", "1000#", "Jim", "3", "10/17/2020"])
+    assert _infer_from_series(dates, False, must_match_all=False) == "%m/%d/%Y"
 
 
-def test_infer_from_12_hour():
-    dates = ["8:15 AM", "9:20 PM", "1:55 PM"]
-    assert _infer_from_series(dates, False) == "%I:%M %p"
+def test_infer_from_some_bad_date_with_match_all():
+    dates = pd.Series(["#NAME?", "1000#", "Jim", "3", "10/17/2020"])
+    assert _infer_from_series(dates, False, must_match_all=True) is None
+
+
+@pytest.mark.parametrize("must_match_all", [False, True])
+def test_infer_from_12_hour(must_match_all):
+    dates = pd.Series(["8:15 AM", "9:20 PM", "1:55 PM"])
+    assert _infer_from_series(dates, False, must_match_all=must_match_all) == "%I:%M %p"
 
 
 @pytest.mark.parametrize("with_suffix", [True, False])
-def test_detect_datetimes(with_suffix, test_df):
+@pytest.mark.parametrize("must_match_all", [False, True])
+def test_detect_datetimes(with_suffix, must_match_all, test_df):
     # Based on the values in the DF, we assert the `with_suffix` flag
     # should not change any of the results
-    check = detect_datetimes(test_df, with_suffix=with_suffix)
+    check = detect_datetimes(
+        test_df, with_suffix=with_suffix, must_match_all=must_match_all
+    )
     assert set(check.column_names) == {"dates", "iso"}
     assert check.get_column_info("random") is None
 
@@ -104,27 +118,67 @@ def test_detect_datetimes(with_suffix, test_df):
     assert iso.inferred_format == "%Y-%m-%dT%X.%f"
 
 
-def test_infer_with_suffix():
-    dates = [
-        "2020-12-20T00:00:00Z",
-        "2020-10-17T00:00:00Z",
-        "2020-08-10T00:00:00Z",
-        "2020-01-22T00:00:00Z",
-        "2020-09-01T00:00:00Z",
-    ]
-    assert _infer_from_series(dates, True) == "%Y-%m-%dT%XZ"
+@pytest.mark.parametrize("with_suffix", [True, False])
+@pytest.mark.parametrize("must_match_all", [False, True])
+def test_detect_datetimes_with_nans(with_suffix, must_match_all, test_df):
+    # Create a copy to prevent modification to the session-scoped fixture
+    # object.
+    test_df = test_df.copy()
+    # Blank out first row
+    test_df.iloc[0, :] = np.nan
 
-    dates_2 = [d.replace("Z", "+00:00") for d in dates.copy()]
-    assert _infer_from_series(dates_2, True) == "%Y-%m-%dT%X+00:00"
+    # Based on the values in the DF, we assert the `with_suffix` flag
+    # should not change any of the results
+    check = detect_datetimes(
+        test_df, with_suffix=with_suffix, must_match_all=must_match_all
+    )
+    assert set(check.column_names) == {"dates", "iso"}
+    assert check.get_column_info("random") is None
 
-    dates_3 = [d.replace("Z", "-00:00") for d in dates.copy()]
-    assert _infer_from_series(dates_3, True) == "%Y-%m-%dT%X-00:00"
+    dates = check.get_column_info("dates")
+    assert dates.name == "dates"
+    assert dates.inferred_format == "%m/%d/%Y"
+
+    iso = check.get_column_info("iso")
+    assert iso.name == "iso"
+    assert iso.inferred_format == "%Y-%m-%dT%X.%f"
 
 
-def test_detect_datetimes_with_suffix(test_df):
+@pytest.mark.parametrize("must_match_all", [False, True])
+def test_infer_with_suffix(must_match_all):
+    dates = pd.Series(
+        [
+            "2020-12-20T00:00:00Z",
+            "2020-10-17T00:00:00Z",
+            "2020-08-10T00:00:00Z",
+            "2020-01-22T00:00:00Z",
+            "2020-09-01T00:00:00Z",
+        ]
+    )
+    assert (
+        _infer_from_series(dates, True, must_match_all=must_match_all) == "%Y-%m-%dT%XZ"
+    )
+
+    dates_2 = pd.Series([d.replace("Z", "+00:00") for d in dates])
+    assert (
+        _infer_from_series(dates_2, True, must_match_all=must_match_all)
+        == "%Y-%m-%dT%X+00:00"
+    )
+
+    dates_3 = pd.Series([d.replace("Z", "-00:00") for d in dates])
+    assert (
+        _infer_from_series(dates_3, True, must_match_all=must_match_all)
+        == "%Y-%m-%dT%X-00:00"
+    )
+
+
+@pytest.mark.parametrize("must_match_all", [False, True])
+def test_detect_datetimes_with_suffix(must_match_all, test_df):
+    # Prevent modification of the session-scoped fixture object
+    test_df = test_df.copy()
     # Add a TZ suffix of "Z" to the iso strings
     test_df["iso"] = test_df["iso"].astype("string").apply(lambda val: val + "Z")
-    check = detect_datetimes(test_df, with_suffix=True)
+    check = detect_datetimes(test_df, with_suffix=True, must_match_all=must_match_all)
     assert set(check.column_names) == {"dates", "iso"}
 
     iso = check.get_column_info("iso")
@@ -134,7 +188,8 @@ def test_detect_datetimes_with_suffix(test_df):
     assert iso.inferred_format == "%Y-%m-%dT%X.%fZ"
 
 
-def test_detect_datetimes_custom_formats():
+@pytest.mark.parametrize("must_match_all", [False, True])
+def test_detect_datetimes_custom_formats(must_match_all):
     df = pd.DataFrame(
         {
             "str": ["a", "b", "c"],
@@ -151,7 +206,7 @@ def test_detect_datetimes_custom_formats():
         }
     )
 
-    check = detect_datetimes(df)
+    check = detect_datetimes(df, must_match_all=must_match_all)
 
     assert set(check.column_names) == {
         "dateandtime",

@@ -309,6 +309,23 @@ def _maybe_match(date, format) -> Tuple[Optional[datetime], Optional[str]]:
         return None, None
 
 
+def _check_series(series: pd.Series, format: str) -> bool:
+    # Remove non-standard formatting directives which are relevant for formatting
+    # only, not for parsing. The first one, `!`, is introduced by us (see
+    # ``_strptime_extra``), the second one, `%-`, is a directive not recognized
+    # by pandas and stripped by RDT as well (see
+    # https://github.com/sdv-dev/RDT/pull/458/files#r835690711 ).
+    pd_format = format.replace("!", "").replace("%-", "%")
+    try:
+        pd.to_datetime(series, format=pd_format)
+        return True
+    except:
+        # Conservatively ignore any error, and assume that the format
+        # didn't work.
+        # This is to prevent errors in the SDV code downstream.
+        return False
+
+
 def _parse_date_multiple(
     input_date: str,
     date_str_fmts: Union[List[str], Set[str]] = _date_str_fmt_permutations,
@@ -334,7 +351,46 @@ def _maybe_d_str_to_fmt_multiple(input_date: str, with_suffix: bool) -> Iterator
         pass
 
 
-def _infer_from_series(series: Iterable[str], with_suffix: bool) -> Optional[str]:
+def _infer_from_series_match_all(series: pd.Series, with_suffix: bool) -> Optional[str]:
+    if series.empty:
+        return None
+
+    # We store the candidate formats as a list instead of a set to ensure a deterministic
+    # result (the order of ``_maybe_d_str_to_fmt_multiple`` is deterministic as well).
+    # This matches the behavior of ``_infer_from_series``, which - due to the above
+    # property as well as ``Counter``s stable iteration based on insertion order -
+    # is deterministic as well.
+    candidate_fmts = list(_maybe_d_str_to_fmt_multiple(series[0], with_suffix))
+    i = 1
+    # Empirically, ``pd.to_datetime`` is about 8x faster than checking individual values.
+    # Conservatively, we fall back to calling ``pd.to_datetime`` on the entire remaining
+    # series when we have 4 or less candidate formats less.
+    # In most cases, the number of candidate formats will be lower than both 4 and 8
+    # after the first invocation anyway.
+    while len(candidate_fmts) > 4 and i < len(series):
+        value = series[i]
+        candidate_fmts = [
+            fmt for fmt in candidate_fmts if _maybe_match(value, fmt) != (None, None)
+        ]
+        i += 1
+
+    if i < len(series):
+        # If we haven't exhausted the whole series yet, do a ``pd.to_datetime``
+        # call for the remaining values to weed out incorrect formats.
+        remaining_series = series[i:]
+        candidate_fmts = [
+            fmt for fmt in candidate_fmts if _check_series(remaining_series, fmt)
+        ]
+
+    return candidate_fmts[0] if candidate_fmts else None
+
+
+def _infer_from_series(
+    series: pd.Series, with_suffix: bool, must_match_all: bool = False
+) -> Optional[str]:
+    if must_match_all:
+        return _infer_from_series_match_all(series, with_suffix)
+
     counter = Counter()
     for value in series:
         for fmt in _maybe_d_str_to_fmt_multiple(value, with_suffix):
@@ -347,7 +403,10 @@ def _infer_from_series(series: Iterable[str], with_suffix: bool) -> Optional[str
 
 
 def detect_datetimes(
-    df: pd.DataFrame, sample_size: Optional[int] = None, with_suffix: bool = False
+    df: pd.DataFrame,
+    sample_size: Optional[int] = None,
+    with_suffix: bool = False,
+    must_match_all: bool = False,
 ) -> DateTimeColumns:
     if sample_size is None:
         sample_size = SAMPLE_SIZE
@@ -356,9 +415,14 @@ def detect_datetimes(
         col for col, col_type in df.dtypes.iteritems() if col_type == "object"
     ]
     for object_col in object_cols:
-        curr_series: pd.Series = df[object_col].dropna(axis=0).reset_index(drop=True)
-        sampled_series_str = (curr_series.sample(sample_size, replace=True)).astype(str)
-        inferred_format = _infer_from_series(sampled_series_str, with_suffix)
+        test_series: pd.Series = df[object_col].dropna(axis=0).reset_index(drop=True)
+        # Only sample when we don't require the format to match all entries
+        if not must_match_all and len(test_series) > sample_size:
+            test_series = test_series.sample(sample_size)
+        test_series_str = test_series.astype(str)
+        inferred_format = _infer_from_series(
+            test_series_str, with_suffix, must_match_all
+        )
         if inferred_format is not None:
             inferred_format = inferred_format.replace("!", "")
             column_data.columns[object_col] = DateTimeColumn(
