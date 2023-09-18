@@ -28,9 +28,12 @@ def reqs(file, without=None):
         ]
 
 
-base_reqs = reqs("requirements.txt", without=["tensorflow==", "torch==", "sdv"])
-utils_reqs = reqs("utils-requirements.txt")
-test_reqs = reqs("test-requirements.txt")
+base_reqs = reqs("requirements/base.txt")
+utils_reqs = reqs("requirements/utils.txt")
+test_reqs = reqs("requirements/test.txt")
+torch_reqs = reqs("requirements/torch.txt")
+tf_reqs = reqs("requirements/tensorflow.txt")
+all_reqs = [base_reqs, utils_reqs, torch_reqs, tf_reqs]
 
 setup(
     name="gretel-synthetics",
@@ -47,7 +50,13 @@ setup(
     packages=find_packages("src"),
     python_requires=">=3.9",
     install_requires=base_reqs,
-    extras_require={"all": utils_reqs, "utils": utils_reqs, "test": test_reqs},
+    extras_require={
+        "all": all_reqs,
+        "utils": utils_reqs,
+        "test": test_reqs,
+        "torch": torch_reqs,
+        "tensorflow": tf_reqs,
+    },
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: Free To Use But Restricted",

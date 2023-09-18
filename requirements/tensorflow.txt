@@ -1,0 +1,5 @@
+protobuf>=3.9.2,<3.20
+tensorflow==2.11.1
+tensorflow_estimator==2.11
+tensorflow_privacy==0.7.3
+tensorflow_probability==0.19.0
