@@ -467,11 +467,17 @@ class ACTGANSynthesizer(BaseSynthesizer):
             # Assumes tanh is only used for 1 column at a time, ie data.shape[1]==1
             return functional.mse_loss(data_act, cond_vec, reduction="none").flatten()
         elif activation_fn == torch.sigmoid:
-            return functional.binary_cross_entropy_with_logits(
+            bce = functional.binary_cross_entropy_with_logits(
                 data,
                 cond_vec,
                 reduction="none",
             )
+            # bce is computed for each representation column, so shape is
+            # [batch_size, # of bits needed to represent unique values]. All
+            # other losses in this function return a 1-d tensor of shape
+            # [batch_size], so we take the mean loss across the representions
+            # columns to convert from [batch_size, k] to [batch_size] shape.
+            return bce.mean(dim=1)
         else:
             return functional.cross_entropy(
                 data, torch.argmax(cond_vec, dim=1), reduction="none"

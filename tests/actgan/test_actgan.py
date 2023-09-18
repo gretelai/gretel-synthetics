@@ -47,7 +47,7 @@ def test_binary_encoder_cutoff(test_df):
 
 
 @pytest.mark.parametrize(
-    "log_frequency,conditional_vector_type,force_conditioning",
+    "log_frequency,conditional_vector_type,force_conditioning,binary_encoder_cutoff",
     itertools.product(
         [False, True],
         [
@@ -55,10 +55,14 @@ def test_binary_encoder_cutoff(test_df):
             ConditionalVectorType.ANYWAY,
         ],
         [False, True],
+        [1, 500],
     ),
 )
 def test_actgan_implementation(
-    log_frequency, conditional_vector_type, force_conditioning
+    log_frequency,
+    conditional_vector_type,
+    force_conditioning,
+    binary_encoder_cutoff,
 ):
     # Test basic actgan setup with various parameters and to confirm training
     # and synthesize does not crash, i.e., all the tensor shapes match. Use a
@@ -88,6 +92,7 @@ def test_actgan_implementation(
         conditional_vector_type=conditional_vector_type,
         force_conditioning=force_conditioning,
         conditional_select_mean_columns=conditional_select_mean_columns,
+        binary_encoder_cutoff=binary_encoder_cutoff,
     )
 
     # Check training
