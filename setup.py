@@ -28,6 +28,7 @@ def reqs(file, without=None):
         ]
 
 
+doc_reqs = reqs("requirements/docs.txt")
 base_reqs = reqs("requirements/base.txt")
 utils_reqs = reqs("requirements/utils.txt")
 test_reqs = reqs("requirements/test.txt")
@@ -51,11 +52,12 @@ setup(
     python_requires=">=3.9",
     install_requires=base_reqs,
     extras_require={
-        "all": all_reqs,
+        "all": [req for reqs in all_reqs for req in reqs],
         "utils": utils_reqs,
         "test": test_reqs,
         "torch": torch_reqs,
         "tensorflow": tf_reqs,
+        "docs": doc_reqs,
     },
     classifiers=[
         "Programming Language :: Python :: 3",
