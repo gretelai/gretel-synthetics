@@ -301,6 +301,10 @@ def calculate_correlation(
         A dataframe of correlation values.
 
     """
+    # PLAT-1131 Ensure that all nominal columns are present in df.
+    if nominal_columns is not None:
+        _df_cols = df.columns
+        nominal_columns = [col for col in nominal_columns if col in _df_cols]
     # If opt is True, then go the faster (just not quite as accurate) route of global replace missing with 0
     if opt:
         with pd.option_context("mode.use_inf_as_na", True):
