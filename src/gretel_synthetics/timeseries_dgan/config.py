@@ -129,6 +129,12 @@ class DGANConfig:
     discriminator_rounds: int = 1
     generator_rounds: int = 1
 
+    # Privacy (optional)
+    dp_enabled: bool = False
+    dp_eps: float = 1.0
+    dp_max_grad_norm: float = 1.0
+    dp_secure_mode: bool = False
+
     cuda: bool = True
     mixed_precision_training: bool = False
 

@@ -70,6 +70,8 @@ from gretel_synthetics.timeseries_dgan.transformations import (
 )
 from torch.utils.data import DataLoader, Dataset, TensorDataset
 
+from opacus import PrivacyEngine
+
 logger = logging.getLogger(__name__)
 
 logging.basicConfig(
@@ -757,6 +759,25 @@ class DGAN:
             betas=(self.config.discriminator_beta1, 0.999),
         )
 
+        if self.config.dp_enabled:
+            privacy_engine = PrivacyEngine(secure_mode=self.config.dp_secure_mode)
+            dp_target_delta = 1 / len(loader)
+            (
+                self.feature_discriminator,
+                opt_discriminator,
+                loader
+            ) = privacy_engine.make_private_with_epsilon(
+                module=self.feature_discriminator,
+                optimizer=opt_discriminator,
+                data_loader=loader,
+                epochs=self.config.epochs,
+                target_epsilon=self.config.dp_eps,
+                target_delta=dp_target_delta,
+                max_grad_norm=self.config.dp_max_grad_norm,
+                poisson_sampling=False,
+            )
+            self.feature_discriminator.disable_hooks()
+
         opt_attribute_discriminator = None
         if self.attribute_discriminator is not None:
             opt_attribute_discriminator = torch.optim.Adam(
@@ -808,19 +829,31 @@ class DGAN:
                     )
                     with torch.cuda.amp.autocast(enabled=True):
                         generated_output = self._discriminate(generated_batch)
+                        if self.config.dp_enabled:
+                            self.feature_discriminator.enable_hooks()
                         real_output = self._discriminate(real_batch)
-
+                        if self.config.dp_enabled:
+                            self.feature_discriminator.disable_hooks()
                         loss_generated = torch.mean(generated_output)
                         loss_real = -torch.mean(real_output)
                         loss_gradient_penalty = self._get_gradient_penalty(
                             generated_batch, real_batch, self._discriminate
                         )
 
-                        loss = (
-                            loss_generated
-                            + loss_real
-                            + self.config.gradient_penalty_coef * loss_gradient_penalty
-                        )
+                        if self.config.dp_enabled:
+                            self.feature_discriminator.enable_hooks()
+                            loss_real.backward(retain_graph=True)
+                            self.feature_discriminator.disable_hooks()
+                            loss = (
+                                loss_generated
+                                + self.config.gradient_penalty_coef * loss_gradient_penalty
+                            )
+                        else:
+                            loss = (
+                                loss_generated
+                                + loss_real
+                                + self.config.gradient_penalty_coef * loss_gradient_penalty
+                            )
 
                     scaler.scale(loss).backward(retain_graph=True)
                     scaler.step(opt_discriminator)
