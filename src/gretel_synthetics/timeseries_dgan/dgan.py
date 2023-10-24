@@ -39,7 +39,7 @@ Sample usage:
 
    model = DGAN(config)
 
-   model.train_numpy(attributes, features)
+   model.train_numpy(attributes=attributes, features=features)
 
    synthetic_attributes, synthetic_features = model.generate_numpy(1000)
 """
@@ -117,13 +117,15 @@ class DGAN:
     an DGANConfig instance.
 
     DoppelGANger uses a specific internal representation for data which is
-    hidden from the user in the public interface. Continuous variables should be
-    in the original space and discrete variables represented as [0.0, 1.0, 2.0,
-    ...] when using the train_numpy() and train_dataframe() functions. The
-    generate_numpy() and generate_dataframe() functions will return data in this
-    original space. In standard usage, the detailed transformation info in
-    attribute_outputs and feature_outputs are not needed, those will be created
-    automatically when a train* function is called with data.
+    hidden from the user in the public interface. Standard usage of DGAN
+    instances should pass continuous variables as floats in the original space
+    (not normalized), and discrete variables may be strings, integers, or
+    floats. This is the format expected by both train_numpy() and
+    train_dataframe() and the generate_numpy() and generate_dataframe()
+    functions will return data in this same format. In standard usage, the
+    detailed transformation info in attribute_outputs and feature_outputs are
+    not needed, those will be created automatically when a train* function is
+    called with data.
 
     If more control is needed and you want to use the normalized values and
     one-hot encoding directly, use the _train() and _generate() functions.
@@ -184,35 +186,34 @@ class DGAN:
         one for features (3d). This data should be in the original space and is
         not transformed. If the data is already transformed into the internal
         DGAN representation (continuous variable scaled to [0,1] or [-1,1] and
-        discrete variables one-hot encoded), use the internal _train() function
-        instead of train_numpy(), or specify apply_feature_scaling=False in the
-        DGANConfig.
+        discrete variables one-hot or binary encoded), use the internal _train()
+        function instead of train_numpy().
 
-        In standard usage, attribute_types and feature_types should be provided
-        on the first call to train() to correctly setup the model structure. If
-        not specified, the default is to assume continuous variables. If outputs
-        metadata was specified when the instance was initialized or train() was
-        previously called, then attribute_types and feature_types are not
-        needed.
+        In standard usage, attribute_types and feature_types may be provided on
+        the first call to train() to setup the model structure. If not
+        specified, the default is to assume continuous variables for floats and
+        integers, and discrete for strings. If outputs metadata was specified
+        when the instance was initialized or train() was previously called, then
+        attribute_types and feature_types are not needed.
 
         Args:
             features: 3-d numpy array of time series features for the training,
                 size is (# of training examples) X max_sequence_len X (# of
                 features)
-            feature_types (Optional): Specification of Discrete or Continuous type
-                for each variable of the features. Discrete attributes should be
-                0-indexed (not one-hot encoded). If None, assume all features
-                are continuous. Ignored if the model was already built, either
-                by passing *output params at initialization or because train_*
-                was called previously.
+            feature_types (Optional): Specification of Discrete or Continuous
+                type for each variable of the features. If None, assume
+                continuous variables for floats and integers, and discrete for
+                strings. Ignored if the model was already built, either by
+                passing *output params at initialization or because train_* was
+                called previously.
             attributes (Optional): 2-d numpy array of attributes for the training
                 examples, size is (# of training examples) X (# of attributes)
             attribute_types (Optional): Specification of Discrete or Continuous
-                type for each variable of the attributes. Discrete attributes
-                should be 0-indexed (not one-hot encoded). If None, assume all
-                attributes are continuous. Ignored if the model was already
-                built, either by passing *output params at initialization or
-                because train_* was called previously.
+                type for each variable of the attributes. If None, assume
+                continuous variables for floats and integers, and discrete for
+                strings. Ignored if the model was already built, either by
+                passing *output params at initialization or because train_* was
+                called previously.
         """
         if attributes is not None:
             if attributes.shape[0] != features.shape[0]:
@@ -381,8 +382,8 @@ class DGAN:
                 if None, data frame order of rows/time points is used. This
                 value must be unique from the other column list parameters.
             discrete_columns: column names (either attributes or features) to
-                use discrete, onehot encoding, discrete values must be integer
-                in [0,1,2,3...]
+                treat as discrete (use one-hot or binary encoding), any string
+                or object columns are automatically treated as discrete
             df_style: str enum of "wide" or "long" indicating format of the
                 DataFrame
         """
