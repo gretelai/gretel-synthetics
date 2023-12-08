@@ -1,4 +1,4 @@
-faker==15.3.3
+faker==20.1.0
 flake8==4.0.1
 pylint==2.14.3
 pytest-cov==2.11.1
