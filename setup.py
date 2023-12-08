@@ -39,7 +39,7 @@ all_reqs = [base_reqs, utils_reqs, torch_reqs, tf_reqs]
 setup(
     name="gretel-synthetics",
     author="Gretel Labs, Inc.",
-    author_email="open-source@gretel.ai",
+    author_email="support@gretel.ai",
     use_scm_version=True,
     setup_requires=["setuptools_scm"],
     description="Synthetic Data Generation with optional Differential Privacy",
