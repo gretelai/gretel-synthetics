@@ -64,6 +64,7 @@ html_static_path = ["_static"]
 html_css_files = ["styles.css"]
 
 html_theme_options = {
+    "canonical_url": "https://synthetics.docs.gretel.ai/",
     "logo_only": True,
     "display_version": True,
     "style_nav_header_background": "#0c0c0d",
