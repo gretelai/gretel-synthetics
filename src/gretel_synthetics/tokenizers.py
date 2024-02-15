@@ -50,6 +50,7 @@ import gretel_synthetics.const as const
 import numpy as np
 import sentencepiece as spm
 
+from gretel_synthetics.errors import ParameterError
 from smart_open import open as smart_open
 
 if TYPE_CHECKING:
@@ -404,6 +405,16 @@ class CharTokenizer(BaseTokenizer):
 #################
 
 
+class VocabSizeTooSmall(ParameterError):
+    """
+    Error that is raised when the `vocab_size` is too small for the given data.
+    This happens, when the `vocab_size` is set to a value that is smaller than the
+    number of required characters.
+    """
+
+    ...
+
+
 class SentencePieceTokenizerTrainer(BaseTokenizerTrainer):
     """Train a tokenizer using Google SentencePiece."""
 
@@ -476,17 +487,27 @@ class SentencePieceTokenizerTrainer(BaseTokenizerTrainer):
             self.config.field_delimiter_token,
         ] + extra_symbols
         logger.info("Training SentencePiece tokenizer")
-        spm.SentencePieceTrainer.Train(
-            input=self.config.training_data_path,
-            model_prefix=const.MODEL_PREFIX,
-            user_defined_symbols=user_defined_symbols,
-            vocab_size=self.vocab_size,
-            hard_vocab_limit=False,
-            max_sentence_length=self.max_line_line,
-            input_sentence_size=self.pretrain_sentence_count,
-            shuffle_input_sentence=True,
-            character_coverage=self.character_coverage,
-        )
+        try:
+            spm.SentencePieceTrainer.Train(
+                input=self.config.training_data_path,
+                model_prefix=const.MODEL_PREFIX,
+                user_defined_symbols=user_defined_symbols,
+                vocab_size=self.vocab_size,
+                hard_vocab_limit=False,
+                max_sentence_length=self.max_line_line,
+                input_sentence_size=self.pretrain_sentence_count,
+                shuffle_input_sentence=True,
+                character_coverage=self.character_coverage,
+            )
+        except RuntimeError as e:
+            if "Vocabulary size is smaller than required_chars" in str(e):
+                raise VocabSizeTooSmall(
+                    "The value for the `vocab_size` parameter is too small for the "
+                    "provided dataset. Please increase it or set it to `0` to use "
+                    "character-based tokenization."
+                ) from e
+
+            raise e
 
         # The training automatically saves to disk,
         # so we have to now load it back in after we move
@@ -535,7 +556,6 @@ def _add_column_markers(
 
 
 class SentencePieceColumnTokenizerTrainer(SentencePieceTokenizerTrainer):
-
     _col_pattern: str
     _col_symbols: Set[str]
 

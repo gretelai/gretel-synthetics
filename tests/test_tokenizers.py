@@ -5,6 +5,7 @@ import gretel_synthetics.tokenizers as tok
 import pytest
 
 from gretel_synthetics.config import BaseConfig
+from gretel_synthetics.tokenizers import VocabSizeTooSmall
 
 
 class SimpleConfig(BaseConfig):
@@ -377,3 +378,22 @@ def test_sp_field_delim(input_data_path, tmpdir):
 
     # Check the factory
     assert isinstance(tok.tokenizer_from_model_dir(tmpdir), tok.SentencePieceTokenizer)
+
+
+def test_vocab_size_too_small(input_data_path, tmpdir):
+    config = SimpleConfig(
+        input_data_path=input_data_path,
+        checkpoint_dir=tmpdir,
+        field_delimiter=",",
+    )
+    trainer = tok.SentencePieceTokenizerTrainer(config=config, vocab_size=5)
+    line_iter = trainer.annotate_data()
+
+    line_one = next(line_iter)
+    assert (
+        line_one
+        == "Once upon a midnight dreary<d> while I pondered<d> weak and weary<d><n>\n"
+    )
+
+    with pytest.raises(VocabSizeTooSmall):
+        trainer.train()
