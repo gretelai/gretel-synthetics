@@ -2,6 +2,7 @@
 Generates correlation reports between data sets.
 """
 import math
+import warnings
 
 from typing import List, Tuple
 
@@ -20,6 +21,9 @@ from sklearn.preprocessing import StandardScaler
 _DEFAULT_JOB_COUNT = 4
 _DEFAULT_REPLACE_VALUE = 0.0
 UNIQUENESS_THRESHOLD = 0.1
+
+# Rounding warnings can be extremely noisy.
+warnings.filterwarnings("ignore", module="dython.nominal")
 
 
 def count_memorized_lines(df1: pd.DataFrame, df2: pd.DataFrame) -> int:
