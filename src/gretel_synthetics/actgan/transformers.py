@@ -193,7 +193,7 @@ class BinaryEncodingTransformer(BaseTransformer):
             data = pd.Series(data)
 
         if self.handle_rounding_nan == MODE:
-            self._mode_values = frozenset(list(data.mode()))
+            self._mode_values = frozenset(list(data.mode(dropna=False)))
         self._nan_proxy = _new_uuid()
         data = data.fillna(self._nan_proxy)
 
@@ -229,6 +229,7 @@ class BinaryEncodingTransformer(BaseTransformer):
         #         'please fit the transformer again with the new data.'
         #     )
 
+        data = data.fillna(self._nan_proxy)
         ndarray = self.encoder.transform(data).to_numpy()
         return ndarray
 
