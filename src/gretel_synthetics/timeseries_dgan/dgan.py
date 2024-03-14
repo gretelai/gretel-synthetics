@@ -44,7 +44,6 @@ Sample usage:
    synthetic_attributes, synthetic_features = model.generate_numpy(1000)
 """
 
-
 from __future__ import annotations
 
 import abc
@@ -215,6 +214,16 @@ class DGAN:
                 passing *output params at initialization or because train_* was
                 called previously.
         """
+        logging.info(
+            f"features shape={features.shape}, dtype={features.dtype}",
+            extra={"user_log": True},
+        )
+        if attributes is not None:
+            logging.info(
+                f"attributes shape={attributes.shape}, dtype={attributes.dtype}",
+                extra={"user_log": True},
+            )
+
         if attributes is not None:
             if attributes.shape[0] != features.shape[0]:
                 raise InternalError(
@@ -263,6 +272,9 @@ class DGAN:
                     feature_types.append(OutputType.DISCRETE)
 
         if not self.is_built:
+            logger.info(
+                "Determining outputs metadata from input data", extra={"user_log": True}
+            )
             attribute_outputs, feature_outputs = create_outputs_from_data(
                 attributes,
                 features,
@@ -272,7 +284,7 @@ class DGAN:
                 apply_feature_scaling=self.config.apply_feature_scaling,
                 apply_example_scaling=self.config.apply_example_scaling,
             )
-
+            logger.info("Building DGAN networks", extra={"user_log": True})
             self._build(
                 attribute_outputs,
                 feature_outputs,
@@ -290,6 +302,10 @@ class DGAN:
             # category). To ensure we have none of these problematic nans, we
             # will interpolate to replace nans with actual float values, but if
             # we have too many nans in an example interpolation is unreliable.
+            logger.info(
+                f"Checking for nans in the {len(continuous_features_ind)} numeric columns",
+                extra={"user_log": True},
+            )
 
             # Find valid examples based on minimal number of nans.
             valid_examples = validation_check(
@@ -301,12 +317,17 @@ class DGAN:
             if attributes is not None:
                 attributes = attributes[valid_examples]
 
+            logger.info(
+                "Applying linear interpolations for nans (does not mean nans are present)",
+                extra={"user_log": True},
+            )
             # Apply linear interpolations to replace nans for continuous
             # features:
             features[:, :, continuous_features_ind] = nan_linear_interpolation(
                 features[:, :, continuous_features_ind].astype("float")
             )
 
+        logger.info("Creating encoded array of features", extra={"user_log": True})
         if self.additional_attribute_outputs:
             (
                 internal_features,
@@ -326,6 +347,7 @@ class DGAN:
                 np.full((internal_features.shape[0], 1), np.nan)
             )
 
+        logger.info("Creating encoded array of attributes", extra={"user_log": True})
         internal_attributes = transform(
             attributes,
             self.attribute_outputs,
@@ -333,17 +355,32 @@ class DGAN:
             num_examples=internal_features.shape[0],
         )
 
+        logger.info(
+            f"internal_features shape={internal_features.shape}, dtype={internal_features.dtype}",
+            extra={"user_log": True},
+        )
+        logger.info(
+            f"internal_additional_attributes shape={internal_additional_attributes.shape}, dtype={internal_additional_attributes.dtype}",
+            extra={"user_log": True},
+        )
+        logger.info(
+            f"internal_attributes shape={internal_attributes.shape}, dtype={internal_attributes.dtype}",
+            extra={"user_log": True},
+        )
+
         if self.attribute_outputs and np.any(np.isnan(internal_attributes)):
             raise InternalError(
                 f"NaN found in internal attributes. {NAN_ERROR_MESSAGE}"
             )
 
+        logger.info("Creating TensorDataset", extra={"user_log": True})
         dataset = TensorDataset(
             torch.Tensor(internal_attributes),
             torch.Tensor(internal_additional_attributes),
             torch.Tensor(internal_features),
         )
 
+        logger.info("Calling _train()", extra={"user_log": True})
         self._train(dataset, progress_callback=progress_callback)
 
     def train_dataframe(
@@ -471,8 +508,12 @@ class DGAN:
                     f"df_style param must be an enum value DfStyle ('wide' or 'long'), received '{df_style}'"
                 )
 
+        logger.info(
+            "Converting from DataFrame to numpy arrays", extra={"user_log": True}
+        )
         attributes, features = self.data_frame_converter.convert(df)
 
+        logger.info("Calling train_numpy()", extra={"user_log": True})
         self.train_numpy(
             attributes=attributes,
             features=features,
@@ -530,9 +571,11 @@ class DGAN:
             # In [4]: np.array([1,2,3,4]) == None
             # Out[4]: array([False, False, False, False])
             internal_data = tuple(
-                np.concatenate(d, axis=0)
-                if not (np.array(d) == None).any()  # noqa
-                else None
+                (
+                    np.concatenate(d, axis=0)
+                    if not (np.array(d) == None).any()  # noqa
+                    else None
+                )
                 for d in zip(*internal_data_list)
             )
 
@@ -1651,7 +1694,6 @@ def validation_check(
     consecutive_nans_max: int = 5,
     consecutive_nans_ratio_cutoff: float = 0.05,
 ) -> np.array:
-
     """Checks if continuous features of examples are valid.
 
     Returns a 1-d numpy array of booleans with shape (#examples) indicating

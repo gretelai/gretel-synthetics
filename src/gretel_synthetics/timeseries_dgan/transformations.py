@@ -583,7 +583,7 @@ def transform(
     additional_attribute_parts = []
     parts = []
     if original_data is None:
-        return np.full((num_examples, 1), np.nan)
+        return np.full((num_examples, 1), np.nan, dtype=np.float32)
 
     for index, output in enumerate(outputs):
         # NOTE: isinstance(output, DiscreteOutput) does not work consistently
@@ -663,11 +663,11 @@ def transform(
 
     if additional_attribute_parts:
         return (
-            np.concatenate(parts, axis=variable_dim_index, dtype="float"),
-            np.concatenate(additional_attribute_parts, axis=1, dtype="float"),
+            np.concatenate(parts, axis=variable_dim_index, dtype=np.float32),
+            np.concatenate(additional_attribute_parts, axis=1, dtype=np.float32),
         )
     else:
-        return np.concatenate(parts, axis=variable_dim_index, dtype="float")
+        return np.concatenate(parts, axis=variable_dim_index, dtype=np.float32)
 
 
 def inverse_transform(
@@ -776,7 +776,6 @@ def inverse_transform(
 
 
 def create_additional_attribute_outputs(feature_outputs: List[Output]) -> List[Output]:
-
     """Create outputs for midpoint and half ranges.
 
     Returns list of additional attribute metadata. For each feature with
