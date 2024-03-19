@@ -788,11 +788,7 @@ class DGAN:
             self.config.batch_size,
             shuffle=True,
             drop_last=drop_last,
-            num_workers=2,
-            prefetch_factor=4,
-            persistent_workers=True,
             pin_memory=True,
-            multiprocessing_context="fork",
         )
 
         opt_discriminator = torch.optim.Adam(
