@@ -1,6 +1,7 @@
 """
 Tensorflow - Keras Sequential RNN (GRU)
 """
+
 import logging
 
 from typing import TYPE_CHECKING

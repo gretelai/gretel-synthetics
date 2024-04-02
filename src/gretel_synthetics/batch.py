@@ -7,6 +7,7 @@ Then we can concat each sub-DF back into one final synthetic dataset.
 
 For example usage, please see our Jupyter Notebook.
 """
+
 import abc
 import csv
 import glob
@@ -329,12 +330,10 @@ class _BufferedRecords(abc.ABC):
     """
 
     @abc.abstractmethod
-    def add(self, record: dict):
-        ...
+    def add(self, record: dict): ...
 
     @abc.abstractmethod
-    def get_records(self):
-        ...
+    def get_records(self): ...
 
     def cleanup(self):
         pass
@@ -482,7 +481,6 @@ class _GenerationCallback:
         *,
         force_update=False,
     ):
-
         """
         Method that's being called from the generator with a progress update.
 

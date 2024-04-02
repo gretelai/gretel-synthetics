@@ -1,6 +1,7 @@
 """
 Generates correlation reports between data sets.
 """
+
 import math
 import warnings
 
@@ -37,6 +38,7 @@ def count_memorized_lines(df1: pd.DataFrame, df2: pd.DataFrame) -> int:
     Returns:
         int, the number of overlapping elements.
     """
+
     # Look for cases where col is numeric in one df, object in the other. Attempt to cast to float.
     def _uptype_object_to_float(
         l: pd.DataFrame, r: pd.DataFrame

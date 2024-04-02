@@ -2,6 +2,7 @@
 Abstract module for generating data.  The ``generate_text`` function is the primary entrypoint for
 creating text.
 """
+
 import logging
 
 from abc import ABC, abstractmethod

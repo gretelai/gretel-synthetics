@@ -1,4 +1,5 @@
 """Wrapper around ACTGAN model."""
+
 from __future__ import annotations
 
 import logging

@@ -1,6 +1,7 @@
 """
 Constants
 """
+
 from enum import Enum
 
 NEWLINE = "<n>"

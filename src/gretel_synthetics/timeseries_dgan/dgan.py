@@ -1096,13 +1096,13 @@ class DGAN:
             "feature_outputs": self.feature_outputs,
         }
         state["generate_state_dict"] = self.generator.state_dict()
-        state[
-            "feature_discriminator_state_dict"
-        ] = self.feature_discriminator.state_dict()
+        state["feature_discriminator_state_dict"] = (
+            self.feature_discriminator.state_dict()
+        )
         if self.attribute_discriminator is not None:
-            state[
-                "attribute_discriminator_state_dict"
-            ] = self.attribute_discriminator.state_dict()
+            state["attribute_discriminator_state_dict"] = (
+                self.attribute_discriminator.state_dict()
+            )
 
         if self.data_frame_converter is not None:
             state["data_frame_converter"] = self.data_frame_converter.state_dict()

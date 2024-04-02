@@ -1,6 +1,7 @@
 """
 Automatic datetime detection for tabluar data
 """
+
 import itertools
 import re
 

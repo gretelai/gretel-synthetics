@@ -1,6 +1,7 @@
 """
 Misc utils for generating data
 """
+
 import glob
 import gzip
 import logging

@@ -3,6 +3,7 @@ Functionality for generating data using multiple CPUs. The functions in this mod
 not have to be used directly. They are used automatically by the ``generate.py`` module based
 on the parallelization settings configured for text generation.
 """
+
 import logging
 import os
 import sys
@@ -88,9 +89,9 @@ def generate_parallel(
     remaining_lines = num_lines
 
     # This set tracks the currently outstanding invocations to _loky_worker_process_chunk.
-    pending_tasks: Set[
-        futures.Future[Tuple[int, List[GenText], int]]
-    ] = set()  # pylint: disable=unsubscriptable-object  # noqa
+    pending_tasks: Set[futures.Future[Tuple[int, List[GenText], int]]] = (
+        set()
+    )  # pylint: disable=unsubscriptable-object  # noqa
 
     # How many tasks can be pending at once. While a lower factor saves memory, it increases the
     # risk that workers sit idle because the main process is blocked on processing data and

@@ -4,6 +4,7 @@ confguration parameters for training a model and generating data.
 
 For example usage please see our Jupyter Notebooks.
 """
+
 import json
 import logging
 

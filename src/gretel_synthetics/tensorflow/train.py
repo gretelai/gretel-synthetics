@@ -5,6 +5,7 @@ to generate synthetic records.
 In order to use this module you must first create a config and then pass that config
 to the ``train_rnn`` function.
 """
+
 import io
 import logging
 import time
@@ -95,7 +96,8 @@ class _ModelHistory(tf.keras.callbacks.Callback):
 
 class _EpochCallbackWrapper(tf.keras.callbacks.Callback):
     """Wrapper class for the generic Callable attached to the BaseConfig.  It just translates the signature
-    for on_epoch_end into an EpochState which we use to invoke the BaseConfig callback."""
+    for on_epoch_end into an EpochState which we use to invoke the BaseConfig callback.
+    """
 
     def __init__(self, epoch_callable: Callable):
         self.epoch_callable = epoch_callable

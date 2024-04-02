@@ -75,16 +75,13 @@ class Output(abc.ABC):
             return self._inverse_transform(columns)
 
     @abc.abstractmethod
-    def _fit(self, column: np.ndarray):
-        ...
+    def _fit(self, column: np.ndarray): ...
 
     @abc.abstractmethod
-    def _transform(self, columns: np.ndarray) -> np.ndarray:
-        ...
+    def _transform(self, columns: np.ndarray) -> np.ndarray: ...
 
     @abc.abstractmethod
-    def _inverse_transform(self, columns: np.ndarray) -> np.ndarray:
-        ...
+    def _inverse_transform(self, columns: np.ndarray) -> np.ndarray: ...
 
 
 class OneHotEncodedOutput(Output):

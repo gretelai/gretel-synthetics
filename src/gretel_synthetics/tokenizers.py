@@ -26,6 +26,7 @@ Now you will use the ``load()`` class method from an actual tokenizer class to l
 trained model in and now you can use it on input data.
 
 """
+
 import json
 import logging
 import re

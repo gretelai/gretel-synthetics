@@ -1,6 +1,7 @@
 """
 Complex datastructures for ACTGAN
 """
+
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass

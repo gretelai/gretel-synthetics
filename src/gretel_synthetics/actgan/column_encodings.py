@@ -69,13 +69,11 @@ class ColumnEncoding(ABC):
 
     @property
     @abstractmethod
-    def encoded_dim(self) -> int:
-        ...
+    def encoded_dim(self) -> int: ...
 
     @property
     @abstractmethod
-    def decoded_dtype(self) -> np.dtype:
-        ...
+    def decoded_dtype(self) -> np.dtype: ...
 
 
 class FloatColumnEncoding(ColumnEncoding):

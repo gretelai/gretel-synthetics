@@ -1,6 +1,7 @@
 """
 General utilities for data munging and more!
 """
+
 from dataclasses import dataclass
 
 import pandas as pd

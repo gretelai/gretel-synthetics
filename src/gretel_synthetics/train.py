@@ -3,6 +3,7 @@ Train models for creating synthetic data.  This module is the primary entrypoint
 a model. It depends on having created a engine specifc configuration and optionally a tokenizer
 to be used.
 """
+
 import logging
 
 from dataclasses import dataclass
