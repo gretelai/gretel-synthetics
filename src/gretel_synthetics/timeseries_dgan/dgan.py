@@ -56,6 +56,8 @@ import numpy as np
 import pandas as pd
 import torch
 
+from torch.utils.data import DataLoader, Dataset, TensorDataset
+
 from gretel_synthetics.errors import DataError, InternalError, ParameterError
 from gretel_synthetics.timeseries_dgan.config import DfStyle, DGANConfig, OutputType
 from gretel_synthetics.timeseries_dgan.structures import ProgressInfo
@@ -67,7 +69,6 @@ from gretel_synthetics.timeseries_dgan.transformations import (
     Output,
     transform,
 )
-from torch.utils.data import DataLoader, Dataset, TensorDataset
 
 logger = logging.getLogger(__name__)
 

@@ -5,6 +5,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from pandas.api.types import is_numeric_dtype, is_object_dtype
+from pandas.testing import assert_frame_equal
+
 from gretel_synthetics.errors import DataError, ParameterError
 from gretel_synthetics.timeseries_dgan.config import (
     DfStyle,
@@ -27,8 +30,6 @@ from gretel_synthetics.timeseries_dgan.transformations import (
     ContinuousOutput,
     OneHotEncodedOutput,
 )
-from pandas.api.types import is_numeric_dtype, is_object_dtype
-from pandas.testing import assert_frame_equal
 
 
 @pytest.fixture

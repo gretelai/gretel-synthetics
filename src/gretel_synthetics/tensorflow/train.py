@@ -17,6 +17,8 @@ from typing import Callable, Iterator, Optional, Tuple, TYPE_CHECKING
 import pandas as pd
 import tensorflow as tf
 
+from tqdm import tqdm
+
 from gretel_synthetics.const import (
     METRIC_ACCURACY,
     METRIC_DELTA,
@@ -30,7 +32,6 @@ from gretel_synthetics.tensorflow.dp_model import compute_epsilon
 from gretel_synthetics.tensorflow.model import build_model, load_model
 from gretel_synthetics.tokenizers import BaseTokenizer
 from gretel_synthetics.train import EpochState
-from tqdm import tqdm
 
 if TYPE_CHECKING:
     from gretel_synthetics.config import TensorFlowConfig

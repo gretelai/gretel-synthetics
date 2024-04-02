@@ -7,9 +7,10 @@ import os
 
 from pathlib import Path
 
-import gretel_synthetics.const as const
 import pandas as pd
 import pytest
+
+import gretel_synthetics.const as const
 
 from gretel_synthetics.batch import DataFrameBatch, PATH_HOLDER
 from gretel_synthetics.config import TensorFlowConfig

@@ -31,10 +31,11 @@ from unittest.mock import Mock
 import pandas as pd
 import pytest
 
+from smart_open import open as smart_open
+
 from gretel_synthetics.batch import DataFrameBatch, GenerationProgress
 from gretel_synthetics.generate_utils import DataFileGenerator
 from gretel_synthetics.utils.tar_util import safe_extractall
-from smart_open import open as smart_open
 
 BATCH_MODELS = [
     "https://gretel-public-website.s3-us-west-2.amazonaws.com/tests/synthetics/models/safecast-batch-sp-0-14.tar.gz",

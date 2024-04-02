@@ -30,9 +30,13 @@ from typing import Iterator as IteratorType
 from typing import List, Optional, Tuple, Type, Union
 
 import cloudpickle
-import gretel_synthetics.const as const
 import numpy as np
 import pandas as pd
+
+from pandas.errors import EmptyDataError
+from tqdm.auto import tqdm
+
+import gretel_synthetics.const as const
 
 from gretel_synthetics.config import (
     BaseConfig,
@@ -44,8 +48,6 @@ from gretel_synthetics.errors import InvalidSeedError, TooManyInvalidError
 from gretel_synthetics.generate import generate_text, GenText, SeedingGenerator
 from gretel_synthetics.tokenizers import BaseTokenizerTrainer
 from gretel_synthetics.train import train
-from pandas.errors import EmptyDataError
-from tqdm.auto import tqdm
 
 logging.basicConfig()
 logger = logging.getLogger(__name__)

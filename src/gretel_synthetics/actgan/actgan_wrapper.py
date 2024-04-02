@@ -10,20 +10,22 @@ from typing import Callable, Dict, List, Optional, Sequence, Tuple, TYPE_CHECKIN
 import numpy as np
 import pandas as pd
 
+from rdt.transformers import BaseTransformer
+from sdv.tabular.base import BaseTabularModel
+
 from gretel_synthetics.actgan.actgan import ACTGANSynthesizer
 from gretel_synthetics.actgan.columnar_df import ColumnarDF
 from gretel_synthetics.actgan.structures import ConditionalVectorType
 from gretel_synthetics.detectors.sdv import SDVTableMetadata
 from gretel_synthetics.utils import rdt_patches, torch_utils
-from rdt.transformers import BaseTransformer
-from sdv.tabular.base import BaseTabularModel
 
 if TYPE_CHECKING:
-    from gretel_synthetics.actgan.structures import EpochInfo
     from numpy.random import RandomState
     from sdv.constraints import Constraint
     from sdv.metadata import Metadata
     from torch import Generator
+
+    from gretel_synthetics.actgan.structures import EpochInfo
 
 EPOCH_CALLBACK = "epoch_callback"
 

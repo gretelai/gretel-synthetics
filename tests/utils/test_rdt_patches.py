@@ -3,11 +3,12 @@ from contextlib import contextmanager
 import numpy as np
 import pandas as pd
 
+from rdt.transformers.numerical import FloatFormatter
+
 from gretel_synthetics.utils.rdt_patches import (
     _patched_float_formatter_reverse_transform,
     patch_float_formatter_rounding_bug,
 )
-from rdt.transformers.numerical import FloatFormatter
 
 
 def test_original_rounding_bug_upstream():

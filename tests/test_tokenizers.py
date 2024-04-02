@@ -1,8 +1,9 @@
 from copy import deepcopy
 from pathlib import Path
 
-import gretel_synthetics.tokenizers as tok
 import pytest
+
+import gretel_synthetics.tokenizers as tok
 
 from gretel_synthetics.config import BaseConfig
 from gretel_synthetics.tokenizers import VocabSizeTooSmall

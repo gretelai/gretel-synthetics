@@ -47,12 +47,14 @@ from typing import (
 )
 
 import cloudpickle
-import gretel_synthetics.const as const
 import numpy as np
 import sentencepiece as spm
 
-from gretel_synthetics.errors import ParameterError
 from smart_open import open as smart_open
+
+import gretel_synthetics.const as const
+
+from gretel_synthetics.errors import ParameterError
 
 if TYPE_CHECKING:
     from gretel_synthetics.config import BaseConfig

@@ -7,11 +7,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from gretel_synthetics.detectors.dates import DateTimeColumn, DateTimeColumns
-from gretel_synthetics.detectors.sdv import EmptyFieldTransformer, SDVTableMetadata
 from rdt import HyperTransformer
 from rdt.transformers.datetime import UnixTimestampEncoder
 from sdv import Table
+
+from gretel_synthetics.detectors.dates import DateTimeColumn, DateTimeColumns
+from gretel_synthetics.detectors.sdv import EmptyFieldTransformer, SDVTableMetadata
 
 
 def _create_info() -> DateTimeColumns:

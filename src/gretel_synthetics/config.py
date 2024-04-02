@@ -13,8 +13,9 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Callable, Optional, TYPE_CHECKING
 
-import gretel_synthetics.const as const
 import tensorflow as tf
+
+import gretel_synthetics.const as const
 
 from gretel_synthetics.tensorflow.generator import TensorFlowGenerator
 from gretel_synthetics.tensorflow.train import train_rnn

@@ -9,9 +9,10 @@ from typing import Dict, FrozenSet, Optional, Tuple, TYPE_CHECKING, Union
 import numpy as np
 import pandas as pd
 
-from gretel_synthetics.detectors.dates import detect_datetimes
 from rdt.transformers import BaseTransformer
 from rdt.transformers.datetime import UnixTimestampEncoder
+
+from gretel_synthetics.detectors.dates import detect_datetimes
 
 if TYPE_CHECKING:
     from gretel_synthetics.detectors.dates import DateTimeColumn

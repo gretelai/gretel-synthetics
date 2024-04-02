@@ -8,8 +8,9 @@ from typing import cast, List, Optional, Tuple, Union
 import numpy as np
 
 from category_encoders import BinaryEncoder, OneHotEncoder
-from gretel_synthetics.timeseries_dgan.config import Normalization, OutputType
 from scipy.stats import mode
+
+from gretel_synthetics.timeseries_dgan.config import Normalization, OutputType
 
 
 def _new_uuid() -> str:

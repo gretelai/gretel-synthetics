@@ -9,9 +9,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from gretel_synthetics.utils.rdt_patches import patch_float_formatter_rounding_bug
 from rdt.transformers.null import NullTransformer
 from rdt.transformers.numerical import FloatFormatter
+
+from gretel_synthetics.utils.rdt_patches import patch_float_formatter_rounding_bug
 
 with patch_float_formatter_rounding_bug():
     # This is the original suite of tests for the FloatFormatter from rdt.

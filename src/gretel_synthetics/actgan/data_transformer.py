@@ -6,6 +6,8 @@ from typing import Any, Dict, List, Optional, Sequence, Union
 import numpy as np
 import pandas as pd
 
+from rdt.transformers import BinaryEncoder, OneHotEncoder
+
 from gretel_synthetics.actgan.column_encodings import (
     BinaryColumnEncoding,
     FloatColumnEncoding,
@@ -22,7 +24,6 @@ from gretel_synthetics.actgan.transformers import (
     ClusterBasedNormalizer,
 )
 from gretel_synthetics.typing import DFLike
-from rdt.transformers import BinaryEncoder, OneHotEncoder
 
 logging.basicConfig()
 logger = logging.getLogger(__name__)

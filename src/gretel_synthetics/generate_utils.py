@@ -11,11 +11,12 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 from typing import Callable, Optional, Union
 
+from smart_open import open as smart_open
+
 from gretel_synthetics.batch import DataFrameBatch, MAX_INVALID
 from gretel_synthetics.config import config_from_model_dir
 from gretel_synthetics.generate import generate_text
 from gretel_synthetics.utils.tar_util import safe_extractall
-from smart_open import open as smart_open
 
 logging.basicConfig()
 logger = logging.getLogger(__name__)

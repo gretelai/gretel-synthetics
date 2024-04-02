@@ -11,8 +11,9 @@ from typing import Any, Dict, List, TYPE_CHECKING
 if TYPE_CHECKING:
     import numpy as np
 
-    from gretel_synthetics.actgan.column_encodings import ColumnEncoding
     from rdt.transformers.base import BaseTransformer
+
+    from gretel_synthetics.actgan.column_encodings import ColumnEncoding
 
 
 class ColumnType(str, Enum):

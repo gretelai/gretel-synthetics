@@ -10,10 +10,11 @@ import numpy as np
 import pandas as pd
 
 from category_encoders import BaseNEncoder, BinaryEncoder
-from gretel_synthetics.typing import ListOrSeriesOrDF, SeriesOrDFLike
 from rdt.transformers import BaseTransformer
 from rdt.transformers import ClusterBasedNormalizer as RDTClusterBasedNormalizer
 from rdt.transformers import FloatFormatter
+
+from gretel_synthetics.typing import ListOrSeriesOrDF, SeriesOrDFLike
 
 MODE = "mode"
 VALID_ROUNDING_MODES = (MODE,)

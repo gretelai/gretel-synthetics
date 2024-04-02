@@ -6,6 +6,19 @@ import numpy as np
 import pandas as pd
 import torch
 
+from packaging import version
+from torch import optim
+from torch.nn import (
+    BatchNorm1d,
+    Dropout,
+    functional,
+    LeakyReLU,
+    Linear,
+    Module,
+    ReLU,
+    Sequential,
+)
+
 from gretel_synthetics.actgan.base import BaseSynthesizer, random_state
 from gretel_synthetics.actgan.column_encodings import (
     BinaryColumnEncoding,
@@ -21,18 +34,6 @@ from gretel_synthetics.actgan.structures import (
 )
 from gretel_synthetics.actgan.train_data import TrainData
 from gretel_synthetics.typing import DFLike
-from packaging import version
-from torch import optim
-from torch.nn import (
-    BatchNorm1d,
-    Dropout,
-    functional,
-    LeakyReLU,
-    Linear,
-    Module,
-    ReLU,
-    Sequential,
-)
 
 logging.basicConfig()
 logger = logging.getLogger(__name__)

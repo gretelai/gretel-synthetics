@@ -7,10 +7,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from pandas.api.types import is_number
+
 from gretel_synthetics.actgan import ACTGAN
 from gretel_synthetics.actgan.data_transformer import BinaryEncodingTransformer
 from gretel_synthetics.actgan.structures import ConditionalVectorType
-from pandas.api.types import is_number
 
 
 @pytest.fixture
