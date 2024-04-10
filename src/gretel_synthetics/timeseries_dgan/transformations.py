@@ -10,6 +10,7 @@ import numpy as np
 from category_encoders import BinaryEncoder, OneHotEncoder
 from scipy.stats import mode
 
+from gretel_synthetics.errors import ParameterError
 from gretel_synthetics.timeseries_dgan.config import Normalization, OutputType
 
 
@@ -332,16 +333,19 @@ class ContinuousOutput(Output):
         """Apply continuous variable encoding/scaling.
 
         Args:
-            column: numpy array
+            column: 1-d numpy array
 
         Returns:
-            numpy array of rescaled data
+            2-d numpy array of rescaled data
         """
         column = column.astype("float")
+
         if self.apply_feature_scaling:
-            return rescale(column, self.normalization, self.global_min, self.global_max)
+            return rescale(
+                column, self.normalization, self.global_min, self.global_max
+            ).reshape((-1, 1))
         else:
-            return column
+            return column.reshape((-1, 1))
 
     def _inverse_transform(self, columns: np.ndarray) -> np.ndarray:
         """Invert continus variable encoding/scaling.
@@ -355,14 +359,14 @@ class ContinuousOutput(Output):
         if self.apply_feature_scaling:
             return rescale_inverse(
                 columns, self.normalization, self.global_min, self.global_max
-            )
+            ).flatten()
         else:
-            return columns
+            return columns.flatten()
 
 
 def create_outputs_from_data(
     attributes: Optional[np.ndarray],
-    features: np.ndarray,
+    features: list[np.ndarray],
     attribute_types: Optional[List[OutputType]],
     feature_types: Optional[List[OutputType]],
     normalization: Normalization,
@@ -374,7 +378,7 @@ def create_outputs_from_data(
 
     Args:
         attributes: 2d numpy array of attributes
-        features: 3d numpy array of features
+        features: list of 2d numpy arrays, each element is one sequence
         attribute_types: variable type for each attribute, assumes continuous if None
         feature_types: variable type for each feature, assumes continuous if None
         normalization: internal representation for continuous variables, scale
@@ -412,8 +416,8 @@ def create_outputs_from_data(
         ]
 
     if feature_types is None:
-        feature_types = [OutputType.CONTINUOUS] * features.shape[2]
-    elif len(feature_types) != features.shape[2]:
+        feature_types = [OutputType.CONTINUOUS] * features[0].shape[1]
+    elif len(feature_types) != features[0].shape[1]:
         raise RuntimeError(
             "feature_types must be the same length as the 3rd (last) dimemnsion of features"
         )
@@ -423,7 +427,7 @@ def create_outputs_from_data(
         create_output(
             index,
             t,
-            features[:, :, index],
+            np.hstack([seq[:, index] for seq in features]),
             normalization=normalization,
             apply_feature_scaling=apply_feature_scaling,
             apply_example_scaling=apply_example_scaling,
@@ -449,7 +453,7 @@ def create_output(
     Args:
         index: index of variable within attributes or features
         t: type of output
-        data: numpy array of data just for this variable
+        data: 1-d numpy array of data just for this variable
         normalization: see documentation in create_outputs_from_data
         apply_feature_scaling: see documentation in create_outputs_from_data
         apply_example_scaling: see documentation in create_outputs_from_data
@@ -458,6 +462,7 @@ def create_output(
     Returns:
         Output metadata instance
     """
+
     if t == OutputType.CONTINUOUS:
         output = ContinuousOutput(
             name="a" + str(index),
@@ -542,13 +547,74 @@ def rescale_inverse(
         return ((transformed + 1.0) / 2.0) * range + global_min
 
 
-def transform(
-    original_data: Optional[np.ndarray],
+def transform_attributes(
+    original_data: np.ndarray,
     outputs: List[Output],
-    variable_dim_index: int,
-    num_examples: Optional[int] = None,
-) -> Union[Tuple[np.ndarray, np.ndarray], np.ndarray]:
-    """Transform data to internal representation expected by DoppelGANger.
+) -> np.ndarray:
+    """Transform attributes to internal representation expected by DGAN.
+
+    See transform_features pydoc for more details on how the original_data is
+    changed.
+
+    Args:
+        original_data: data to transform as a 2d numpy array
+        outputs: Output metadata for each attribute
+
+    Returns:
+        2d numpy array of the internal representation of data.
+    """
+    parts = []
+    for index, output in enumerate(outputs):
+        parts.append(output.transform(original_data[:, index]))
+
+    return np.concatenate(parts, axis=1, dtype=np.float32)
+
+
+def _grouped_min_and_max(
+    example_ids: np.ndarray, values: np.ndarray
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Compute min and max for each example.
+
+    Sorts by example_ids, then values, and then indexes into the sorted values
+    to efficiently obtain min/max. Compute both min and max in one function to
+    reuse the sorted objects.
+
+    Args:
+        example_ids: 1d numpy array of example ids, mapping each element
+            in values to an example/sequence
+        values: 1d numpy array
+
+    Returns:
+        Tuple of min and max values for each example/sequence, each is a 1d
+        numpy array of size # of unique example_ids. The min and max values are
+        for the sorted example_ids, so the first element is the min/max of the
+        smallest example_id value, and so on.
+    """
+    # lexsort primary key is last element, so sorts by example_ids first, then
+    # values
+    order = np.lexsort((values, example_ids))
+    g = example_ids[order]
+    d = values[order]
+    # Construct index marking lower borders between examples to capture the min
+    # values
+    min_index = np.empty(len(g), dtype="bool")
+    min_index[0] = True
+    min_index[1:] = g[1:] != g[:-1]
+    # Construct index marking upper borders between groups to capture the max
+    # values
+    max_index = np.empty(len(g), dtype="bool")
+    max_index[-1] = True
+    max_index[:-1] = g[1:] != g[:-1]
+
+    return d[min_index], d[max_index]
+
+
+def transform_features(
+    original_data: list[np.ndarray],
+    outputs: List[Output],
+    max_sequence_len: int,
+) -> Tuple[np.ndarray, Optional[np.ndarray]]:
+    """Transform features to internal representation expected by DGAN.
 
     Specifically, performs the following changes:
 
@@ -559,30 +625,26 @@ def transform(
         apply_example_scaling is True
 
     Args:
-        original_data: data to transform, 2d or 3d numpy array, or None
+        original_data: data to transform as a list of 2d numpy
+            arrays, each element is a sequence
         outputs: Output metadata for each variable
-        variable_dim_index: dimension of numpy array that contains the
-            variables, for 2d numpy arrays this should be 1, for 3d should be 2
-        num_examples: dimension of feature output array. If the original
-            data is None, we want the empty/none torch array to match the first
-            dimension of the feature output array. This makes sure that the
-            TensorDataset module works smoothly. If the first dimensions are different,
-            torch will give an error.
+        max_sequence_len: pad all sequences to max_sequence_len
 
     Returns:
-        Internal representation of data. A single numpy array if the input was a
-        2d array or if no outputs have apply_example_scaling=True. A tuple of
-        features, additional_attributes is returned when transforming features
-        (a 3d numpy array) and example scaling is used. If the input data is
-        None, then a single numpy array filled with nan's that has the first
-        dimension shape of the number examples of the feature vector is
-        returned.
+        Internal representation of data. A tuple of 3d numpy array of features
+        and optional 2d numpy array of additional_attributes.
     """
-    additional_attribute_parts = []
-    parts = []
-    if original_data is None:
-        return np.full((num_examples, 1), np.nan, dtype=np.float32)
+    sequence_lengths = [seq.shape[0] for seq in original_data]
+    if max(sequence_lengths) > max_sequence_len:
+        raise ParameterError(
+            f"Found sequence with length {max(sequence_lengths)}, longer than max_sequence_len={max_sequence_len}"
+        )
+    example_ids = np.repeat(range(len(original_data)), sequence_lengths)
 
+    long_data = np.vstack(original_data)
+
+    parts = []
+    additional_attribute_parts = []
     for index, output in enumerate(outputs):
         # NOTE: isinstance(output, DiscreteOutput) does not work consistently
         #       with all import styles in jupyter notebooks, using string
@@ -590,129 +652,118 @@ def transform(
         if "OneHotEncodedOutput" in str(
             output.__class__
         ) or "BinaryEncodedOutput" in str(output.__class__):
-
-            if variable_dim_index == 1:
-                original_column = original_data[:, index]
-                target_shape = (original_data.shape[0], -1)
-            elif variable_dim_index == 2:
-                original_column = original_data[:, :, index]
-                target_shape = (original_data.shape[0], original_data.shape[1], -1)
-            else:
-                raise RuntimeError(
-                    f"Unsupported variable_dim_index={variable_dim_index}"
-                )
-
-            transformed_data = output.transform(original_column.flatten())
-
-            parts.append(transformed_data.reshape(target_shape))
-
+            transformed_data = output.transform(long_data[:, index])
+            parts.append(transformed_data)
         elif "ContinuousOutput" in str(output.__class__):
             output = cast(ContinuousOutput, output)
 
-            if variable_dim_index == 1:
-                raw = original_data[:, index]
-            elif variable_dim_index == 2:
-                raw = original_data[:, :, index]
-            else:
-                raise RuntimeError(
-                    f"Unsupported variable_dim_index={variable_dim_index}"
-                )
+            raw = long_data[:, index]
 
-            feature_scaled = output.transform(raw.flatten()).reshape(raw.shape)
+            feature_scaled = output.transform(raw)
 
             if output.apply_example_scaling:
-                if variable_dim_index != 2:
-                    raise RuntimeError(
-                        "apply_example_scaling only applies to features, that is when the data has 3 dimensions"
-                    )
-
-                mins = np.min(feature_scaled, axis=1)
-                maxes = np.max(feature_scaled, axis=1)
+                # Group-wise mins and maxes, dimension of each is (# examples,)
+                group_mins, group_maxes = _grouped_min_and_max(
+                    example_ids, feature_scaled.flatten()
+                )
+                # Project back to size of long data
+                mins = np.repeat(group_mins, sequence_lengths).reshape((-1, 1))
+                maxes = np.repeat(group_maxes, sequence_lengths).reshape((-1, 1))
 
                 additional_attribute_parts.append(
-                    ((mins + maxes) / 2).reshape(mins.shape[0], 1)
+                    ((group_mins + group_maxes) / 2).reshape((-1, 1))
                 )
                 additional_attribute_parts.append(
-                    ((maxes - mins) / 2).reshape(mins.shape[0], 1)
-                )
-
-                mins = np.broadcast_to(
-                    mins.reshape(mins.shape[0], 1),
-                    (mins.shape[0], feature_scaled.shape[1]),
-                )
-                maxes = np.broadcast_to(
-                    maxes.reshape(maxes.shape[0], 1),
-                    (mins.shape[0], feature_scaled.shape[1]),
+                    ((group_maxes - group_mins) / 2).reshape((-1, 1))
                 )
 
                 scaled = rescale(feature_scaled, output.normalization, mins, maxes)
             else:
                 scaled = feature_scaled
 
-            if variable_dim_index == 1:
-                scaled = scaled.reshape((original_data.shape[0], 1))
-            elif variable_dim_index == 2:
-                scaled = scaled.reshape(
-                    (original_data.shape[0], original_data.shape[1], 1)
-                )
-            parts.append(scaled)
+            parts.append(scaled.reshape(-1, 1))
         else:
             raise RuntimeError(f"Unsupported output type, class={type(output)}'")
 
+    long_transformed = np.concatenate(parts, axis=1, dtype=np.float32)
+
+    # Fit possibly jagged sequences into 3d numpy array. Pads shorter sequences
+    # with all 0s in the internal representation.
+    features_transformed = np.zeros(
+        (len(original_data), max_sequence_len, long_transformed.shape[1]),
+        dtype=np.float32,
+    )
+    i = 0
+    for example_index, length in enumerate(sequence_lengths):
+        features_transformed[example_index, 0:length, :] = long_transformed[
+            i : (i + length), :
+        ]
+        i += length
+
+    additional_attributes = None
     if additional_attribute_parts:
-        return (
-            np.concatenate(parts, axis=variable_dim_index, dtype=np.float32),
-            np.concatenate(additional_attribute_parts, axis=1, dtype=np.float32),
+        additional_attributes = np.concatenate(
+            additional_attribute_parts, axis=1, dtype=np.float32
         )
-    else:
-        return np.concatenate(parts, axis=variable_dim_index, dtype=np.float32)
+
+    return features_transformed, additional_attributes
 
 
-def inverse_transform(
+def inverse_transform_attributes(
     transformed_data: np.ndarray,
-    outputs: List[Output],
-    variable_dim_index: int,
-    additional_attributes: Optional[np.ndarray] = None,
+    outputs: list[Output],
 ) -> Optional[np.ndarray]:
-    """Invert transform to map back to original space.
+    """Inverse of transform_attributes to map back to original space.
 
     Args:
-        transformed_data: internal representation data
+        transformed_data: 2d numpy array of internal representation
         outputs: Output metadata for each variable
-        variable_dim_index: dimension of numpy array that contains the
-            variables, for 2d numpy arrays this should be 1, for 3d should be 2
+    """
+    # TODO: we should not use nans as an indicator and just not call this
+    # method, or use a zero sized numpy array, to indicate no attributes.
+    if np.isnan(transformed_data).any():
+        return None
+    parts = []
+    transformed_index = 0
+    for output in outputs:
+        original = output.inverse_transform(
+            transformed_data[:, transformed_index : (transformed_index + output.dim)]
+        )
+        parts.append(original.reshape((-1, 1)))
+        transformed_index += output.dim
+
+    return np.hstack(parts)
+
+
+def inverse_transform_features(
+    transformed_data: np.ndarray,
+    outputs: List[Output],
+    additional_attributes: Optional[np.ndarray] = None,
+) -> np.ndarray:
+    """Inverse of transform_features to map back to original space.
+
+    Args:
+        transformed_data: 3d numpy array of internal representation data
+        outputs: Output metadata for each variable
         additional_attributes: midpoint and half-ranges for outputs with
             apply_example_scaling=True
 
     Returns:
-        If the input data provided is a numpy array with no-nans, then a numpy array of
-        data in original space is returned. If the input data is nan-filled, the function
-        returns None.
+        List of numpy arrays, each element corresponds to one sequence with 2d
+        array of (time x variables).
     """
-    parts = []
     transformed_index = 0
     additional_attribute_index = 0
-    if np.isnan(transformed_data).any():
-        return None
+    parts = []
     for output in outputs:
         if "OneHotEncodedOutput" in str(
             output.__class__
         ) or "BinaryEncodedOutput" in str(output.__class__):
 
-            if variable_dim_index == 1:
-                v = transformed_data[
-                    :, transformed_index : (transformed_index + output.dim)
-                ]
-                target_shape = (transformed_data.shape[0], 1)
-            elif variable_dim_index == 2:
-                v = transformed_data[
-                    :, :, transformed_index : (transformed_index + output.dim)
-                ]
-                target_shape = (transformed_data.shape[0], transformed_data.shape[1], 1)
-            else:
-                raise RuntimeError(
-                    f"Unsupported variable_dim_index={variable_dim_index}"
-                )
+            v = transformed_data[
+                :, :, transformed_index : (transformed_index + output.dim)
+            ]
+            target_shape = (transformed_data.shape[0], transformed_data.shape[1], 1)
 
             original = output.inverse_transform(v.reshape((-1, v.shape[-1])))
 
@@ -721,23 +772,11 @@ def inverse_transform(
         elif "ContinuousOutput" in str(output.__class__):
             output = cast(ContinuousOutput, output)
 
-            if variable_dim_index == 1:
-                transformed = transformed_data[:, transformed_index]
-            elif variable_dim_index == 2:
-                transformed = transformed_data[:, :, transformed_index]
-            else:
-                raise RuntimeError(
-                    f"Unsupported variable_dim_index={variable_dim_index}"
-                )
+            transformed = transformed_data[:, :, transformed_index]
 
             if output.apply_example_scaling:
-                if variable_dim_index != 2:
-                    raise RuntimeError(
-                        "apply_example_scaling only applies to features where the data has 3 dimensions"
-                    )
-
                 if additional_attributes is None:
-                    raise RuntimeError(
+                    raise ValueError(
                         "Must provide additional_attributes if apply_example_scaling=True"
                     )
 
@@ -770,7 +809,7 @@ def inverse_transform(
         else:
             raise RuntimeError(f"Unsupported output type, class={type(output)}'")
 
-    return np.concatenate(parts, axis=variable_dim_index)
+    return np.concatenate(parts, axis=2)
 
 
 def create_additional_attribute_outputs(feature_outputs: List[Output]) -> List[Output]:

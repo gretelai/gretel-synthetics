@@ -50,7 +50,9 @@ import abc
 import logging
 import math
 
-from typing import Callable, Dict, List, Optional, Tuple
+from collections import Counter
+from itertools import cycle
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -65,19 +67,16 @@ from gretel_synthetics.timeseries_dgan.torch_modules import Discriminator, Gener
 from gretel_synthetics.timeseries_dgan.transformations import (
     create_additional_attribute_outputs,
     create_outputs_from_data,
-    inverse_transform,
+    inverse_transform_attributes,
+    inverse_transform_features,
     Output,
-    transform,
+    transform_attributes,
+    transform_features,
 )
 
 logger = logging.getLogger(__name__)
 
-logging.basicConfig(
-    format="%(asctime)s : %(threadName)s : %(levelname)s : %(message)s",
-    level=logging.INFO,
-)
-
-AttributeFeaturePair = Tuple[Optional[np.ndarray], np.ndarray]
+AttributeFeaturePair = Tuple[Optional[np.ndarray], list[np.ndarray]]
 NumpyArrayTriple = Tuple[np.ndarray, np.ndarray, np.ndarray]
 
 NAN_ERROR_MESSAGE = """
@@ -174,7 +173,7 @@ class DGAN:
 
     def train_numpy(
         self,
-        features: np.ndarray,
+        features: Union[np.ndarray, list[np.ndarray]],
         feature_types: Optional[List[OutputType]] = None,
         attributes: Optional[np.ndarray] = None,
         attribute_types: Optional[List[OutputType]] = None,
@@ -183,11 +182,13 @@ class DGAN:
         """Train DGAN model on data in numpy arrays.
 
         Training data is passed in 2 numpy arrays, one for attributes (2d) and
-        one for features (3d). This data should be in the original space and is
-        not transformed. If the data is already transformed into the internal
-        DGAN representation (continuous variable scaled to [0,1] or [-1,1] and
-        discrete variables one-hot or binary encoded), use the internal _train()
-        function instead of train_numpy().
+        one for features (3d), features may be a ragged array with variable
+        length sequences, and then it is a list of numpy arrays. This data
+        should be in the original space and is not transformed. If the data is
+        already transformed into the internal DGAN representation (continuous
+        variable scaled to [0,1] or [-1,1] and discrete variables one-hot or
+        binary encoded), use the internal _train() function instead of
+        train_numpy().
 
         In standard usage, attribute_types and feature_types may be provided on
         the first call to train() to setup the model structure. If not
@@ -199,7 +200,9 @@ class DGAN:
         Args:
             features: 3-d numpy array of time series features for the training,
                 size is (# of training examples) X max_sequence_len X (# of
-                features)
+                features) OR list of 2-d numpy arrays with one sequence per
+                numpy array, each numpy array should then have size seq_len X (#
+                of features) where seq_len <= max_sequence_len
             feature_types (Optional): Specification of Discrete or Continuous
                 type for each variable of the features. If None, assume
                 continuous variables for floats and integers, and discrete for
@@ -215,8 +218,17 @@ class DGAN:
                 passing *output params at initialization or because train_* was
                 called previously.
         """
+        # To make the rest of code simpler, ensure features is split into a a
+        # list of 2d numpy arrays, one element per sequence. That representation
+        # is basically needed for variable length sequences, and even for fixed
+        # length sequences, we switch to that for easier code. If we're looking
+        # for efficiency and memory improvements in the future, better handling
+        # of these objects is a good place to start.
+        if isinstance(features, np.ndarray):
+            features = [seq for seq in features]
+
         logging.info(
-            f"features shape={features.shape}, dtype={features.dtype}",
+            f"features length={len(features)}, first sequence shape={features[0].shape}, dtype={features[0].dtype}",
             extra={"user_log": True},
         )
         if attributes is not None:
@@ -226,20 +238,10 @@ class DGAN:
             )
 
         if attributes is not None:
-            if attributes.shape[0] != features.shape[0]:
+            if attributes.shape[0] != len(features):
                 raise InternalError(
                     "First dimension of attributes and features must be the same length, i.e., the number of training examples."  # noqa
                 )
-
-        if features.shape[1] != self.config.max_sequence_len:
-            raise ParameterError(
-                "The time dimension of the training data "
-                f"({features.shape[1]}) does not match "
-                "config.max_sequence_len "
-                f"({self.config.max_sequence_len}). This often happens when "
-                "the chosen config.df_style of wide or long does not match "
-                "the input data."
-            )
 
         if attributes is not None and attribute_types is None:
             # Automatically determine attribute types
@@ -255,6 +257,10 @@ class DGAN:
                     # behavior. And we can look into a better fix in the future,
                     # maybe using # of distinct values, and having an explicit
                     # integer type so we appropriately round the final output.
+
+                    # This snippet is only detecting types to construct
+                    # feature_types, not making any changes to elements of
+                    # features.
                     attributes[:, i].astype("float")
                     attribute_types.append(OutputType.CONTINUOUS)
                 except ValueError:
@@ -263,11 +269,16 @@ class DGAN:
         if feature_types is None:
             # Automatically determine feature types
             feature_types = []
-            for i in range(features.shape[2]):
+            for i in range(features[0].shape[1]):
                 try:
                     # Here we treat integer columns as continuous, see above
                     # comment.
-                    features[:, :, i].astype("float")
+
+                    # This snippet is only detecting types to construct
+                    # feature_types, not making any changes to elements of
+                    # features.
+                    for seq in features:
+                        seq[:, i].astype("float")
                     feature_types.append(OutputType.CONTINUOUS)
                 except ValueError:
                     feature_types.append(OutputType.DISCRETE)
@@ -310,11 +321,12 @@ class DGAN:
 
             # Find valid examples based on minimal number of nans.
             valid_examples = validation_check(
-                features[:, :, continuous_features_ind].astype("float")
+                features,
+                continuous_features_ind,
             )
 
             # Only use valid examples for the entire dataset.
-            features = features[valid_examples]
+            features = [seq for valid, seq in zip(valid_examples, features) if valid]
             if attributes is not None:
                 attributes = attributes[valid_examples]
 
@@ -324,37 +336,36 @@ class DGAN:
             )
             # Apply linear interpolations to replace nans for continuous
             # features:
-            features[:, :, continuous_features_ind] = nan_linear_interpolation(
-                features[:, :, continuous_features_ind].astype("float")
-            )
+            nan_linear_interpolation(features, continuous_features_ind)
 
         logger.info("Creating encoded array of features", extra={"user_log": True})
-        if self.additional_attribute_outputs:
-            (
-                internal_features,
-                internal_additional_attributes,
-            ) = transform(features, self.feature_outputs, variable_dim_index=2)
+        (
+            internal_features,
+            internal_additional_attributes,
+        ) = transform_features(
+            features, self.feature_outputs, self.config.max_sequence_len
+        )
 
+        if internal_additional_attributes is not None:
             if np.any(np.isnan(internal_additional_attributes)):
                 raise InternalError(
                     f"NaN found in internal additional attributes. {NAN_ERROR_MESSAGE}"
                 )
-
         else:
-            internal_features = transform(
-                features, self.feature_outputs, variable_dim_index=2
-            )
-            internal_additional_attributes = torch.Tensor(
-                np.full((internal_features.shape[0], 1), np.nan)
+            internal_additional_attributes = np.full(
+                (internal_features.shape[0], 1), np.nan, dtype=np.float32
             )
 
         logger.info("Creating encoded array of attributes", extra={"user_log": True})
-        internal_attributes = transform(
-            attributes,
-            self.attribute_outputs,
-            variable_dim_index=1,
-            num_examples=internal_features.shape[0],
-        )
+        if attributes is not None and self.attribute_outputs is not None:
+            internal_attributes = transform_attributes(
+                attributes,
+                self.attribute_outputs,
+            )
+        else:
+            internal_attributes = np.full(
+                (internal_features.shape[0], 1), np.nan, dtype=np.float32
+            )
 
         logger.info(
             f"internal_features shape={internal_features.shape}, dtype={internal_features.dtype}",
@@ -498,6 +509,7 @@ class DGAN:
 
                 self.data_frame_converter = _LongDataFrameConverter.create(
                     df,
+                    max_sequence_len=self.config.max_sequence_len,
                     attribute_columns=attribute_columns,
                     feature_columns=feature_columns,
                     example_id_column=example_id_column,
@@ -596,16 +608,25 @@ class DGAN:
             internal_features,
         ) = internal_data
 
-        attributes = inverse_transform(
-            internal_attributes, self.attribute_outputs, variable_dim_index=1
-        )
+        attributes = None
+        if internal_attributes is not None and self.attribute_outputs is not None:
+            attributes = inverse_transform_attributes(
+                internal_attributes,
+                self.attribute_outputs,
+            )
 
-        features = inverse_transform(
+        if internal_features is None:
+            raise InternalError(
+                "Received None instead of internal features numpy array"
+            )
+
+        features = inverse_transform_features(
             internal_features,
             self.feature_outputs,
-            variable_dim_index=2,
             additional_attributes=internal_additional_attributes,
         )
+        # Convert to list of numpy arrays to match primary input to train_numpy
+        features = [seq for seq in features]
 
         if n is not None:
             if attributes is None:
@@ -1188,13 +1209,15 @@ class _DataFrameConverter(abc.ABC):
 
     @abc.abstractmethod
     def invert(
-        self, attributes: Optional[np.ndarray], features: np.ndarray
+        self,
+        attributes: Optional[np.ndarray],
+        features: list[np.ndarray],
     ) -> pd.DataFrame:
         """Invert from DGAN input format back to DataFrame.
 
         Args:
             attributes: 2d numpy array of attributes
-            features: 3d numpy array of features
+            features: list of 2d numpy arrays
 
         Returns:
             DataFrame representing attributes and features in original format.
@@ -1327,10 +1350,10 @@ class _WideDataFrameConverter(_DataFrameConverter):
 
         features = np.expand_dims(df[self._feature_columns].to_numpy(), axis=-1)
 
-        return attributes, features
+        return attributes, [seq for seq in features]
 
     def invert(
-        self, attributes: Optional[np.ndarray], features: np.ndarray
+        self, attributes: Optional[np.ndarray], features: list[np.ndarray]
     ) -> pd.DataFrame:
         if self._attribute_columns:
             if attributes is None:
@@ -1338,11 +1361,11 @@ class _WideDataFrameConverter(_DataFrameConverter):
                     "Data converter with attribute columns expects attributes array, received None"
                 )
             data = np.concatenate(
-                (attributes, features.reshape(features.shape[0], features.shape[1])),
+                (attributes, np.vstack([seq.reshape((1, -1)) for seq in features])),
                 axis=1,
             )
         else:
-            data = features.reshape(features.shape[0], features.shape[1])
+            data = np.vstack([seq.reshape((1, -1)) for seq in features])
 
         df = pd.DataFrame(data, columns=self._attribute_columns + self._feature_columns)
 
@@ -1363,6 +1386,32 @@ class _WideDataFrameConverter(_DataFrameConverter):
         }
 
 
+def _add_generation_flag(
+    sequence: np.ndarray, generation_flag_index: int
+) -> np.ndarray:
+    """Adds column indicating continuing and end time points in sequence.
+
+    Args:
+        sequence: 2-d numpy array of a single sequence
+        generation_flag_index: index of column to insert
+
+    Returns:
+        New array including the generation flag column
+    """
+    # Generation flag is all True
+    flag_column = np.full((sequence.shape[0], 1), True)
+    # except last value is False to indicate the end of the sequence
+    flag_column[-1, 0] = False
+
+    return np.hstack(
+        (
+            sequence[:, :generation_flag_index],
+            flag_column,
+            sequence[:, generation_flag_index:],
+        )
+    )
+
+
 class _LongDataFrameConverter(_DataFrameConverter):
     """Convert "long" format DataFrames.
 
@@ -1381,6 +1430,7 @@ class _LongDataFrameConverter(_DataFrameConverter):
         attribute_types: List[OutputType],
         feature_types: List[OutputType],
         time_column_values: Optional[List[str]],
+        generation_flag_index: Optional[int] = None,
     ):
         super().__init__()
         self._attribute_columns = attribute_columns
@@ -1392,11 +1442,13 @@ class _LongDataFrameConverter(_DataFrameConverter):
         self._attribute_types = attribute_types
         self._feature_types = feature_types
         self._time_column_values = time_column_values
+        self._generation_flag_index = generation_flag_index
 
     @classmethod
     def create(
         cls,
         df: pd.DataFrame,
+        max_sequence_len: int,
         attribute_columns: Optional[List[str]] = None,
         feature_columns: Optional[List[str]] = None,
         example_id_column: Optional[str] = None,
@@ -1480,6 +1532,27 @@ class _LongDataFrameConverter(_DataFrameConverter):
         else:
             time_column_values = None
 
+        # generation_flag_index is the index in feature_types (and thus
+        # features) of the boolean variable indicating the end of sequence.
+        # generation_flag_index=None means there are no variable length
+        # sequences, so the indicator variable is not needed and no boolean
+        # feature is added.
+        generation_flag_index = None
+        if example_id_column:
+            id_counter = Counter(df[example_id_column])
+            has_variable_length_sequences = False
+            for item in id_counter.most_common():
+                if item[1] > max_sequence_len:
+                    raise DataError(
+                        f"Found sequence with length {item[1]}, longer than max_sequence_len={max_sequence_len}"
+                    )
+                elif item[1] < max_sequence_len:
+                    has_variable_length_sequences = True
+
+            if has_variable_length_sequences:
+                generation_flag_index = len(feature_types)
+                feature_types.append(OutputType.DISCRETE)
+
         return cls(
             attribute_columns=attribute_columns,
             feature_columns=feature_columns,
@@ -1490,6 +1563,7 @@ class _LongDataFrameConverter(_DataFrameConverter):
             attribute_types=attribute_types,
             feature_types=feature_types,
             time_column_values=time_column_values,
+            generation_flag_index=generation_flag_index,
         )
 
     @property
@@ -1515,13 +1589,10 @@ class _LongDataFrameConverter(_DataFrameConverter):
             # Use example_id_column to split into separate time series
             df_features = sorted_df[self._feature_columns]
 
-            features = np.stack(
-                list(
-                    df_features.groupby(sorted_df[self._example_id_column]).apply(
-                        pd.DataFrame.to_numpy
-                    )
-                ),
-                axis=0,
+            features = list(
+                df_features.groupby(sorted_df[self._example_id_column]).apply(
+                    pd.DataFrame.to_numpy
+                )
             )
 
             if self._attribute_columns:
@@ -1570,9 +1641,7 @@ class _LongDataFrameConverter(_DataFrameConverter):
         else:
             # No example_id column provided to create multiple examples, so we
             # create one example from all time points.
-            features = np.expand_dims(
-                sorted_df[self._feature_columns].to_numpy(), axis=0
-            )
+            features = [sorted_df[self._feature_columns].to_numpy()]
 
             # Check that attributes are the same for all rows (since they are
             # all implicitly in the same example)
@@ -1589,60 +1658,102 @@ class _LongDataFrameConverter(_DataFrameConverter):
             else:
                 attributes = None
 
+        if self._generation_flag_index is not None:
+            features = [
+                _add_generation_flag(seq, self._generation_flag_index)
+                for seq in features
+            ]
         return attributes, features
 
     def invert(
-        self, attributes: Optional[np.ndarray], features: np.ndarray
+        self,
+        attributes: Optional[np.ndarray],
+        features: list[np.ndarray],
     ) -> pd.DataFrame:
-        num_examples = features.shape[0]
-        num_time_points = features.shape[1]
-        num_features = features.shape[2]
+        sequences = []
+        for seq_index, seq in enumerate(features):
+            if self._generation_flag_index is not None:
+                # Remove generation flag and truncate sequences based on the values.
+                # The first value of False in the generation flag indicates the last
+                # time point.
+                try:
+                    first_false = np.min(
+                        np.argwhere(seq[:, self._generation_flag_index] == False)
+                    )
+                    # Include the time point with the first False in generation
+                    # flag
+                    seq = seq[: (first_false + 1), :]
+                except ValueError:
+                    # No False found in generation flag column, use all time
+                    # points
+                    pass
 
-        if num_features != len(self._feature_columns):
-            raise InternalError(
-                "Unable to invert features back to data frame, "
-                + f"converter expected {len(self._feature_columns)} features, "
-                + f"received numpy array with {features.shape[2]}"
-            )
+                # Remove the generation flag column
+                seq = np.delete(seq, self._generation_flag_index, axis=1)
 
-        # Reshape so each time point is its own row in a 2d array
-        long_features = features.reshape(-1, num_features)
-
-        if self._attribute_columns:
-            if attributes is None:
+            if seq.shape[1] != len(self._feature_columns):
                 raise InternalError(
-                    "Data converter with attribute columns expects attributes array, received None"
+                    "Unable to invert features back to data frame, "
+                    + f"converter expected {len(self._feature_columns)} features, "
+                    + f"received numpy array with {seq.shape[1]}"
                 )
-            # Repeat attribute rows for every time point in each example
-            long_attributes = np.repeat(attributes, num_time_points, axis=0)
 
-            df = pd.DataFrame(
-                np.hstack((long_attributes, long_features)),
-                columns=self._attribute_columns + self._feature_columns,
-            )
-        else:
-            df = pd.DataFrame(
-                long_features,
-                columns=self._feature_columns,
-            )
+            seq_column_parts = [seq]
+            if self._attribute_columns:
+                if attributes is None:
+                    raise InternalError(
+                        "Data converter with attribute columns expects attributes array, received None"
+                    )
+                seq_attributes = np.repeat(
+                    attributes[seq_index : (seq_index + 1), :], seq.shape[0], axis=0
+                )
+                seq_column_parts.append(seq_attributes)
 
-        # Convert discrete columns to int where possible.
-        df = _discrete_cols_to_int(df, self._discrete_columns)
+            if self._example_id_column:
+                # TODO: match example_id style of original data somehow
+                seq_column_parts.append(np.full((seq.shape[0], 1), seq_index))
+
+            if self._time_column:
+                if self._time_column_values is None:
+                    raise InternalError(
+                        "time_column is present, but not time_column_values"
+                    )
+                # TODO: do something better if time_column_values isn't long
+                # enough, for now we just repeat the time column values
+                values = [
+                    v
+                    for _, v in zip(
+                        range(seq.shape[0]), cycle(self._time_column_values)
+                    )
+                ]
+                seq_column_parts.append(np.array(values).reshape((-1, 1)))
+
+            sequences.append(np.hstack(seq_column_parts))
+
+        column_names = self._feature_columns + self._attribute_columns
 
         if self._example_id_column:
-            # Use [0,1,2,...] for example_id
-            # This may not match the style of the originally converted data
-            df[self._example_id_column] = np.repeat(
-                range(num_examples), num_time_points
-            )
-
+            column_names.append(self._example_id_column)
         if self._time_column:
-            if self._time_column_values is None:
-                raise InternalError(
-                    "time_column is present, but not time_column_values"
-                )
+            column_names.append(self._time_column)
 
-            df[self._time_column] = np.tile(self._time_column_values, num_examples)
+        df = pd.DataFrame(np.vstack(sequences), columns=column_names)
+
+        for c in df.columns:
+            try:
+                df[c] = df[c].astype("float64")
+            except ValueError:
+                continue
+            except TypeError:
+                continue
+
+        # Convert discrete columns to int where possible.
+        df = _discrete_cols_to_int(
+            df,
+            (self._discrete_columns),
+        )
+        if self._example_id_column:
+            df = _discrete_cols_to_int(df, [self._example_id_column])
 
         return df[self._df_column_order]
 
@@ -1657,6 +1768,7 @@ class _LongDataFrameConverter(_DataFrameConverter):
             "attribute_types": self._attribute_types,
             "feature_types": self._feature_types,
             "time_column_values": self._time_column_values,
+            "generation_flag_index": self._generation_flag_index,
         }
 
 
@@ -1666,7 +1778,7 @@ CONVERTER_CLASS_MAP = {
 }
 
 
-def find_max_consecutive_nans(array: np.array) -> int:
+def find_max_consecutive_nans(array: np.ndarray) -> int:
     """
     Returns the maximum number of consecutive NaNs in an array.
 
@@ -1685,12 +1797,13 @@ def find_max_consecutive_nans(array: np.array) -> int:
 
 
 def validation_check(
-    array: np.ndarray,
+    features: list[np.ndarray],
+    continuous_features_ind: list[int],
     invalid_examples_ratio_cutoff: float = 0.5,
     nans_ratio_cutoff: float = 0.1,
     consecutive_nans_max: int = 5,
     consecutive_nans_ratio_cutoff: float = 0.05,
-) -> np.array:
+) -> np.ndarray:
     """Checks if continuous features of examples are valid.
 
     Returns a 1-d numpy array of booleans with shape (#examples) indicating
@@ -1704,39 +1817,63 @@ def validation_check(
     these are omitted from training. If there are too many, later, we error out.
 
     Args:
-        array: 3-d numpy array of continuous features with
-        shape (#examples,max_sequence_length, #continuous features).
-        invalid_examples_ratio_cutoff: Error out if the invalid examples ratio in the dataset
-        is higher than this value.
-        nans_ratio_cutoff: If the percentage of nans for any continuous feature in an example
-        is greater than this value, the example is invalid.
-        consecutive_nans_max: If the maximum number of consecutive nans in a continuous
-        feature is greater than this number, then that example is invalid.
-        consecutive_nans_ratio_cutoff: If the maximum number of consecutive nans in a
-        continuous feature is greater than this ratio times the length of the example
-        (number samples), then the example is invalid.
+        features: list of 2-d numpy arrays, each element is a sequence of
+            possibly varying length
+        continuous_features_ind: list of indices of continuous features to
+            analyze, indexes the 2nd dimension of the sequence arrays in
+            features
+        invalid_examples_ratio_cutoff: Error out if the invalid examples ratio
+            in the dataset is higher than this value.
+        nans_ratio_cutoff: If the percentage of nans for any continuous feature
+           in an example is greater than this value, the example is invalid.
+        consecutive_nans_max: If the maximum number of consecutive nans in a
+           continuous feature is greater than this number, then that example is
+           invalid.
+        consecutive_nans_ratio_cutoff: If the maximum number of consecutive nans
+            in a continuous feature is greater than this ratio times the length of
+            the example (number samples), then the example is invalid.
 
     Returns:
-        valid_examples : 1-d numpy array of booleans indicating valid examples with
+        valid_examples: 1-d numpy array of booleans indicating valid examples with
         shape (#examples).
 
     """
     # Check for the nans ratio per examples and feature.
     # nan_ratio_feature is a 2-d numpy array of size (#examples,#features)
+    nan_ratio_feature = np.array(
+        [
+            [
+                np.mean(np.isnan(seq[:, ind].astype("float")))
+                for ind in continuous_features_ind
+            ]
+            for seq in features
+        ]
+    )
 
-    nan_ratio_feature = np.mean(np.isnan(array), axis=1)
     nan_ratio = nan_ratio_feature < nans_ratio_cutoff
 
     # Check for max number of consecutive NaN values per example and feature.
     # cons_nans_feature is a 2-d numpy array of size (#examples,#features)
-    cons_nans_feature = np.apply_along_axis(find_max_consecutive_nans, 1, array)
-    cons_nans = cons_nans_feature < min(
-        consecutive_nans_max,
-        max(2, int(consecutive_nans_ratio_cutoff * array.shape[1])),
+    cons_nans_feature = np.array(
+        [
+            [
+                find_max_consecutive_nans(seq[:, ind].astype("float"))
+                for ind in continuous_features_ind
+            ]
+            for seq in features
+        ]
     )
+    # With examples of variable sequence length, the threshold for allowable
+    # consecutive nans may be different for each example.
+    cons_nans_threshold = np.clip(
+        [consecutive_nans_ratio_cutoff * seq.shape[0] for seq in features],
+        a_min=2,
+        a_max=consecutive_nans_max,
+    ).reshape((-1, 1))
+    cons_nans = cons_nans_feature < cons_nans_threshold
 
     # The two above checks should pass for a valid example for all features, otherwise
-    #  the example is invalid.
+    # the example is invalid.
     valid_examples_per_feature = np.logical_and(nan_ratio, cons_nans)
     valid_examples = np.all(valid_examples_per_feature, axis=1)
 
@@ -1754,27 +1891,25 @@ def validation_check(
     return valid_examples
 
 
-def nan_linear_interpolation(arrays: np.ndarray) -> np.ndarray:
+def nan_linear_interpolation(
+    features: list[np.ndarray], continuous_features_ind: list[int]
+):
     """Replaces all NaNs via linear interpolation.
 
+    Changes numpy arrays in features in place.
+
     Args:
-        arrays: 3-d numpy array of continuous features, with shape
-        (#examples, max_sequence_length, #continuous features)
-
-    Returns:
-        arrays: 3-d numpy array where NaNs are replaced via
-        linear interpolation.
-
+        features: list of 2-d numpy arrays, each element is a sequence of shape
+            (sequence_len, #features)
+        continuous_features_ind: features to apply nan interpolation to, indexes
+            the 2nd dimension of the sequence arrays of features
     """
-    examples = arrays.shape[0]
-    features = arrays.shape[2]
-
-    for exp in range(examples):
-        for f in range(features):
-            array = arrays[exp, :, f]
-            if np.isnan(array).any():
-                nans = np.isnan(array)
+    for seq in features:
+        for ind in continuous_features_ind:
+            continuous_feature = seq[:, ind].astype("float")
+            is_nan = np.isnan(continuous_feature)
+            if is_nan.any():
                 ind_func = lambda z: z.nonzero()[0]  # noqa
-                array[nans] = np.interp(ind_func(nans), ind_func(~nans), array[~nans])
-
-    return arrays
+                seq[is_nan, ind] = np.interp(
+                    ind_func(is_nan), ind_func(~is_nan), continuous_feature[~is_nan]
+                )

@@ -1,6 +1,9 @@
 import itertools
 import os.path
 
+from collections import Counter
+from typing import Any, Optional, Sequence, Union
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -68,6 +71,37 @@ def config() -> DGANConfig:
     )
 
 
+def assert_attributes_features_shape(
+    attributes: Optional[np.ndarray],
+    features: list[np.ndarray],
+    attributes_shape: Optional[tuple[int, int]],
+    features_shape: tuple[int, int, int],
+):
+
+    if attributes_shape:
+        assert attributes is not None
+        assert attributes.shape == attributes_shape
+
+    assert len(features) == features_shape[0]
+    assert all(seq.shape == features_shape[1:] for seq in features)
+
+
+def assert_attributes_features(
+    attributes: Optional[np.ndarray],
+    features: list[np.ndarray],
+    expected_attributes: Optional[Union[np.ndarray, Sequence[Sequence[Any]]]],
+    expected_features: Union[
+        np.ndarray, list[np.ndarray], Sequence[Sequence[Sequence[Any]]]
+    ],
+):
+    if expected_attributes is not None:
+        assert attributes is not None
+        np.testing.assert_allclose(attributes, expected_attributes)
+
+    for f, ef in zip(features, expected_features):
+        np.testing.assert_allclose(f, ef)
+
+
 def test_discrete_cols_to_int():
     df = pd.DataFrame(
         data=zip(["1", "2", "3", "4"], ["one", "two", "three", "four"]),
@@ -118,23 +152,27 @@ def test_generate():
     # Check requesting various number of examples
     attributes, features = dg.generate_numpy(8)
 
-    assert attributes.shape == (8, 3)
-    assert features.shape == (8, 20, 2)
+    assert_attributes_features_shape(
+        attributes, features, attributes_shape=(8, 3), features_shape=(8, 20, 2)
+    )
 
     attributes, features = dg.generate_numpy(64)
 
-    assert attributes.shape == (64, 3)
-    assert features.shape == (64, 20, 2)
+    assert_attributes_features_shape(
+        attributes, features, attributes_shape=(64, 3), features_shape=(64, 20, 2)
+    )
 
     attributes, features = dg.generate_numpy(200)
 
-    assert attributes.shape == (200, 3)
-    assert features.shape == (200, 20, 2)
+    assert_attributes_features_shape(
+        attributes, features, attributes_shape=(200, 3), features_shape=(200, 20, 2)
+    )
 
     attributes, features = dg.generate_numpy(1)
 
-    assert attributes.shape == (1, 3)
-    assert features.shape == (1, 20, 2)
+    assert_attributes_features_shape(
+        attributes, features, attributes_shape=(1, 3), features_shape=(1, 20, 2)
+    )
 
     # Check passing noise vectors
 
@@ -142,9 +180,9 @@ def test_generate():
         attribute_noise=dg.attribute_noise_func(20),
         feature_noise=dg.feature_noise_func(20),
     )
-
-    assert attributes.shape == (20, 3)
-    assert features.shape == (20, 20, 2)
+    assert_attributes_features_shape(
+        attributes, features, attributes_shape=(20, 3), features_shape=(20, 20, 2)
+    )
 
 
 def test_generate_example_normalized():
@@ -181,13 +219,15 @@ def test_generate_example_normalized():
     )
     attributes, features = dg.generate_numpy(8)
 
-    assert attributes.shape == (8, 3)
-    assert features.shape == (8, 20, 2)
+    assert_attributes_features_shape(
+        attributes, features, attributes_shape=(8, 3), features_shape=(8, 20, 2)
+    )
 
     attributes, features = dg.generate_numpy(64)
 
-    assert attributes.shape == (64, 3)
-    assert features.shape == (64, 20, 2)
+    assert_attributes_features_shape(
+        attributes, features, attributes_shape=(64, 3), features_shape=(64, 20, 2)
+    )
 
 
 @pytest.mark.parametrize(
@@ -219,8 +259,9 @@ def test_train_numpy(
 
     attributes, features = dg.generate_numpy(18)
 
-    assert attributes.shape == (18, 2)
-    assert features.shape == (18, 20, 2)
+    assert_attributes_features_shape(
+        attributes, features, attributes_shape=(18, 2), features_shape=(18, 20, 2)
+    )
 
 
 @pytest.mark.parametrize(
@@ -248,8 +289,9 @@ def test_train_numpy_no_attributes_1(
 
     attributes, features = dg.generate_numpy(18)
 
-    assert attributes is None
-    assert features.shape == (18, 20, 2)
+    assert_attributes_features_shape(
+        attributes, features, attributes_shape=None, features_shape=(18, 20, 2)
+    )
 
 
 def test_train_numpy_no_attributes_2(config: DGANConfig):
@@ -263,8 +305,12 @@ def test_train_numpy_no_attributes_2(config: DGANConfig):
     )
 
     assert type(model_attributes_blank) == DGAN
-    assert synthetic_attributes is None
-    assert synthetic_features.shape == (n_samples, features.shape[1], features.shape[2])
+    assert_attributes_features_shape(
+        synthetic_attributes,
+        synthetic_features,
+        attributes_shape=None,
+        features_shape=(n_samples, features.shape[1], features.shape[2]),
+    )
 
     model_attributes_none = DGAN(config)
     model_attributes_none.train_numpy(attributes=None, features=features)
@@ -273,8 +319,12 @@ def test_train_numpy_no_attributes_2(config: DGANConfig):
     )
 
     assert type(model_attributes_none) == DGAN
-    assert synthetic_attributes is None
-    assert synthetic_features.shape == (n_samples, features.shape[1], features.shape[2])
+    assert_attributes_features_shape(
+        synthetic_attributes,
+        synthetic_features,
+        attributes_shape=None,
+        features_shape=(n_samples, features.shape[1], features.shape[2]),
+    )
 
 
 def test_train_numpy_batch_size_of_1(config: DGANConfig):
@@ -295,9 +345,13 @@ def test_train_numpy_batch_size_of_1(config: DGANConfig):
     )
 
     synthetic_attributes, synthetic_features = model.generate_numpy(11)
-    assert synthetic_attributes is not None
-    assert synthetic_attributes.shape == (11, 1)
-    assert synthetic_features.shape == (11, 20, 2)
+
+    assert_attributes_features_shape(
+        synthetic_attributes,
+        synthetic_features,
+        attributes_shape=(11, 1),
+        features_shape=(11, 20, 2),
+    )
 
 
 def test_train_dataframe_wide(config: DGANConfig):
@@ -704,24 +758,52 @@ def test_nan_linear_interpolation():
     # Inserting nans in different length and locations of a 3-d array.
     # np interpolation uses padding for values in the begining and the end of an array.
 
-    features = np.array(
-        [
-            [[0.0, 1.0, 2.0], [np.nan, 7, 5.0], [np.nan, 4, 8.0], [8.0, 10.0, np.nan]],
+    features = [
+        np.array(
+            [[0.0, 1.0, 2.0], [np.nan, 7, 5.0], [np.nan, 4, 8.0], [8.0, 10.0, np.nan]]
+        ),
+        np.array(
             [
                 [np.nan, 13.0, 14.0],
                 [np.nan, 16.0, 17.0],
                 [18.0, 19.0, 20.0],
                 [21.0, 22.0, 23.0],
-            ],
-        ]
-    )
+            ]
+        ),
+        np.array([[5.0, np.nan, 85.0], [np.nan, 10.0, 80.0], [5.0, 10.0, np.nan]]),
+    ]
+    # Note, the interpolation is linear if there is a value before and after the
+    # section of nans. For nans at the beginning or end of a sequence, the
+    # interpolation assumes a diff of 0 and uses the first/last non-nan value as
+    # a constant to replace the nans.
+    expected_features = [
+        np.array(
+            [
+                [0.0, 1.0, 2.0],
+                [8.0 / 3.0, 7.0, 5.0],
+                [16.0 / 3.0, 4.0, 8.0],
+                [8.0, 10.0, 8.0],
+            ]
+        ),
+        np.array(
+            [
+                [18.0, 13.0, 14.0],
+                [18.0, 16.0, 17.0],
+                [18.0, 19.0, 20.0],
+                [21.0, 22.0, 23.0],
+            ]
+        ),
+        np.array(
+            [[5.0, 10.0, 85.0], [5.0, 10.0, 80.0], [5.0, 10.0, 80.0]],
+        ),
+    ]
 
-    features = nan_linear_interpolation(features)
+    nan_linear_interpolation(list(features), continuous_features_ind=[0, 1, 2])
 
-    assert (features[0, 1:3, 0] == np.array([8 / 3, (8 / 3 + 8) / 2])).all()
-    assert (np.diff(features[0, 2:, 2]) == 0).all()
-    assert (np.diff(features[1, 0:3, 0]) == 0).all()
-    assert np.isnan(features).sum() == 0
+    assert all(np.isnan(seq).sum() == 0 for seq in features)
+
+    for f, ef in zip(features, expected_features):
+        np.testing.assert_allclose(f, ef)
 
 
 def test_validation_check():
@@ -739,7 +821,7 @@ def test_validation_check():
     invalid_examples = np.random.rand(n, 20, 3)
     invalid_examples[0:26, 2:4, 2] = np.nan
     with pytest.raises(DataError, match="NaN"):
-        validation_check(invalid_examples)
+        validation_check(list(invalid_examples), continuous_features_ind=[0, 1, 2])
 
     # Set nans for various features. Features 1 and 2 have fixable invalid examples,
     # while feature 0 has 10 invalid examples which should be dropped (high consecutive nans)
@@ -748,9 +830,14 @@ def test_validation_check():
     invalid_examples_dropped[20:30, 10:20, 0] = np.nan
     invalid_examples_dropped[30:40, 15, 1] = np.nan
 
-    test_boolean = np.array([True] * n)
-    test_boolean[20:30] = False
-    assert (validation_check(invalid_examples_dropped) == test_boolean).all()
+    expected = np.array([True] * n)
+    expected[20:30] = False
+    np.testing.assert_equal(
+        validation_check(
+            list(invalid_examples_dropped), continuous_features_ind=[0, 1, 2]
+        ),
+        expected,
+    )
 
     # inserting small number of nans for each feature, non should be dropped during
     # the check.
@@ -758,7 +845,9 @@ def test_validation_check():
     valid_examples[5:7, 2, 2] = np.nan
     valid_examples[15:20, 15, 0] = np.nan
     valid_examples[-5:, 8, 1] = np.nan
-    assert validation_check(valid_examples).all()
+    assert validation_check(
+        list(valid_examples), continuous_features_ind=[0, 1, 2]
+    ).all()
 
 
 def test_train_numpy_nans(config: DGANConfig):
@@ -992,14 +1081,17 @@ def test_train_numpy_with_strings(config: DGANConfig):
 
     synthetic_attributes, synthetic_features = dg.generate_numpy(5)
 
-    assert synthetic_attributes is None
-    assert synthetic_features.shape == (5, 5, 3)
+    assert_attributes_features_shape(
+        synthetic_attributes,
+        synthetic_features,
+        attributes_shape=None,
+        features_shape=(5, 5, 3),
+    )
 
     expected_categories = set(["aa", "bb", "cc"])
 
-    assert np.all(
-        [x in expected_categories for x in synthetic_features[:, :, 0].flatten()]
-    )
+    for seq in synthetic_features:
+        assert all([x in expected_categories for x in seq[:, 0]])
 
 
 def test_train_numpy_max_sequence_len_error(config: DGANConfig):
@@ -1052,11 +1144,13 @@ def test_wide_data_frame_converter1(df_wide):
     )
     attributes, features = converter.convert(df_wide)
 
-    assert attributes.shape == (6, 2)
-    assert features.shape == (6, 3, 1)
+    assert_attributes_features_shape(
+        attributes, features, attributes_shape=(6, 2), features_shape=(6, 3, 1)
+    )
 
-    np.testing.assert_allclose(attributes, expected_attributes)
-    np.testing.assert_allclose(features, expected_features)
+    assert_attributes_features(
+        attributes, features, expected_attributes, expected_features
+    )
 
     # Check invert produces original df
     df_out = converter.invert(attributes, features)
@@ -1090,11 +1184,16 @@ def test_wide_data_frame_converter2(df_wide):
     )
     attributes, features = converter.convert(df_wide)
 
-    assert attributes.shape == (6, 1)
-    assert features.shape == (6, 3, 1)
+    assert_attributes_features_shape(
+        attributes, features, attributes_shape=(6, 1), features_shape=(6, 3, 1)
+    )
 
-    np.testing.assert_allclose(attributes, expected_attributes)
-    np.testing.assert_allclose(features, expected_features)
+    assert_attributes_features(
+        attributes,
+        features,
+        expected_attributes,
+        expected_features,
+    )
 
     # Check invert produces original df
     df_out = converter.invert(attributes, features)
@@ -1119,10 +1218,16 @@ def test_wide_data_frame_converter_no_attributes(df_wide):
     )
     attributes, features = converter.convert(df_wide)
 
-    assert attributes is None
-    assert features.shape == (6, 3, 1)
+    assert_attributes_features_shape(
+        attributes, features, attributes_shape=None, features_shape=(6, 3, 1)
+    )
 
-    np.testing.assert_allclose(features, expected_features)
+    assert_attributes_features(
+        attributes,
+        features,
+        expected_attributes=None,
+        expected_features=expected_features,
+    )
 
     # Check invert produces original df
     df_out = converter.invert(attributes, features)
@@ -1145,10 +1250,16 @@ def test_wide_data_frame_converter_no_attributes_no_column_name(df_wide):
     converter = _WideDataFrameConverter.create(df_wide)
     attributes, features = converter.convert(df_wide)
 
-    assert attributes is None
-    assert features.shape == (6, 3, 1)
+    assert_attributes_features_shape(
+        attributes, features, attributes_shape=None, features_shape=(6, 3, 1)
+    )
 
-    np.testing.assert_allclose(features, expected_features)
+    assert_attributes_features(
+        attributes,
+        features,
+        expected_attributes=None,
+        expected_features=expected_features,
+    )
 
     # Check invert produces original df
     df_out = converter.invert(attributes, features)
@@ -1173,8 +1284,12 @@ def test_wide_data_frame_converter_save_and_load(df_wide):
 
     attributes, features = loaded_converter.convert(df_wide)
 
-    np.testing.assert_allclose(attributes, expected_attributes)
-    np.testing.assert_allclose(features, expected_features)
+    assert_attributes_features(
+        attributes,
+        features,
+        expected_attributes,
+        expected_features,
+    )
 
     df = loaded_converter.invert(attributes, features)
 
@@ -1220,6 +1335,7 @@ def test_long_data_frame_converter1(df_long):
 
     converter = _LongDataFrameConverter.create(
         df_long,
+        max_sequence_len=3,
         attribute_columns=["a1", "a2"],
         feature_columns=["f1", "f2", "f3"],
         example_id_column="example_id",
@@ -1228,26 +1344,44 @@ def test_long_data_frame_converter1(df_long):
     )
     attributes, features = converter.convert(df_long)
 
-    assert attributes.shape == (2, 2)
-    assert features.shape == (2, 3, 3)
+    assert_attributes_features_shape(
+        attributes,
+        features,
+        attributes_shape=(2, 2),
+        features_shape=(2, 3, 3),
+    )
 
-    np.testing.assert_allclose(attributes, expected_attributes)
-    np.testing.assert_allclose(features, expected_features)
+    assert_attributes_features(
+        attributes,
+        features,
+        expected_attributes,
+        expected_features,
+    )
 
     # Check works the same if feature column param is omitted
     converter = _LongDataFrameConverter.create(
         df_long,
+        max_sequence_len=3,
         attribute_columns=["a1", "a2"],
         example_id_column="example_id",
         time_column="time",
         discrete_columns=["a1"],
     )
     attributes, features = converter.convert(df_long)
-    assert attributes.shape == (2, 2)
-    assert features.shape == (2, 3, 3)
 
-    np.testing.assert_allclose(attributes, expected_attributes)
-    np.testing.assert_allclose(features, expected_features)
+    assert_attributes_features_shape(
+        attributes,
+        features,
+        attributes_shape=(2, 2),
+        features_shape=(2, 3, 3),
+    )
+
+    assert_attributes_features(
+        attributes,
+        features,
+        expected_attributes,
+        expected_features,
+    )
 
     # Check the inverse returns the original df
     df_out = converter.invert(attributes, features)
@@ -1279,6 +1413,7 @@ def test_long_data_frame_converter2(df_long):
 
     converter = _LongDataFrameConverter.create(
         df_long,
+        max_sequence_len=3,
         attribute_columns=["a1", "a2"],
         feature_columns=["f1", "f2", "f3"],
         example_id_column="example_id",
@@ -1286,26 +1421,43 @@ def test_long_data_frame_converter2(df_long):
     )
     attributes, features = converter.convert(df_long)
 
-    assert attributes.shape == (2, 2)
-    assert features.shape == (2, 3, 3)
+    assert_attributes_features_shape(
+        attributes,
+        features,
+        attributes_shape=(2, 2),
+        features_shape=(2, 3, 3),
+    )
 
-    np.testing.assert_allclose(attributes, expected_attributes)
-    np.testing.assert_allclose(features, expected_features)
+    assert_attributes_features(
+        attributes,
+        features,
+        expected_attributes,
+        expected_features,
+    )
 
     # Check works the same if feature column param is omitted
     converter = _LongDataFrameConverter.create(
         df_long,
+        max_sequence_len=3,
         attribute_columns=["a1", "a2"],
         example_id_column="example_id",
         discrete_columns=["a1"],
     )
     attributes, features = converter.convert(df_long)
 
-    assert attributes.shape == (2, 2)
-    assert features.shape == (2, 3, 3)
+    assert_attributes_features_shape(
+        attributes,
+        features,
+        attributes_shape=(2, 2),
+        features_shape=(2, 3, 3),
+    )
 
-    np.testing.assert_allclose(attributes, expected_attributes)
-    np.testing.assert_allclose(features, expected_features)
+    assert_attributes_features(
+        attributes,
+        features,
+        expected_attributes,
+        expected_features,
+    )
 
     # Check the inverse returns the original df
     df_out = converter.invert(attributes, features)
@@ -1337,6 +1489,7 @@ def test_long_data_frame_converter3(df_long):
 
     converter = _LongDataFrameConverter.create(
         df_long,
+        max_sequence_len=6,
         attribute_columns=["a1", "a2"],
         feature_columns=["f1", "f2", "f3"],
         time_column="time",
@@ -1344,26 +1497,42 @@ def test_long_data_frame_converter3(df_long):
     )
     attributes, features = converter.convert(df_long)
 
-    assert attributes.shape == (1, 2)
-    assert features.shape == (1, 6, 3)
+    assert_attributes_features_shape(
+        attributes,
+        features,
+        attributes_shape=(1, 2),
+        features_shape=(1, 6, 3),
+    )
 
-    np.testing.assert_allclose(attributes, expected_attributes)
-    np.testing.assert_allclose(features, expected_features)
+    assert_attributes_features(
+        attributes,
+        features,
+        expected_attributes,
+        expected_features,
+    )
 
     # Check works the same if feature column param is omitted
     converter = _LongDataFrameConverter.create(
         df_long,
+        max_sequence_len=6,
         attribute_columns=["a1", "a2"],
         time_column="time",
         discrete_columns=["a1"],
     )
     attributes, features = converter.convert(df_long)
+    assert_attributes_features_shape(
+        attributes,
+        features,
+        attributes_shape=(1, 2),
+        features_shape=(1, 6, 3),
+    )
 
-    assert attributes.shape == (1, 2)
-    assert features.shape == (1, 6, 3)
-
-    np.testing.assert_allclose(attributes, expected_attributes)
-    np.testing.assert_allclose(features, expected_features)
+    assert_attributes_features(
+        attributes,
+        features,
+        expected_attributes,
+        expected_features,
+    )
 
     # Check the inverse returns the original df
     df_out = converter.invert(attributes, features)
@@ -1398,31 +1567,49 @@ def test_long_data_frame_converter4(config, df_long):
 
     converter = _LongDataFrameConverter.create(
         df_long,
+        max_sequence_len=6,
         attribute_columns=["a1", "a2"],
         feature_columns=["f1", "f2", "f3"],
         discrete_columns=["a1"],
     )
     attributes, features = converter.convert(df_long)
 
-    assert attributes.shape == (1, 2)
-    assert features.shape == (1, 6, 3)
+    assert_attributes_features_shape(
+        attributes,
+        features,
+        attributes_shape=(1, 2),
+        features_shape=(1, 6, 3),
+    )
 
-    np.testing.assert_allclose(attributes, expected_attributes)
-    np.testing.assert_allclose(features, expected_features)
+    assert_attributes_features(
+        attributes,
+        features,
+        expected_attributes,
+        expected_features,
+    )
 
     # Check works the same if feature column param is omitted
     converter = _LongDataFrameConverter.create(
         df_long,
+        max_sequence_len=6,
         attribute_columns=["a1", "a2"],
         discrete_columns=["a1"],
     )
     attributes, features = converter.convert(df_long)
 
-    assert attributes.shape == (1, 2)
-    assert features.shape == (1, 6, 3)
+    assert_attributes_features_shape(
+        attributes,
+        features,
+        attributes_shape=(1, 2),
+        features_shape=(1, 6, 3),
+    )
 
-    np.testing.assert_allclose(attributes, expected_attributes)
-    np.testing.assert_allclose(features, expected_features)
+    assert_attributes_features(
+        attributes,
+        features,
+        expected_attributes,
+        expected_features,
+    )
 
     # Check the inverse returns the original df
     df_out = converter.invert(attributes, features)
@@ -1447,6 +1634,7 @@ def test_long_data_frame_converter_extra_cols(df_long):
 
     converter = _LongDataFrameConverter.create(
         df_long,
+        max_sequence_len=3,
         attribute_columns=["a1", "a2"],
         feature_columns=["f1", "f2", "f3"],
         example_id_column="example_id",
@@ -1454,11 +1642,19 @@ def test_long_data_frame_converter_extra_cols(df_long):
     )
     attributes, features = converter.convert(df_long)
 
-    assert attributes.shape == (2, 2)
-    assert features.shape == (2, 3, 3)
+    assert_attributes_features_shape(
+        attributes,
+        features,
+        attributes_shape=(2, 2),
+        features_shape=(2, 3, 3),
+    )
 
-    np.testing.assert_allclose(attributes, expected_attributes)
-    np.testing.assert_allclose(features, expected_features)
+    assert_attributes_features(
+        attributes,
+        features,
+        expected_attributes,
+        expected_features,
+    )
 
     # Check the inverse returns the original df
     df_out = converter.invert(attributes, features)
@@ -1478,6 +1674,7 @@ def test_long_data_frame_converter_attribute_errors(df_long):
 
     converter = _LongDataFrameConverter.create(
         df_long,
+        max_sequence_len=3,
         attribute_columns=["a1", "a2"],
         feature_columns=["f1", "f2", "f3"],
         example_id_column="example_id",
@@ -1489,6 +1686,7 @@ def test_long_data_frame_converter_attribute_errors(df_long):
     # Same if we don't use example_id where attributes should be constant
     converter = _LongDataFrameConverter.create(
         df_long,
+        max_sequence_len=6,
         attribute_columns=["a1", "a2"],
         feature_columns=["f1", "f2", "f3"],
         discrete_columns=["a1"],
@@ -1509,13 +1707,14 @@ def test_long_data_frame_converter_mixed_feature_types(df_long):
 
     converter = _LongDataFrameConverter.create(
         df_long,
+        max_sequence_len=3,
         attribute_columns=["a1", "a2"],
         feature_columns=["f1", "f2", "f3"],
         example_id_column="example_id",
     )
 
     _, features = converter.convert(df_long)
-    assert features.dtype == "float64"
+    assert all(seq.dtype == "float64" for seq in features)
 
 
 def test_long_data_frame_converter_example_id_object(df_long):
@@ -1530,6 +1729,7 @@ def test_long_data_frame_converter_example_id_object(df_long):
 
     converter = _LongDataFrameConverter.create(
         df_long,
+        max_sequence_len=3,
         attribute_columns=["a1", "a2"],
         feature_columns=["f1", "f2", "f3"],
         example_id_column="example_id",
@@ -1538,7 +1738,7 @@ def test_long_data_frame_converter_example_id_object(df_long):
     attributes, features = converter.convert(df_long)
     assert attributes is not None
     assert attributes.dtype == "float64"
-    assert features.dtype == "float64"
+    assert all(seq.dtype == "float64" for seq in features)
 
 
 def test_long_data_frame_converter_example_id_float():
@@ -1560,19 +1760,65 @@ def test_long_data_frame_converter_example_id_float():
 
     converter = _LongDataFrameConverter.create(
         df_long,
+        max_sequence_len=2,
         example_id_column="example_id",
         time_column="time",
     )
 
     attributes, features = converter.convert(df_long)
-    assert attributes is None
-    assert features.dtype == "float64"
-    assert features.shape == (2, 2, 1)
+    assert_attributes_features_shape(
+        attributes,
+        features,
+        attributes_shape=None,
+        features_shape=(2, 2, 1),
+    )
+
+    assert all(seq.dtype == "float64" for seq in features)
+
+
+def test_long_data_frame_converter_variable_length():
+    df_long = pd.DataFrame(
+        {
+            "example_id": ["a", "b", "b", "c", "c", "c"],
+            "f": [2.0, 2.5, 3.0, 1.0, 1.5, 4.0],
+        }
+    )
+
+    expected_features = [
+        np.array([[2.0, 0.0]]),
+        np.array([[2.5, 1.0], [3.0, 0.0]]),
+        np.array([[1.0, 1.0], [1.5, 1.0], [4.0, 0.0]]),
+    ]
+    converter = _LongDataFrameConverter.create(
+        df_long,
+        max_sequence_len=3,
+        example_id_column="example_id",
+    )
+
+    attributes, features = converter.convert(df_long)
+    assert converter._feature_types == [OutputType.CONTINUOUS, OutputType.DISCRETE]
+
+    assert_attributes_features(
+        attributes,
+        features,
+        expected_attributes=None,
+        expected_features=expected_features,
+    )
+
+
+def test_long_data_frame_converter_variable_length_error(df_long):
+    with pytest.raises(DataError):
+        _LongDataFrameConverter.create(
+            df_long,
+            max_sequence_len=1,
+            example_id_column="example_id",
+        )
 
 
 def test_long_data_frame_converter_save_and_load(df_long):
     converter = _LongDataFrameConverter.create(
         df_long,
+        max_sequence_len=3,
         attribute_columns=["a1", "a2"],
         feature_columns=["f1", "f2", "f3"],
         example_id_column="example_id",
@@ -1590,8 +1836,48 @@ def test_long_data_frame_converter_save_and_load(df_long):
 
     attributes, features = loaded_converter.convert(df_long)
 
-    np.testing.assert_allclose(attributes, expected_attributes)
-    np.testing.assert_allclose(features, expected_features)
+    assert_attributes_features(
+        attributes,
+        features,
+        expected_attributes,
+        expected_features,
+    )
+
+    df = loaded_converter.invert(attributes, features)
+
+    assert_frame_equal(df, expected_df)
+
+
+def test_long_data_frame_converter_save_and_load_variable_length(df_long):
+    # Remove first row so the first example has 2 time points and the second
+    # example has 3 time points
+    df_long = df_long[1:]
+    converter = _LongDataFrameConverter.create(
+        df_long,
+        max_sequence_len=5,
+        attribute_columns=["a1", "a2"],
+        feature_columns=["f1", "f2", "f3"],
+        example_id_column="example_id",
+        time_column="time",
+        discrete_columns=["a1"],
+    )
+
+    expected_attributes, expected_features = converter.convert(df_long)
+
+    expected_df = converter.invert(expected_attributes, expected_features)
+
+    state = converter.state_dict()
+
+    loaded_converter = _DataFrameConverter.load_from_state_dict(state)
+
+    attributes, features = loaded_converter.convert(df_long)
+
+    assert_attributes_features(
+        attributes,
+        features,
+        expected_attributes,
+        expected_features,
+    )
 
     df = loaded_converter.invert(attributes, features)
 
@@ -1648,8 +1934,12 @@ def test_save_and_load(
         attribute_noise=attribute_noise, feature_noise=feature_noise
     )
 
-    np.testing.assert_allclose(attributes, expected_attributes)
-    np.testing.assert_allclose(features, expected_features)
+    assert_attributes_features(
+        attributes,
+        features,
+        expected_attributes,
+        expected_features,
+    )
 
 
 @pytest.mark.parametrize(
@@ -1698,10 +1988,12 @@ def test_save_and_load_no_attributes(
         attribute_noise=attribute_noise, feature_noise=feature_noise
     )
 
-    assert attributes is None
-    assert expected_attributes is None
-    assert features.shape == expected_features.shape
-    np.testing.assert_allclose(features, expected_features)
+    assert_attributes_features(
+        attributes,
+        features,
+        expected_attributes=expected_attributes,
+        expected_features=expected_features,
+    )
 
 
 def test_save_and_load_dataframe_with_attributes(config: DGANConfig, tmp_path):
@@ -1888,3 +2180,43 @@ def test_dataframe_long_one_and_partial_example(config: DGANConfig):
             df_style=DfStyle.LONG,
             discrete_columns=["a"],
         )
+
+
+def test_dataframe_variable_sequences(config: DGANConfig):
+    # Variable length sequences that dgan should automatically pad to
+    # max_sequence_len
+
+    # Build dataframe of variable length sequences
+    rows = []
+    for id, seq_length in enumerate([3, 6, 5, 1, 1, 8, 8, 3]):
+        a1 = np.random.choice(["x", "y", "z"])
+        for _ in range(seq_length):
+            rows.append(
+                (
+                    id,
+                    a1,
+                    np.random.random(),
+                    np.random.choice(["foo", "bar"]),
+                )
+            )
+    df = pd.DataFrame(rows, columns=["example_id", "a1", "f1", "f2"])
+
+    config.max_sequence_len = 8
+    config.sample_len = 1
+    config.epochs = 1
+
+    dg = DGAN(config=config)
+
+    dg.train_dataframe(
+        df=df,
+        df_style=DfStyle.LONG,
+        example_id_column="example_id",
+        attribute_columns=["a1"],
+    )
+
+    df_synth = dg.generate_dataframe(3)
+    assert df.shape[1] == df_synth.shape[1]
+    assert all(str(x) == str(y) for x, y in zip(df_synth.columns, df.columns))
+
+    for count in Counter(df_synth["example_id"]).most_common():
+        assert 1 <= count[1] <= 8

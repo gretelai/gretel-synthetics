@@ -9,15 +9,17 @@ from gretel_synthetics.timeseries_dgan.config import Normalization
 from gretel_synthetics.timeseries_dgan.transformations import (
     BinaryEncodedOutput,
     ContinuousOutput,
-    inverse_transform,
+    inverse_transform_attributes,
+    inverse_transform_features,
     OneHotEncodedOutput,
     rescale,
     rescale_inverse,
-    transform,
+    transform_attributes,
+    transform_features,
 )
 
 
-def assert_array_equal(a: np.array, b: np.array):
+def assert_array_equal(a: np.ndarray, b: np.ndarray):
     """Custom assert to handle float and object numpy arrays with nans.
 
     Treats nan as a "normal" number where nan == nan is True.
@@ -290,6 +292,64 @@ def test_rescale_and_inverse_by_example():
     np.testing.assert_allclose(inversed, original)
 
 
+def test_transform_features_variable_length_example_scaling():
+    # Var 0 has no overall scaling (since global min=0.0, max=1.0), but per
+    # example scaling. Var 1 has overall scaling and per example scaling.
+    outputs = [
+        ContinuousOutput(
+            "a",
+            Normalization.ZERO_ONE,
+            apply_feature_scaling=True,
+            apply_example_scaling=True,
+            global_min=0.0,
+            global_max=1.0,
+        ),
+        ContinuousOutput(
+            "b", Normalization.ZERO_ONE, True, True, global_min=3.0, global_max=7.0
+        ),
+    ]
+    input = [
+        # Parenthesis for variable 1 is the global scaled version of the
+        # min/max.
+        # Example 0:
+        #  Var 0: min=0.3, max=0.5
+        #  Var 1: min=5.0 (0.5), max=7.0 (1.0)
+        np.array([[0.5, 5.0], [0.35, 6.0], [0.3, 7.0]]),
+        # Example 1:
+        #  Var 0: min=0.5, max=0.5
+        #  Var 1: min=3.0 (0.0), max=3.0 (0.0)
+        np.array([[0.5, 3.0]]),
+        # Example 2:
+        #  Var 0: min=0.6, max=0.7
+        #  Var 1: min=4.0 (0.25), max=6.5 (0.875)
+        np.array([[0.7, 4.0], [0.7, 6.0], [0.7, 5.5], [0.6, 6.5]]),
+    ]
+    expected_transformed = np.array(
+        [
+            [[1.0, 0.0], [0.25, 0.5], [0.0, 1.0], [0.0, 0.0]],
+            [[0.0, 0.0], [0.0, 0.0], [0.0, 0.0], [0.0, 0.0]],
+            [[1.0, 0.0], [1.0, 0.8], [1.0, 0.6], [0.0, 1.0]],
+        ]
+    )
+
+    # Columns: Var 0 midpoint, Var 0 halfrange, Var 1 midpoint, Var 1 halfrange
+    expected_additional_attributes = np.array(
+        [
+            [0.4, 0.1, 0.75, 0.25],
+            [0.5, 0.0, 0.0, 0.0],
+            [0.65, 0.05, 0.5625, 0.3125],
+        ]
+    )
+
+    transformed, additional_attributes = transform_features(
+        input, outputs, max_sequence_len=4
+    )
+
+    np.testing.assert_allclose(transformed, expected_transformed)
+    assert additional_attributes is not None
+    np.testing.assert_allclose(additional_attributes, expected_additional_attributes)
+
+
 @pytest.mark.parametrize(
     "normalization", [Normalization.ZERO_ONE, Normalization.MINUSONE_ONE]
 )
@@ -320,12 +380,13 @@ def test_transform_and_inverse_attributes(normalization):
         ),
     ]
 
-    transformed = transform(attributes, outputs, 1)
+    transformed = transform_attributes(attributes, outputs)
     # 3 continuous + 2 for one hot encoded + 4 for binary encoded
     # (No idea why category encoders needs 4 bits to encode 5 unique values)
     assert transformed.shape == (n, 9)
 
-    inversed = inverse_transform(transformed, outputs, 1)
+    inversed = inverse_transform_attributes(transformed, outputs)
+    assert inversed is not None
     np.testing.assert_allclose(inversed, attributes, rtol=1e-04)
 
 
@@ -352,11 +413,14 @@ def test_transform_and_inverse_features(normalization):
     for index, output in enumerate(outputs):
         output.fit(features[:, :, index].flatten())
 
-    transformed, additional_attributes = transform(features, outputs, 2)
+    transformed, additional_attributes = transform_features(
+        list(features), outputs, max_sequence_len=10
+    )
     assert transformed.shape == (100, 10, 5)
+    assert additional_attributes is not None
     assert additional_attributes.shape == (100, 4)
 
-    inversed = inverse_transform(transformed, outputs, 2, additional_attributes)
+    inversed = inverse_transform_features(transformed, outputs, additional_attributes)
     # TODO: 1e-04 seems too lax of a tolerance for float32, but values very
     # close to 0.0 are failing the check at 1e-05, so going with this for now to
     # reduce flakiness. Could be something we can do in the calculations to have
