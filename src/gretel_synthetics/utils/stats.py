@@ -3,6 +3,7 @@ Generates correlation reports between data sets.
 """
 
 import math
+import uuid
 import warnings
 
 from typing import List, Tuple
@@ -320,6 +321,10 @@ def calculate_correlation(
     if nominal_columns is None:
         nominal_columns = list()
 
+    df_cp = df.copy()
+    # Replace NaNs with NaN proxy only for nominal columns. This helps with more consistency in FCS regardless of the generated row counts.
+    df_cp[nominal_columns] = df_cp[nominal_columns].fillna(f"gretel-{uuid.uuid4().hex}")
+
     corr = np.zeros((len(columns), len(columns)))
     single_value_columns = []
     numeric_columns = []
@@ -328,25 +333,28 @@ def calculate_correlation(
 
     # Set up all the column groupings needed for correlation
     for i, c in enumerate(columns):
-        if df[c].nunique() == 1:
+        if df_cp[c].nunique() == 1:
             single_value_columns.append(c)
         elif c not in nominal_columns:
-            if df[c].dtype == "object":
+            if df_cp[c].dtype == "object":
                 nominal_columns.append(c)
             else:
                 numeric_columns.append(c)
 
         column_to_index[c] = i
 
+    # Replace NaNs with NaN proxy one more time since the nominal column might have updated.
+    df_cp[nominal_columns] = df_cp[nominal_columns].fillna(f"gretel-{uuid.uuid4().hex}")
     nominal = [x for x in nominal_columns if x not in single_value_columns]
-    df_rows = df.shape[0]
+    df_rows = df_cp.shape[0]
     high_unique_nominal = []
     completely_unique_nominal = []
     not_high_unique_nominal = []
+    uniqueness_ratio = df_cp[c].nunique() / df_rows
     for c in nominal:
-        if df[c].nunique() / df_rows == 1:
+        if uniqueness_ratio == 1:
             completely_unique_nominal.append(c)
-        elif df[c].nunique() / df_rows > UNIQUENESS_THRESHOLD:
+        elif uniqueness_ratio > UNIQUENESS_THRESHOLD:
             high_unique_nominal.append(c)
         else:
             not_high_unique_nominal.append(c)
@@ -365,11 +373,11 @@ def calculate_correlation(
             if x == y:
                 corr[y_index][x_index] = 1.0
             # Edge case, guard against ValueError in math.log when the other column is empty
-            elif df[y].nunique() == 0:
+            elif df_cp[y].nunique() == 0:
                 corr[y_index][x_index] = 0.0
             else:
-                corr[y_index][x_index] = math.log(df[y].nunique()) / math.log(
-                    df[x].nunique()
+                corr[y_index][x_index] = math.log(df_cp[y].nunique()) / math.log(
+                    df_cp[x].nunique()
                 )
 
     for x in single_value_columns:
@@ -380,7 +388,7 @@ def calculate_correlation(
 
     # Do nominal-nominal exluding any that are 100% unique (Theil's U)
     scores = Parallel(n_jobs=job_count)(
-        delayed(calculate_theils_u)(df[field1], df[field2])
+        delayed(calculate_theils_u)(df_cp[field1], df_cp[field2])
         for field1 in notcompletely_unique_nominal
         for field2 in notcompletely_unique_nominal
     )
@@ -398,7 +406,7 @@ def calculate_correlation(
 
     # Do "not_high_unique_nominal with numeric" (Correlation Ratio)
     scores = Parallel(n_jobs=job_count)(
-        delayed(calculate_correlation_ratio)(df[field1], df[field2], opt)
+        delayed(calculate_correlation_ratio)(df_cp[field1], df_cp[field2], opt)
         for field1 in not_high_unique_nominal
         for field2 in numeric_columns
     )
@@ -418,7 +426,7 @@ def calculate_correlation(
     # comparing the mean within buckets to the mean overall to give unstable, over inflated
     # correlation values.  Using Theil's U instead gives a much more realistic score
     scores = Parallel(n_jobs=job_count)(
-        delayed(calculate_theils_u)(df[field1], df[field2])
+        delayed(calculate_theils_u)(df_cp[field1], df_cp[field2])
         for field1 in high_unique_nominal
         for field2 in numeric_columns
     )
@@ -430,19 +438,6 @@ def calculate_correlation(
             corr[field2_index][field1_index] = scores[i]
             i += 1
 
-    scores = Parallel(n_jobs=job_count)(
-        delayed(calculate_theils_u)(df[field1], df[field2])
-        for field2 in high_unique_nominal
-        for field1 in numeric_columns
-    )
-    i = 0
-    for field2 in high_unique_nominal:
-        field2_index = column_to_index[field2]
-        for field1 in numeric_columns:
-            field1_index = column_to_index[field1]
-            corr[field2_index][field1_index] = scores[i]
-            i += 1
-
     # Do numeric numeric (Pearson's)
     num_len = len(numeric_columns)
     if num_len > 1:
@@ -451,7 +446,7 @@ def calculate_correlation(
             for j in range(i + 1, num_len):
                 delayed_calls.append(
                     delayed(calculate_pearsons_r)(
-                        df[numeric_columns[i]], df[numeric_columns[j]], opt
+                        df_cp[numeric_columns[i]], df_cp[numeric_columns[j]], opt
                     )
                 )
         scores = Parallel(n_jobs=1)(delayed_calls)
