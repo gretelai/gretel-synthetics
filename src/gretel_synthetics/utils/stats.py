@@ -350,11 +350,11 @@ def calculate_correlation(
     high_unique_nominal = []
     completely_unique_nominal = []
     not_high_unique_nominal = []
-    uniqueness_ratio = df_cp[c].nunique() / df_rows
+    uniqueness_ratios = df_cp.nunique() / df_rows
     for c in nominal:
-        if uniqueness_ratio == 1:
+        if uniqueness_ratios[c] == 1:
             completely_unique_nominal.append(c)
-        elif uniqueness_ratio > UNIQUENESS_THRESHOLD:
+        elif uniqueness_ratios[c] > UNIQUENESS_THRESHOLD:
             high_unique_nominal.append(c)
         else:
             not_high_unique_nominal.append(c)
