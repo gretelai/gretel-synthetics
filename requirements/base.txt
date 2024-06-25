@@ -1,5 +1,5 @@
 category-encoders==2.2.2
-joblib==1.2.0
+joblib==1.4.2
 numpy>=1.18.0,<1.24
 packaging==21.3
 pandas>=1.1.0,<2
