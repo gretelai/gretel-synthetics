@@ -5,6 +5,6 @@ packaging==21.3
 pandas>=1.1.0,<2
 rdt>=1.2,<1.3
 sdv>=0.17,<0.18
-sentencepiece==0.1.97
+sentencepiece==0.2.0
 smart_open>=2.1.0,<6.0
 tqdm<5.0
