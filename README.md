@@ -20,7 +20,7 @@
 - [Train your model](https://gretel-synthetics.readthedocs.io/en/stable/api/train.html)
 - [Generate synthetic records](https://gretel-synthetics.readthedocs.io/en/stable/api/generate.html)
 
-## Try it out now!
+## Try it out now
 
 If you want to quickly discover gretel-synthetics, simply click the button below and follow the tutorials!
 
@@ -37,14 +37,14 @@ This section will guide you through installation of `gretel-synthetics` and depe
 By default, we do not install certain core requirements, the following dependencies should be installed _external to the installation_
 of `gretel-synthetics`, depending on which model(s) you plan to use.
 
-- Tensorflow: Used by the LSTM model, we recommend version 2.11.x
+- Tensorflow: Used by the LSTM model, we recommend version 2.12.x
 - Torch: Used by Timeseries DGAN and ACTGAN (for ACTGAN, Torch is installed by SDV), we recommend version 2.0
 - SDV (Synthetic Data Vault): Used by ACTGAN, we recommend version 0.17.x
 
 These dependencies can be installed by doing the following:
 
 ```
-pip install tensorflow==2.11 # for LSTM
+pip install tensorflow==2.12.1 # for LSTM
 pip install sdv<0.18 # for ACTGAN
 pip install torch==2.0 # for Timeseries DGAN
 ```
@@ -64,8 +64,8 @@ pip install gretel-synthetics
 _then..._
 
 ```
-$ pip install jupyter
-$ jupyter notebook
+pip install jupyter
+jupyter notebook
 ```
 
 When the UI launches in your browser, navigate to `examples/synthetic_records.ipynb` and get generating!
@@ -75,13 +75,13 @@ If you want to install `gretel-synthetics` locally and use a GPU (recommended):
 1. Create a virtual environment (e.g. using `conda`)
 
 ```
-$ conda create --name tf python=3.9
+conda create --name tf python=3.9
 ```
 
 2. Activate the virtual environment
 
 ```
-$ conda activate tf
+conda activate tf
 ```
 
 3. Run the setup script `./setup-utils/setup-gretel-synthetics-tensorflow24-with-gpu.sh`
