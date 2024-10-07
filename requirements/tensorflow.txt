@@ -1,4 +1,6 @@
-protobuf>=3.9.2,<3.20
+dash==2.18.1
+ipykernel==6.29.5
+protobuf>=4,<=4.24.0
 tensorflow==2.12.1
 tensorflow_estimator==2.12.0
 tensorflow_privacy==0.7.3
