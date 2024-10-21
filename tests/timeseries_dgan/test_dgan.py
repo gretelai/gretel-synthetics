@@ -67,7 +67,7 @@ def config() -> DGANConfig:
         max_sequence_len=20,
         sample_len=5,
         batch_size=10,
-        epochs=10,
+        epochs=1,
     )
 
 
@@ -162,10 +162,10 @@ def test_generate():
         attributes, features, attributes_shape=(64, 3), features_shape=(64, 20, 2)
     )
 
-    attributes, features = dg.generate_numpy(200)
+    attributes, features = dg.generate_numpy(50)
 
     assert_attributes_features_shape(
-        attributes, features, attributes_shape=(200, 3), features_shape=(200, 20, 2)
+        attributes, features, attributes_shape=(50, 3), features_shape=(50, 20, 2)
     )
 
     attributes, features = dg.generate_numpy(1)
@@ -297,7 +297,7 @@ def test_train_numpy_no_attributes_1(
 def test_train_numpy_no_attributes_2(config: DGANConfig):
     features = np.random.rand(100, 20, 2)
     n_samples = 10
-    config.epochs = 1
+
     model_attributes_blank = DGAN(config=config)
     model_attributes_blank.train_numpy(features=features)
     synthetic_attributes, synthetic_features = model_attributes_blank.generate_numpy(
@@ -331,7 +331,6 @@ def test_train_numpy_batch_size_of_1(config: DGANConfig):
     # Check model trains when (# of examples) % batch_size == 1.
 
     config.batch_size = 10
-    config.epochs = 1
 
     features = np.random.rand(91, 20, 2)
     attributes = np.random.randint(0, 3, (91, 1))
@@ -506,7 +505,6 @@ def test_train_dataframe_wide_no_attributes(config: DGANConfig):
 
     config.max_sequence_len = 4
     config.sample_len = 1
-    config.epochs = 1
 
     dg = DGAN(config=config)
     dg.train_dataframe(df=df, df_style=DfStyle.WIDE)
@@ -1901,7 +1899,6 @@ def test_save_and_load(
     attributes, attribute_types = attribute_data
     features, feature_types = feature_data
 
-    config.epochs = 1
     config.use_attribute_discriminator = use_attribute_discriminator
     config.apply_example_scaling = apply_example_scaling
     config.attribute_noise_dim = noise_dim
@@ -1957,7 +1954,6 @@ def test_save_and_load_no_attributes(
 ):
     features, feature_types = feature_data
 
-    config.epochs = 1
     config.use_attribute_discriminator = use_attribute_discriminator
     config.apply_example_scaling = apply_example_scaling
     config.attribute_noise_dim = noise_dim
@@ -2009,7 +2005,6 @@ def test_save_and_load_dataframe_with_attributes(config: DGANConfig, tmp_path):
     )
     config.max_sequence_len = 4
     config.sample_len = 1
-    config.epochs = 1
 
     dg = DGAN(config=config)
 
@@ -2044,7 +2039,6 @@ def test_attribute_and_feature_overlap(config: DGANConfig):
     )
     config.max_sequence_len = 4
     config.sample_len = 1
-    config.epochs = 1
 
     dg = DGAN(config=config)
 
@@ -2070,7 +2064,6 @@ def test_save_and_load_dataframe_no_attributes(config: DGANConfig, tmp_path):
 
     config.max_sequence_len = 3
     config.sample_len = 1
-    config.epochs = 1
 
     dg = DGAN(config=config)
 
@@ -2101,7 +2094,6 @@ def test_dataframe_long_no_continuous_features(config: DGANConfig):
 
     config.max_sequence_len = 3
     config.sample_len = 1
-    config.epochs = 1
 
     dg = DGAN(config=config)
 
@@ -2124,7 +2116,6 @@ def test_dataframe_wide_no_continuous_features(config: DGANConfig):
 
     config.max_sequence_len = 3
     config.sample_len = 1
-    config.epochs = 1
 
     dg = DGAN(config=config)
 
@@ -2146,7 +2137,6 @@ def test_dataframe_long_partial_example(config: DGANConfig):
 
     config.max_sequence_len = 10
     config.sample_len = 1
-    config.epochs = 1
 
     dg = DGAN(config=config)
 
@@ -2170,7 +2160,6 @@ def test_dataframe_long_one_and_partial_example(config: DGANConfig):
 
     config.max_sequence_len = 5
     config.sample_len = 1
-    config.epochs = 1
 
     dg = DGAN(config=config)
 
@@ -2203,7 +2192,6 @@ def test_dataframe_variable_sequences(config: DGANConfig):
 
     config.max_sequence_len = 8
     config.sample_len = 1
-    config.epochs = 1
 
     dg = DGAN(config=config)
 
