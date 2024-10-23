@@ -23,11 +23,3 @@ jobs:
       run: pytest -s -vv --cov src --cov-report term-missing tests-integration/
       env:
         PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION: python
-    - uses: 8398a7/action-slack@v2
-      with:
-        status: ${{ job.status }}
-        author_name: Integration Tests
-        only_mention_fail: here
-      env:
-        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-      if: always()
