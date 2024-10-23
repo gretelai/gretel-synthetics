@@ -68,10 +68,20 @@ def test_actgan_implementation(
     # Test basic actgan setup with various parameters and to confirm training
     # and synthesize does not crash, i.e., all the tensor shapes match. Use a
     # small model and small dataset to keep tests quick.
+    INT_COLUMN_CONDITIONAL_VALUE = 10
     n = 100
     df = pd.DataFrame(
         {
-            "int_column": np.random.randint(0, 200, size=n),
+            # Guarantee the value used for conditioning is included in the
+            # training dataset, ensures the column range includes the
+            # conditioning value, and hopefully guides the model to be a bit
+            # more likely to generate the value.
+            "int_column": np.concatenate(
+                (
+                    np.random.randint(0, 200, size=n - 2),
+                    [INT_COLUMN_CONDITIONAL_VALUE, INT_COLUMN_CONDITIONAL_VALUE],
+                )
+            ),
             "float_column": np.random.random(size=n),
             "categorical_column": np.random.choice(["a", "b", "c"], size=n),
             "high_cardinality_column": np.random.choice(
@@ -110,7 +120,7 @@ def test_actgan_implementation(
         df_synth = model.sample_remaining_columns(
             pd.DataFrame(
                 {
-                    "int_column": [10] * 10,
+                    "int_column": [INT_COLUMN_CONDITIONAL_VALUE] * 10,
                 }
             )
         )
@@ -144,10 +154,20 @@ def test_actgan_implementation_all_numeric(
     # Test basic actgan setup with various parameters and to confirm training
     # and synthesize does not crash, i.e., all the tensor shapes match. Use a
     # small model and small dataset to keep tests quick.
+    INT_COLUMN_CONDITIONAL_VALUE = 10
     n = 100
     df = pd.DataFrame(
         {
-            "int_column": np.random.randint(0, 200, size=n),
+            # Guarantee the value used for conditioning is included in the
+            # training dataset, ensures the column range includes the
+            # conditioning value, and hopefully guides the model to be a bit
+            # more likely to generate the value.
+            "int_column": np.concatenate(
+                (
+                    np.random.randint(0, 200, size=n - 2),
+                    [INT_COLUMN_CONDITIONAL_VALUE, INT_COLUMN_CONDITIONAL_VALUE],
+                )
+            ),
             "float_column": np.random.random(size=n),
         }
     )
@@ -181,7 +201,7 @@ def test_actgan_implementation_all_numeric(
         df_synth = model.sample_remaining_columns(
             pd.DataFrame(
                 {
-                    "int_column": [10] * 10,
+                    "int_column": [INT_COLUMN_CONDITIONAL_VALUE] * 10,
                 }
             )
         )
