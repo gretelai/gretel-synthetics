@@ -604,13 +604,13 @@ def _log_sample_data(model_dir: str, sp: spm.SentencePieceProcessor):
         "Mapping first line of training data\n\n{}\n ---- sample tokens mapped to pieces ---- > \n{}\n".format(
             repr(sample), ", ".join(sp.SampleEncodeAsPieces(sample, -1, 0.1))
         ),
-        extra={"maybe_sensitive": True},
+        extra={"sensitive": True},
     )
     logger.info(
         "Mapping first line of training data\n\n{}\n ---- sample tokens mapped to int ---- > \n{}\n".format(
             repr(sample), ", ".join([str(idx) for idx in sp.EncodeAsIds(sample)])
         ),
-        extra={"maybe_sensitive": True},
+        extra={"sensitive": True},
     )
 
 
