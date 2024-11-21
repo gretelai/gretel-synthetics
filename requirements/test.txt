@@ -1,5 +1,5 @@
 faker==20.1.0
 flake8==4.0.1
-pylint==2.14.3
+pylint==3.3.1
 pytest-cov==2.11.1
 pytest==7.2.0
