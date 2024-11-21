@@ -7,6 +7,8 @@ on:
 jobs:
   push:
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
     steps:
     - uses: actions/checkout@v1
     - name: Setup Python
@@ -20,13 +22,13 @@ jobs:
     - name: Install wheel
       run: pip install dist/gretel_synthetics-*.whl
     - name: Publish to Test PyPi
-      uses: pypa/gh-action-pypi-publish@master
+      uses: pypa/gh-action-pypi-publish@release/v1
       with:
         user: __token__
         password: ${{secrets.PY_PI_TEST}}
-        repository_url: https://test.pypi.org/legacy/
+        repository-url: https://test.pypi.org/legacy/
     - name: Publish PyPi
-      uses: pypa/gh-action-pypi-publish@master
+      uses: pypa/gh-action-pypi-publish@release/v1
       with:
         user: __token__
         password: ${{secrets.PY_PI_PROD}}
