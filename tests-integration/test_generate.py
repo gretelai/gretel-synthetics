@@ -43,14 +43,14 @@ BATCH_MODELS = [
 
 
 def _unpack_to_dir(source: str, target: str):
-    with smart_open(source, "rb", ignore_ext=True) as fin:
+    with smart_open(source, "rb", compression="disable") as fin:
         with gzip.open(fin) as gzip_in:
             with tarfile.open(fileobj=gzip_in, mode="r:gz") as tar_in:
                 safe_extractall(tar_in, target)
 
 
 def _unpack_to_dir_nogz(source: str, target: str):
-    with smart_open(source, "rb", ignore_ext=True) as fin:
+    with smart_open(source, "rb", compression="disable") as fin:
         with tarfile.open(fileobj=fin, mode="r:gz") as tar_in:
             safe_extractall(tar_in, target)
 

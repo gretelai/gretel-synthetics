@@ -85,7 +85,9 @@ class DataFileGenerator:
 
         if self.model_path.suffixes == [".tar", ".gz"]:
             with TemporaryDirectory() as tmpdir:
-                with smart_open(str(self.raw_model_path), "rb", ignore_ext=True) as fin:
+                with smart_open(
+                    str(self.raw_model_path), "rb", compression="disable"
+                ) as fin:
                     with gzip.open(fin) as gzip_in:
                         with tarfile.open(fileobj=gzip_in, mode="r:gz") as tar_in:
                             logging.info("Extracting archive to temp dir...")
