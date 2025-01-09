@@ -48,7 +48,7 @@ def test_binary_encoding_transformer_transform():
     transformed = bet.transform(df)
     assert np.allclose(
         transformed.values[:, 1:4].astype(int),
-        [[0, 0, 1], [0, 0, 1], [0, 1, 0], [0, 1, 1]],
+        [[0, 1], [0, 1], [1, 0], [1, 1]],
     )
 
 

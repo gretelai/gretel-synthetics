@@ -381,9 +381,9 @@ def test_transform_and_inverse_attributes(normalization):
     ]
 
     transformed = transform_attributes(attributes, outputs)
-    # 3 continuous + 2 for one hot encoded + 4 for binary encoded
-    # (No idea why category encoders needs 4 bits to encode 5 unique values)
-    assert transformed.shape == (n, 9)
+    # 3 continuous + 2 for one hot encoded + 3 for binary encoded
+    # Not sure if the upgrade fixed the previous issue of 4 vs. 3 for binary
+    assert transformed.shape == (n, 8)
 
     inversed = inverse_transform_attributes(transformed, outputs)
     assert inversed is not None
