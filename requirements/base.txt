@@ -1,7 +1,7 @@
 category-encoders==2.4.0
 joblib==1.4.2
 numpy>=1.18.0,<1.24
-packaging==24.2
+packaging>=22
 pandas>=1.1.0,<2
 rdt>=1.2,<1.3
 sdv>=0.17,<0.18
