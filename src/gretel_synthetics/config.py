@@ -13,12 +13,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Callable, Optional, TYPE_CHECKING
 
-import tensorflow as tf
-
 import gretel_synthetics.const as const
-
-from gretel_synthetics.tensorflow.generator import TensorFlowGenerator
-from gretel_synthetics.tensorflow.train import train_rnn
 
 logging.basicConfig(
     format="%(asctime)s : %(threadName)s : %(levelname)s : %(message)s",
@@ -280,12 +275,6 @@ class TensorFlowConfig(BaseConfig):
 
     def __post_init__(self):
         if self.dp:
-            major, minor, _ = tf.__version__.split(".")
-            if (int(major), int(minor)) < (2, 4):
-                raise RuntimeError(
-                    "Running in differential privacy mode requires TensorFlow 2.4.x or greater. "
-                    "Please see the README for details"
-                )
 
             # TODO: To enable micro-batch size greater than 1, we need to update the differential privacy
             #  optimizer loss function to compute the vector of per-example losses, rather than the mean
@@ -319,15 +308,13 @@ class TensorFlowConfig(BaseConfig):
         super().__post_init__()
 
     def get_generator_class(self):
-        return TensorFlowGenerator
+        return None
 
     def get_training_callable(self):
-        return train_rnn
+        return None
 
     def gpu_check(self):
-        device_name = tf.test.gpu_device_name()
-        if not device_name.startswith("/device:GPU:"):
-            logging.warning("***** GPU not found, CPU will be used instead! *****")
+        pass
 
 
 #################

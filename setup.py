@@ -33,8 +33,7 @@ base_reqs = reqs("requirements/base.txt")
 utils_reqs = reqs("requirements/utils.txt")
 test_reqs = reqs("requirements/test.txt")
 torch_reqs = reqs("requirements/torch.txt")
-tf_reqs = reqs("requirements/tensorflow.txt")
-all_reqs = [base_reqs, utils_reqs, torch_reqs, tf_reqs]
+all_reqs = [base_reqs, utils_reqs, torch_reqs]
 
 setup(
     name="gretel-synthetics",
@@ -56,7 +55,6 @@ setup(
         "utils": utils_reqs,
         "test": test_reqs,
         "torch": torch_reqs,
-        "tensorflow": tf_reqs,
         "docs": doc_reqs,
     },
     classifiers=[

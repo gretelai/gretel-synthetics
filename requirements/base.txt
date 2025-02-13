@@ -1,10 +1,7 @@
 category-encoders==2.4.0
-joblib==1.4.2
 numpy>=1.18.0,<1.24
-packaging<22
 pandas>=1.1.0,<2
+protobuf>=4,<=4.24.0
 rdt>=1.2,<1.3
 sdv>=0.17,<0.18
-sentencepiece==0.2.0
-smart_open>=2.1.0,<8.0
 tqdm<5.0
