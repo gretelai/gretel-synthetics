@@ -537,3 +537,16 @@ def compute_pca(df: pd.DataFrame, n_components: int = 2) -> pd.DataFrame:
     projected = pca.fit_transform(df_norm)
     columns = [f"pc{i + 1}" for i in range(n_components)]
     return pd.DataFrame(data=projected, columns=columns)
+
+
+def count_missing(df: pd.DataFrame) -> int:
+    """
+    Count the number of missing values in a dataframe.
+
+    Args:
+        df: The dataframe to analyze.
+
+    Returns:
+        int, the number of missing values.
+    """
+    return int(df.isnull().sum().sum())
