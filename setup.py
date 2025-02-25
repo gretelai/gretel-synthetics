@@ -40,7 +40,7 @@ setup(
     author="Gretel Labs, Inc.",
     author_email="support@gretel.ai",
     use_scm_version=True,
-    setup_requires=["setuptools_scm"],
+    setup_requires=["setuptools_scm==8.1.0"],
     description="Synthetic Data Generation with optional Differential Privacy",
     url="https://github.com/gretelai/gretel-synthetics",
     license="https://gretel.ai/license/source-available-license",
