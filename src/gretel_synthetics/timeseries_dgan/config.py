@@ -1,5 +1,5 @@
 from dataclasses import asdict, dataclass
-from enum import Enum
+from enum import Enum, StrEnum
 
 
 class OutputType(Enum):
@@ -142,7 +142,7 @@ class DGANConfig:
         return asdict(self)
 
 
-class DfStyle(str, Enum):
+class DfStyle(StrEnum):
     """Supported styles for parsing pandas DataFrames.
 
     See `train_dataframe` method in dgan.py for details.

@@ -5,7 +5,7 @@ Complex datastructures for ACTGAN
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from enum import Enum
+from enum import StrEnum
 from typing import Any, Dict, List, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -16,12 +16,12 @@ if TYPE_CHECKING:
     from gretel_synthetics.actgan.column_encodings import ColumnEncoding
 
 
-class ColumnType(str, Enum):
+class ColumnType(StrEnum):
     CONTINUOUS = "continuous"
     DISCRETE = "discrete"
 
 
-class ConditionalVectorType(str, Enum):
+class ConditionalVectorType(StrEnum):
     SINGLE_DISCRETE = "single_discrete"
     ANYWAY = "anyway"
     # TODO: add ANYWAY_WITH_MASK type so the generator input includes a 0/1 mask

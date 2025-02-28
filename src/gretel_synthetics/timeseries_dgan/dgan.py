@@ -1231,7 +1231,7 @@ class _DataFrameConverter(abc.ABC):
         return state
 
     @abc.abstractmethod
-    def _state_dict() -> Dict:
+    def _state_dict(self) -> Dict:
         """Subclass specific dictionary for saving and loading."""
         ...
 
