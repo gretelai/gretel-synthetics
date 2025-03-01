@@ -1,5 +1,12 @@
 from dataclasses import asdict, dataclass
-from enum import Enum, StrEnum
+from enum import Enum
+
+try:
+    from enum import StrEnum
+except ImportError:
+
+    class StrEnum(str, Enum):
+        pass
 
 
 class OutputType(Enum):
